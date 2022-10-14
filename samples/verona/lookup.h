@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include <ast.h>
+#include <trieste/ast.h>
 
 namespace verona
 {
