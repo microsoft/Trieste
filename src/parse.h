@@ -292,12 +292,12 @@ namespace trieste
       if (prefile_ && !prefile_(*this, filename))
         return {};
 
-      auto source = SourceDef::load(filename);
+      auto source = SourceDef::load(filename.string());
 
       if (!source)
         return {};
 
-      auto make = detail::Make(filename.stem());
+      auto make = detail::Make(filename.stem().string());
       auto it = source->view().cbegin();
       auto st = it;
       auto end = source->view().cend();
@@ -360,7 +360,7 @@ namespace trieste
       if (predir_ && !predir_(*this, dir))
         return {};
 
-      Node top = NodeDef::create(Directory, {dir.stem()});
+      Node top = NodeDef::create(Directory, {dir.stem().string()});
 
       for (const auto& entry : std::filesystem::directory_iterator(dir))
       {

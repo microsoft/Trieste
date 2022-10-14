@@ -5,6 +5,7 @@
 #include "ast.h"
 #include "xoroshiro.h"
 
+#include <array>
 #include <tuple>
 
 /* Notes on how to use the Well-formedness checker:
@@ -28,7 +29,7 @@ namespace trieste
       size_t max_depth;
       std::set<Token> nonterminals;
 
-      Gen(Seed seed, uint max_depth) : rand(seed), max_depth(max_depth) {}
+      Gen(Seed seed, size_t max_depth) : rand(seed), max_depth(max_depth) {}
 
       Result next()
       {
@@ -126,9 +127,9 @@ namespace trieste
       : minlen(minlen), types(types)
       {}
 
-      consteval auto operator[](size_t minlen) const
+      consteval auto operator[](size_t new_minlen) const
       {
-        return Sequence(minlen, types);
+        return Sequence(new_minlen, types);
       }
 
       constexpr bool terminal() const

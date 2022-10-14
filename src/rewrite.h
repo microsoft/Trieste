@@ -5,6 +5,7 @@
 #include "ast.h"
 
 #include <cassert>
+#include <functional>
 #include <optional>
 #include <regex>
 
@@ -103,7 +104,7 @@ namespace trieste
     public:
       virtual ~PatternDef() = default;
 
-      virtual bool match(NodeIt& it, NodeIt end, Match& match) const
+      virtual bool match(NodeIt&, NodeIt, Match&) const
       {
         return false;
       }
@@ -140,7 +141,7 @@ namespace trieste
     public:
       Anything() {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, NodeIt end, Match&) const override
       {
         if (it == end)
           return false;
@@ -158,7 +159,7 @@ namespace trieste
     public:
       TokenMatch(const Token& type) : type(type) {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, NodeIt end, Match&) const override
       {
         if ((it == end) || ((*it)->type() != type))
           return false;
@@ -180,7 +181,7 @@ namespace trieste
         regex = std::regex("^" + r + "$", std::regex_constants::optimize);
       }
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, NodeIt end, Match&) const override
       {
         if ((it == end) || ((*it)->type() != type))
           return false;
@@ -324,7 +325,7 @@ namespace trieste
     public:
       Inside(const Token& type) : type(type) {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, NodeIt end, Match&) const override
       {
         if (it == end)
           return false;
@@ -339,7 +340,7 @@ namespace trieste
     public:
       First() {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, NodeIt end, Match&) const override
       {
         if (it == end)
           return false;
@@ -354,7 +355,7 @@ namespace trieste
     public:
       Last() {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, NodeIt end, Match&) const override
       {
         return it == end;
       }
