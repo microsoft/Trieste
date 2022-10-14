@@ -40,7 +40,7 @@ namespace trieste
       Node top;
       Node node;
       Location location;
-      std::cmatch match_;
+      std::match_results<std::string_view::const_iterator> match_;
       std::optional<std::string> mode_;
 
     public:
@@ -55,7 +55,7 @@ namespace trieste
         return location.linecol();
       }
 
-      const std::cmatch& match() const
+      const auto& match() const
       {
         return match_;
       }
@@ -298,7 +298,7 @@ namespace trieste
         return {};
 
       auto make = detail::Make(filename.stem().string());
-      auto it = source->view().cbegin();
+      auto it = source->view().begin();
       auto st = it;
       auto end = source->view().cend();
 
@@ -315,7 +315,7 @@ namespace trieste
 
         for (auto& rule : find->second)
         {
-          matched = std::regex_search(it, end, make.match_, rule.regex);
+          matched = std::template regex_search(it, end, make.match_, rule.regex);
 
           if (matched)
           {
