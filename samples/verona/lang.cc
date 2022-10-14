@@ -238,7 +238,7 @@ namespace verona
         },
 
       // Default initializers.
-      (T(Default) << End) >> ([](Match& _) -> Node { return DontCare; }),
+      (T(Default) << End) >> ([](Match&) -> Node { return DontCare; }),
       (T(Default) << (T(Group)[rhs]) * End) >>
         [](Match& _) { return Seq << *_[rhs]; },
       (T(Default) << (T(Group)++[rhs]) * End) >>
@@ -262,7 +262,7 @@ namespace verona
         },
 
       // Allow `ref` to be used as a type name.
-      TypeStruct * T(Ref) >> [](Match& _) { return Ident ^ ref; },
+      TypeStruct * T(Ref) >> [](Match&) { return Ident ^ ref; },
 
       TypeStruct *
           (T(Use) / T(Let) / T(Var) / T(Equals) / T(Class) / T(FatArrow) /
@@ -285,7 +285,7 @@ namespace verona
       In(Expr) * T(List)[List] >> [](Match& _) { return Tuple << *_[List]; },
 
       // Empty parens are an empty Tuple.
-      In(Expr) * (T(Paren) << End) >> ([](Match& _) -> Node { return Tuple; }),
+      In(Expr) * (T(Paren) << End) >> ([](Match&) -> Node { return Tuple; }),
 
       // Parens with one element are an Expr. Put the group, list, or equals
       // into the expr, where it will become an expr, tuple, or assign.
@@ -401,7 +401,7 @@ namespace verona
         },
 
       // Remove empty groups.
-      T(Group) << End >> ([](Match& _) -> Node { return {}; }),
+      T(Group) << End >> ([](Match&) -> Node { return {}; }),
       T(Group)[Group] >> [](Match& _) { return err(_[Group], "syntax error"); },
     };
   }
@@ -506,14 +506,14 @@ namespace verona
       // Tuples of arity 1 are scalar types, tuples of arity 0 are the unit
       // type.
       T(TypeTuple) << (TypeElem[op] * End) >> [](Match& _) { return _(op); },
-      T(TypeTuple) << End >> ([](Match& _) -> Node { return TypeUnit; }),
+      T(TypeTuple) << End >> ([](Match&) -> Node { return TypeUnit; }),
 
       // Flatten Type nodes. The top level Type node won't go away.
       TypeStruct * T(Type) << (TypeElem[op] * End) >>
         [](Match& _) { return _(op); },
 
       // Empty types are the unit type.
-      T(Type)[Type] << End >> [](Match& _) { return Type << TypeUnit; },
+      T(Type)[Type] << End >> [](Match&) { return Type << TypeUnit; },
 
       In(TypeThrow) * T(TypeThrow)[lhs] >>
         [](Match& _) { return err(_[lhs], "can't throw a throw type"); },

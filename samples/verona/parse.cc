@@ -15,9 +15,9 @@ namespace verona
     indent->push_back(restart);
 
     p.prefile(
-      [](auto& p, auto& path) { return path.extension() == ".verona"; });
+      [](auto&, auto& path) { return path.extension() == ".verona"; });
 
-    p.predir([](auto& p, auto& path) {
+    p.predir([](auto&, auto& path) {
       static auto re = std::regex(
         ".*/[_[:alpha:]][_[:alnum:]]*$", std::regex_constants::optimize);
       return std::regex_match(path.string(), re);
@@ -29,7 +29,7 @@ namespace verona
         ast->push_back(p.sub_parse(stdlib));
     });
 
-    p.postfile([indent, depth](auto& p, auto& path, auto ast) {
+    p.postfile([indent, depth](auto&, auto&, auto) {
       *depth = 0;
       indent->clear();
       indent->push_back(restart);
@@ -76,7 +76,7 @@ namespace verona
           },
 
         // Whitespace between tokens.
-        "[[:blank:]]+" >> [](auto& m) {},
+        "[[:blank:]]+" >> [](auto&) {},
 
         // Terminator.
         ";" >> [](auto& m) { m.term(terminators); },
@@ -168,7 +168,7 @@ namespace verona
         "'[^']*'" >> [](auto& m) { m.add(Char); },
 
         // Line comment.
-        "//[^\n]*" >> [](auto& m) {},
+        "//[^\n]*" >> [](auto&) {},
 
         // Nested comment.
         "/\\*" >>
@@ -217,7 +217,7 @@ namespace verona
 
     p("comment",
       {
-        "(?:[^\\*]|\\*(?!/))*/\\*" >> [depth](auto& m) { ++(*depth); },
+        "(?:[^\\*]|\\*(?!/))*/\\*" >> [depth](auto&) { ++(*depth); },
         "(?:[^/]|/(?!\\*))*\\*/" >>
           [depth](auto& m) {
             if (--(*depth) == 0)
