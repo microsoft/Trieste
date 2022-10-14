@@ -40,7 +40,7 @@ namespace trieste
       Node top;
       Node node;
       Location location;
-      std::cmatch match_;
+      std::match_results<std::string_view::const_iterator> match_;
       std::optional<std::string> mode_;
 
     public:
@@ -55,7 +55,7 @@ namespace trieste
         return location.linecol();
       }
 
-      const std::cmatch& match() const
+      const auto& match() const
       {
         return match_;
       }
@@ -292,13 +292,13 @@ namespace trieste
       if (prefile_ && !prefile_(*this, filename))
         return {};
 
-      auto source = SourceDef::load(filename);
+      auto source = SourceDef::load(filename.string());
 
       if (!source)
         return {};
 
-      auto make = detail::Make(filename.stem());
-      auto it = source->view().cbegin();
+      auto make = detail::Make(filename.stem().string());
+      auto it = source->view().begin();
       auto st = it;
       auto end = source->view().cend();
 
@@ -315,7 +315,7 @@ namespace trieste
 
         for (auto& rule : find->second)
         {
-          matched = std::regex_search(it, end, make.match_, rule.regex);
+          matched = std::template regex_search(it, end, make.match_, rule.regex);
 
           if (matched)
           {
@@ -360,7 +360,7 @@ namespace trieste
       if (predir_ && !predir_(*this, dir))
         return {};
 
-      Node top = NodeDef::create(Directory, {dir.stem()});
+      Node top = NodeDef::create(Directory, {dir.stem().string()});
 
       for (const auto& entry : std::filesystem::directory_iterator(dir))
       {

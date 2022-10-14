@@ -95,7 +95,7 @@ namespace trieste
       if (line > lines.size())
         return {std::string::npos, 0};
 
-      auto start = 0;
+      size_t start = 0;
       auto end = contents.size();
 
       if (line > 0)

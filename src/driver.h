@@ -34,8 +34,8 @@ namespace trieste
     {
       limits.push_back(parse_only);
 
-      for (auto& [name, pass, wf] : passes)
-        limits.push_back(name);
+      for (auto& [name_, pass, wf] : passes)
+        limits.push_back(name_);
     }
 
     int run(int argc, char** argv)
