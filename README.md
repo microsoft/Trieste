@@ -26,7 +26,7 @@ int main(int argc, char** argv)
 Here's an example of how to build the `verona` sample and run the self-tests:
 
 ```sh
-git clone https://github.com/microsoft/trieste
+git clone --recursive https://github.com/microsoft/trieste
 cd trieste
 mkdir build
 cd build
