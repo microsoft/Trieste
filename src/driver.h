@@ -54,6 +54,9 @@ namespace trieste
       bool diag = false;
       build->add_flag("-d,--diagnostics", diag, "Emit diagnostics.");
 
+      bool wfcheck = false;
+      build->add_flag("-w,--wf-check", wfcheck, "Check well-formedness.");
+
       std::string limit;
       build->add_option("-p,--pass", limit, "Run up to this pass.")
         ->transform(CLI::IsMember(limits));
@@ -123,7 +126,10 @@ namespace trieste
                         << changes << " nodes rewritten." << std::endl;
             }
 
-            if (wf && !wf.check(ast, std::cout))
+            if (wf)
+              wf.build_st(ast);
+
+            if (wfcheck && wf && !wf.check(ast, std::cout))
             {
               ret = -1;
               break;

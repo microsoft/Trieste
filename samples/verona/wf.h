@@ -25,7 +25,7 @@ namespace verona
     | (List <<= (Group | Equals)++)
     | (Equals <<= Group++)
     | (Group <<=
-        (wfLiteral | Brace | Paren | Square | List | Equals | FatArrow | Use |
+        (wfLiteral | Brace | Paren | Square | List | Equals | Arrow | Use |
          Class | TypeAlias | Var | Let | Ref | Throw | Iso | Imm | Mut |
          DontCare | Ident | Ellipsis | Dot | DoubleColon | Symbol | Colon |
          Package)++)
@@ -33,9 +33,9 @@ namespace verona
   // clang-format on
 
   inline constexpr auto wfModulesTokens = wfLiteral | Brace | Paren | Square |
-    List | Equals | FatArrow | Use | Class | TypeAlias | Var | Let | Ref |
-    Throw | Iso | Imm | Mut | DontCare | Ident | Ellipsis | Dot | DoubleColon |
-    Symbol | Type | Package;
+    List | Equals | Arrow | Use | Class | TypeAlias | Var | Let | Ref | Throw |
+    Iso | Imm | Mut | DontCare | Ident | Ellipsis | Dot | DoubleColon | Symbol |
+    Type | Package;
 
   // clang-format off
   inline constexpr auto wfPassModules =
@@ -58,14 +58,14 @@ namespace verona
     | (ClassBody <<=
         (Use | Class | TypeAlias | TypeTrait | FieldLet | FieldVar |
          Function)++)
-    | (Use <<= Type)
-    | (TypeAlias <<= Ident * TypeParams * (Bounds >>= Type) * Type)[Ident]
+    | (Use <<= Type)[Include]
+    | (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * Type)[Ident]
     | (TypeTrait <<= Ident * ClassBody)[Ident]
     | (FieldLet <<= Ident * Type * wfDefault)[Ident]
     | (FieldVar <<= Ident * Type * wfDefault)[Ident]
     | (Function <<= wfIdSym * TypeParams * Params * Type * FuncBody)[IdSym]
     | (TypeParams <<= TypeParam++)
-    | (TypeParam <<= Ident * (Bounds >>= Type) * Type)[Ident]
+    | (TypeParam <<= Ident * (Bound >>= Type) * Type)[Ident]
     | (Params <<= Param++)
     | (Param <<= Ident * Type * wfDefault)[Ident]
     | (TypeTuple <<= Type++)
@@ -180,21 +180,8 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassInclude =
-      wfPassTypeDNF
-
-    // Replace all Use with Include.
-    | (ClassBody <<=
-        (Include | Class | TypeAlias | TypeTrait | FieldLet | FieldVar |
-         Function)++)
-    | (Include <<= TypeName)
-    | (FuncBody <<= (Include | Class | TypeAlias | Expr)++)
-    ;
-  // clang-format on
-
-  // clang-format off
   inline constexpr auto wfPassReference =
-      wfPassInclude
+      wfPassTypeDNF
 
     // Add RefLet, RefVar, Selector, FunctionName, TypeAssertOp.
     | (RefLet <<= Ident)
@@ -291,7 +278,7 @@ namespace verona
       wfPassAssignment
 
     // TODO: add control flow
-    | (FuncBody <<= (Include | Class | TypeAlias | Bind | RefLet | Throw)++)
+    | (FuncBody <<= (Use | Class | TypeAlias | Bind | RefLet | Throw)++)
     | (Tuple <<= (RefLet | TupleFlatten)++)
     | (TupleFlatten <<= RefLet)
     | (Throw <<= RefLet)
@@ -305,15 +292,13 @@ namespace verona
 
   // clang-format off
   inline constexpr auto wf =
-      Ident
-    | (TypeAlias <<= Ident * TypeParams * (Bounds >>= Type) * (Default >>= Type))
+      (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * (Default >>= Type))
     | (Class <<= Ident * TypeParams * Type * ClassBody)
     | (ClassBody <<= (Use | Class | TypeAlias | FieldLet | FieldVar | Function)++)
     | (FieldLet <<= Ident * Type * Expr)
     | (FieldVar <<= Ident * Type * Expr)
     | (Function <<= wfIdSym * TypeParams * Params * (Type >>= wfType) * FuncBody)
     | (Params <<= Param++) | (Param <<= Ident * Type * Expr)
-    | FuncBody // TODO: define it
     | (Type <<= wfType)
     | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeTuple <<= wfType++)
@@ -322,18 +307,13 @@ namespace verona
     | (TypeThrow <<= (Type >>= wfType))
     | (TypeIsect <<= wfType++)
     | (TypeUnion <<= wfType++)
-    | TypeVar // TODO:
     | (TypeTrait <<= ClassBody)
-    | Iso | Imm | Mut
     | (Package <<= (id >>= String | Escaped))
-    // | (RefType <<= Ident * TypeArgs) // TODO: scoped
     | (Var <<= Ident * Type)
     | (Let <<= Ident * Type)
     | (Throw <<= Expr)
-    | Expr // TODO: define it
     | (TypeArgs <<= wfType++)
     | (Lambda <<= TypeParams * Params * FuncBody)
-    | Tuple // TODO: define it
     | (Assign <<= Expr++)
     ;
   // clang-format on

@@ -16,14 +16,10 @@ namespace trieste
 
   class Match
   {
-    friend class PassDef;
-
   private:
     Node in_node;
     std::map<Token, NodeRange> captures;
     std::map<Token, Node> defaults;
-    std::map<Location, Node> bindings;
-    std::vector<std::pair<Node, Node>> includes;
 
   public:
     Match(Node in_node) : in_node(in_node) {}
@@ -56,44 +52,10 @@ namespace trieste
       return {};
     }
 
-    Node operator()(LocBinding binding)
-    {
-      bindings[binding.first] = binding.second;
-      return binding.second;
-    }
-
-    Node operator()(Binding binding)
-    {
-      auto node = (*this)(binding.first);
-
-      if (!node)
-        throw std::runtime_error("Binding to undefined node");
-
-      bindings[node->location()] = binding.second;
-      return binding.second;
-    }
-
-    Node include(Node site, Node target)
-    {
-      includes.emplace_back(site, target);
-      return site;
-    }
-
     void operator+=(const Match& that)
     {
       captures.insert(that.captures.begin(), that.captures.end());
       defaults.insert(that.defaults.begin(), that.defaults.end());
-      bindings.insert(that.bindings.begin(), that.bindings.end());
-    }
-
-  private:
-    void bind()
-    {
-      for (auto& [loc, node] : bindings)
-        node->bind(loc);
-
-      for (auto& [site, target] : includes)
-        site->include(target);
     }
   };
 

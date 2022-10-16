@@ -81,12 +81,12 @@ namespace verona
         // Terminator.
         ";" >> [](auto& m) { m.term(terminators); },
 
-        // FatArrow.
-        "=>" >>
+        // Function type or lambda.
+        "->" >>
           [indent](auto& m) {
             indent->back() = m.linecol().second + 1;
             m.term(terminators);
-            m.add(FatArrow);
+            m.add(Arrow);
             m.term(terminators);
           },
 

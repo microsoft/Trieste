@@ -81,8 +81,7 @@ namespace trieste
         return ok;
       }
 
-      template<typename WF>
-      void gen(const WF& wf, Gen& g, size_t depth, Node node) const
+      void gen(Gen& g, size_t depth, Node node) const
       {
         Token type;
 
@@ -109,7 +108,6 @@ namespace trieste
 
         auto child = NodeDef::create(type, node->fresh());
         node->push_back(child);
-        wf.gen_i(g, depth + 1, child);
       }
     };
 
@@ -119,17 +117,23 @@ namespace trieste
     template<size_t N>
     struct Sequence : SequenceBase
     {
-      size_t minlen;
       Choice<N> types;
+      size_t minlen;
+      Token binding;
 
-      consteval Sequence(const Choice<N>& types) : types(types) {}
-      consteval Sequence(size_t minlen, const Choice<N>& types)
-      : minlen(minlen), types(types)
+      consteval Sequence(const Choice<N>& types)
+      : types(types), minlen(0), binding(Invalid)
+      {}
+      consteval Sequence(const Sequence<N>& seq, const Token& binding)
+      : types(seq.types), minlen(seq.minlen), binding(binding)
+      {}
+      consteval Sequence(const Choice<N>& types, size_t minlen, Token binding)
+      : types(types), minlen(minlen), binding(binding)
       {}
 
       consteval auto operator[](size_t new_minlen) const
       {
-        return Sequence(new_minlen, types);
+        return Sequence<N>(types, new_minlen, binding);
       }
 
       constexpr bool terminal() const
@@ -137,13 +141,12 @@ namespace trieste
         return false;
       }
 
-      template<typename WF>
-      bool check(const WF& wf, Node node, std::ostream& out) const
+      bool check(Node node, std::ostream& out) const
       {
         auto ok = true;
 
         for (auto& child : *node)
-          ok = types.check(child, out) && wf.check(child, out) && ok;
+          ok = types.check(child, out) && ok;
 
         if (node->size() < minlen)
         {
@@ -153,17 +156,31 @@ namespace trieste
           ok = false;
         }
 
+        if (!binding.in({Invalid, Include}))
+        {
+          out << node->location().origin_linecol() << "can't bind a "
+              << node->type().str() << " sequence in the symbol table"
+              << std::endl
+              << node->location().str() << std::endl;
+          ok = false;
+        }
+
         return ok;
       }
 
-      template<typename WF>
-      void gen(const WF& wf, Gen& g, size_t depth, Node node) const
+      void gen(Gen& g, size_t depth, Node node) const
       {
         for (size_t i = 0; i < minlen; ++i)
-          types.gen(wf, g, depth, node);
+          types.gen(g, depth, node);
 
         while (g.next() % 2)
-          types.gen(wf, g, depth, node);
+          types.gen(g, depth, node);
+      }
+
+      void build_st(Node node) const
+      {
+        if (binding == Include)
+          node->include();
       }
     };
 
@@ -217,20 +234,14 @@ namespace trieste
         return sizeof...(Ts) == 0;
       }
 
-      template<typename WF>
-      bool check(const WF& wf, Node node, std::ostream& out) const
+      bool check(Node node, std::ostream& out) const
       {
-        return check_field<0>(wf, true, node, node->begin(), node->end(), out);
+        return check_field<0>(true, node, node->begin(), node->end(), out);
       }
 
-      template<size_t I, typename WF>
+      template<size_t I>
       bool check_field(
-        const WF& wf,
-        bool ok,
-        Node node,
-        NodeIt child,
-        NodeIt end,
-        std::ostream& out) const
+        bool ok, Node node, NodeIt child, NodeIt end, std::ostream& out) const
       {
         if (child == end)
         {
@@ -259,14 +270,14 @@ namespace trieste
         else
         {
           auto& field = std::get<I>(fields);
-          ok = field.types.check(*child, out) && wf.check(*child, out) && ok;
+          ok = field.types.check(*child, out) && ok;
 
           if ((binding != Invalid) && (field.name == binding))
           {
-            auto nodes = node->lookup_all((*child)->location());
-            auto find = std::find(nodes.begin(), nodes.end(), node);
+            auto defs = (*child)->lookup();
+            auto find = std::find(defs.begin(), defs.end(), node);
 
-            if (find == nodes.end())
+            if (find == defs.end())
             {
               out << (*child)->location().origin_linecol()
                   << "missing symbol table binding for " << node->type().str()
@@ -276,28 +287,49 @@ namespace trieste
             }
           }
 
-          return check_field<I + 1>(wf, ok, node, ++child, end, out);
+          return check_field<I + 1>(ok, node, ++child, end, out);
         }
       }
 
-      template<typename WF>
-      void gen(const WF& wf, Gen& g, size_t depth, Node node) const
+      void gen(Gen& g, size_t depth, Node node) const
       {
-        gen_field<0>(wf, g, depth, node);
+        gen_field<0>(g, depth, node);
       }
 
-      template<size_t I, typename WF>
-      void gen_field(const WF& wf, Gen& g, size_t depth, Node node) const
+      template<size_t I>
+      void gen_field(Gen& g, size_t depth, Node node) const
       {
         if constexpr (I < sizeof...(Ts))
         {
           auto& field = std::get<I>(fields);
-          field.types.gen(wf, g, depth, node);
+          field.types.gen(g, depth, node);
 
           if (binding == field.name)
             node->bind(node->back()->location());
 
-          gen_field<I + 1>(wf, g, depth, node);
+          gen_field<I + 1>(g, depth, node);
+        }
+      }
+
+      void build_st(Node node) const
+      {
+        if (binding == Include)
+          node->include();
+        else if (binding != Invalid)
+          build_st_field<0>(node);
+      }
+
+      template<size_t I>
+      void build_st_field(Node node) const
+      {
+        if constexpr (I < sizeof...(Ts))
+        {
+          auto& field = std::get<I>(fields);
+
+          if (binding == field.name)
+            node->bind(node->at(I)->location());
+          else
+            build_st_field<I + 1>(node);
         }
       }
     };
@@ -331,10 +363,7 @@ namespace trieste
 
       consteval auto operator[](const Token& binding) const
       {
-        if constexpr (std::is_base_of_v<FieldsBase, T>)
-          return Shape<T>(type, T(shape, binding));
-        else
-          return *this;
+        return Shape<T>(type, T(shape, binding));
       }
     };
 
@@ -348,6 +377,7 @@ namespace trieste
     {
       std::function<bool(Node, std::ostream&)> check;
       std::function<Node(Gen::Seed, size_t)> gen;
+      std::function<void(Node)> build_st;
 
       operator bool() const
       {
@@ -376,12 +406,31 @@ namespace trieste
       : shapes(std::tuple_cat(wf1.shapes, wf2.shapes))
       {}
 
+      template<size_t I = 0>
+      void nonterminals(std::set<Token>& set) const
+      {
+        if constexpr (I < sizeof...(Ts))
+        {
+          auto& shape = std::get<I>(shapes);
+
+          if (!shape.shape.terminal())
+            set.insert(shape.type);
+
+          nonterminals<I + 1>(set);
+        }
+      }
+
       bool check(Node node, std::ostream& out) const
       {
         if (node->type() == Error)
           return true;
 
-        return check_i(node, out);
+        bool ok = check_i(node, out);
+
+        for (auto& child : *node)
+          ok = check(child, out) && ok;
+
+        return ok;
       }
 
       template<size_t I = sizeof...(Ts) - 1>
@@ -406,7 +455,7 @@ namespace trieste
           auto& shape = std::get<I>(shapes);
 
           if (node->type() == shape.type)
-            return shape.shape.check(*this, node, out);
+            return shape.shape.check(node, out);
 
           return check_i<I - 1>(node, out);
         }
@@ -432,23 +481,39 @@ namespace trieste
           auto& shape = std::get<I>(shapes);
 
           if (shape.type == node->type())
-            shape.shape.gen(*this, g, depth, node);
+          {
+            shape.shape.gen(g, depth, node);
+
+            for (auto& child : *node)
+              gen_i(g, depth + 1, child);
+          }
           else
+          {
             gen_i<I - 1>(g, depth, node);
+          }
         }
       }
 
-      template<size_t I = 0>
-      void nonterminals(std::set<Token>& set) const
+      void build_st(Node node) const
+      {
+        node->clear_symbols();
+        build_st_i(node);
+
+        for (auto& child : *node)
+          build_st(child);
+      }
+
+      template<size_t I = sizeof...(Ts) - 1>
+      void build_st_i(Node node) const
       {
         if constexpr (I < sizeof...(Ts))
         {
           auto& shape = std::get<I>(shapes);
 
-          if (!shape.shape.terminal())
-            set.insert(shape.type);
-
-          nonterminals<I + 1>(set);
+          if (shape.type == node->type())
+            shape.shape.build_st(node);
+          else
+            build_st_i<I - 1>(node);
         }
       }
 
@@ -458,7 +523,8 @@ namespace trieste
           [this](Node node, std::ostream& out) { return check(node, out); },
           [this](Gen::Seed seed, size_t max_depth) {
             return gen(seed, max_depth);
-          }};
+          },
+          [this](Node node) { build_st(node); }};
       }
     };
 
@@ -552,25 +618,25 @@ namespace trieste
 
       inline consteval auto operator++(const Token& type, int)
       {
-        return Sequence<1>{{}, Choice<1>{type}};
+        return Sequence<1>(Choice<1>{type});
       }
 
       template<size_t N>
       inline consteval auto operator++(const Choice<N>& choice, int)
       {
-        return Sequence<N>{{}, choice};
+        return Sequence<N>(choice);
       }
 
       template<size_t N>
       inline consteval auto
       operator>>=(const Token& name, const Choice<N>& choice)
       {
-        return Field<N>{{}, name, choice};
+        return Fields(Field<N>{{}, name, choice});
       }
 
       inline consteval auto operator>>=(const Token& name, const Token& type)
       {
-        return Field<1>{{}, name, Choice<1>{type}};
+        return Fields(Field<1>{{}, name, Choice<1>{type}});
       }
 
       template<typename... Ts1, typename... Ts2>
@@ -580,13 +646,6 @@ namespace trieste
         return Fields(fst, snd);
       }
 
-      template<typename... Ts, size_t N>
-      inline consteval auto
-      operator*(const Fields<Ts...>& fst, const Field<N>& snd)
-      {
-        return fst * Fields(snd);
-      }
-
       template<typename... Ts>
       inline consteval auto
       operator*(const Fields<Ts...>& fst, const Token& snd)
@@ -594,35 +653,9 @@ namespace trieste
         return fst * (snd >>= snd);
       }
 
-      template<size_t N, typename... Ts>
-      inline consteval auto
-      operator*(const Field<N>& fst, const Fields<Ts...>& snd)
-      {
-        return Fields(fst) * snd;
-      }
-
-      template<size_t N1, size_t N2>
-      inline consteval auto
-      operator*(const Field<N1>& fst, const Field<N2>& snd)
-      {
-        return Fields(fst) * Fields(snd);
-      }
-
-      template<size_t N>
-      inline consteval auto operator*(const Field<N>& fst, const Token& snd)
-      {
-        return fst * (snd >>= snd);
-      }
-
       template<typename... Ts>
       inline consteval auto
       operator*(const Token& fst, const Fields<Ts...>& snd)
-      {
-        return (fst >>= fst) * snd;
-      }
-
-      template<size_t N>
-      inline consteval auto operator*(const Token& fst, const Field<N>& snd)
       {
         return (fst >>= fst) * snd;
       }
@@ -644,13 +677,6 @@ namespace trieste
       operator<<=(const Token& type, const Fields<Ts...>& fields)
       {
         return Shape(type, fields);
-      }
-
-      template<size_t N>
-      inline consteval auto
-      operator<<=(const Token& type, const Field<N>& field)
-      {
-        return type <<= Fields(field);
       }
 
       template<size_t N>
@@ -679,20 +705,6 @@ namespace trieste
         return wf | Wellformed(shape);
       }
 
-      template<typename... Ts, size_t N>
-      inline consteval auto
-      operator|(const Wellformed<Ts...>& wf, const Choice<N>& choice)
-      {
-        return wf | to_wf(choice);
-      }
-
-      template<typename... Ts>
-      inline consteval auto
-      operator|(const Wellformed<Ts...>& wf, const Token& type)
-      {
-        return wf | (type <<= Fields());
-      }
-
       template<typename T, typename... Ts>
       inline consteval auto
       operator|(const Shape<T>& shape, const Wellformed<Ts...>& wf)
@@ -705,46 +717,6 @@ namespace trieste
       operator|(const Shape<T1>& shape1, const Shape<T2>& shape2)
       {
         return Wellformed(shape1) | Wellformed(shape2);
-      }
-
-      template<typename T, size_t N>
-      inline consteval auto
-      operator|(const Shape<T>& shape, const Choice<N>& choice)
-      {
-        return shape | to_wf(choice);
-      }
-
-      template<typename T>
-      inline consteval auto operator|(const Shape<T>& shape, const Token& type)
-      {
-        return shape | (type <<= Fields());
-      }
-
-      template<size_t N, typename... Ts>
-      inline consteval auto
-      operator|(const Choice<N>& choice, const Wellformed<Ts...>& wf)
-      {
-        return to_wf(choice) | wf;
-      }
-
-      template<size_t N, typename T>
-      inline consteval auto
-      operator|(const Choice<N>& choice, const Shape<T>& shape)
-      {
-        return to_wf(choice) | shape;
-      }
-
-      template<typename... Ts>
-      inline consteval auto
-      operator|(const Token& type, const Wellformed<Ts...>& wf)
-      {
-        return (type <<= Fields()) | wf;
-      }
-
-      template<typename T>
-      inline consteval auto operator|(const Token& type, const Shape<T>& shape)
-      {
-        return (type <<= Fields()) | shape;
       }
     }
 
@@ -776,7 +748,7 @@ namespace trieste
     inline consteval auto to_wf(const Token& type)
     {
       using namespace ops;
-      return Wellformed() | (type <<= type);
+      return Wellformed(type <<= type);
     }
   }
 

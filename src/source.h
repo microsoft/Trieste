@@ -18,7 +18,6 @@ namespace trieste
   class NodeDef;
   using Source = std::shared_ptr<SourceDef>;
   using Node = std::shared_ptr<NodeDef>;
-  using LocBinding = std::pair<Location, Node>;
 
   class SourceDef
   {
@@ -203,12 +202,8 @@ namespace trieste
 
     bool before(const Location& that) const
     {
-      return (source != that.source) || (pos < that.pos);
-    }
-
-    LocBinding operator=(Node n) const
-    {
-      return {*this, n};
+      // Returns true if `this` overlaps or precedes `that` in the same source.
+      return (source == that.source) && (pos < (that.pos + that.len));
     }
 
     Location operator*(const Location& that) const
