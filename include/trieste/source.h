@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -27,16 +28,9 @@ namespace trieste
     std::vector<size_t> lines;
 
   public:
-    static Source directory(const std::string& path)
+    static Source load(const std::filesystem::path& file)
     {
-      auto source = std::make_shared<SourceDef>();
-      source->origin_ = path;
-      return source;
-    }
-
-    static Source load(const std::string& file)
-    {
-      std::ifstream f(file.c_str(), std::ios::binary | std::ios::ate);
+      std::ifstream f(file, std::ios::binary | std::ios::in | std::ios::ate);
 
       if (!f)
         return {};

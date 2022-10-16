@@ -211,12 +211,13 @@ namespace verona
           return err(_[TypeAlias], "can't put a `type` definition here");
         },
 
-      // Class.
+      // Class. Special case `ref` to allow using it as a class name.
       (In(Top) / In(ClassBody) / In(FuncBody)) * T(Group)
-          << (T(Class) * T(Ident)[id] * ~T(Square)[TypeParams] *
+          << (T(Class) * (T(Ident)[id] / T(Ref)) * ~T(Square)[TypeParams] *
               ~T(Type)[Type] * T(Brace)[ClassBody] * (Any++)[rhs]) >>
         [](Match& _) {
-          return Seq << (Class << _(id) << (TypeParams << *_[TypeParams])
+          return Seq << (Class << (_[id] | (Ident ^ ref))
+                               << (TypeParams << *_[TypeParams])
                                << (_[Type] | Type)
                                << (ClassBody << *_[ClassBody]))
                      << (Group << _[rhs]);
@@ -260,8 +261,9 @@ namespace verona
            T(Brace) / T(Ref) / Literal)[Type] >>
         [](Match& _) { return err(_[Type], "can't put this in a type"); },
 
-      // A group can be in a FuncBody, ExprSeq, Tuple, or Assign.
-      (In(FuncBody) / In(ExprSeq) / In(Tuple) / In(Assign)) * T(Group)[Group] >>
+      // A group can be in a FuncBody, Expr, ExprSeq, Tuple, or Assign.
+      (In(FuncBody) / In(Expr) / In(ExprSeq) / In(Tuple) / In(Assign)) *
+          T(Group)[Group] >>
         [](Match& _) { return Expr << *_[Group]; },
 
       // An equals can be in a FuncBody, an ExprSeq, a Tuple, or an Expr.
@@ -386,7 +388,8 @@ namespace verona
           return Expr << (TypeAssert << _(Type) << (Expr << _[Expr]));
         },
 
-      In(Expr) * (T(Package) / T(Iso) / T(Mut) / T(Imm) / T(Arrow))[Expr] >>
+      In(Expr) *
+          (T(Package) / T(Lin) / T(In_) / T(Out) / T(Const) / T(Arrow))[Expr] >>
         [](Match& _) {
           return err(_[Expr], "can't put this in an expression");
         },
@@ -397,9 +400,10 @@ namespace verona
     };
   }
 
-  inline const auto TypeElem = T(Type) / T(TypeName) / T(TypeTuple) / T(Iso) /
-    T(Imm) / T(Mut) / T(TypeList) / T(TypeView) / T(TypeFunc) / T(TypeThrow) /
-    T(TypeIsect) / T(TypeUnion) / T(TypeVar) / T(TypeUnit) / T(Package);
+  inline const auto TypeElem = T(Type) / T(TypeName) / T(TypeTuple) / T(Lin) /
+    T(In_) / T(Out) / T(Const) / T(TypeList) / T(TypeView) / T(TypeFunc) /
+    T(TypeThrow) / T(TypeIsect) / T(TypeUnion) / T(TypeVar) / T(TypeUnit) /
+    T(Package);
 
   PassDef typeview()
   {
@@ -661,9 +665,10 @@ namespace verona
     return Call << op << arg(arg(Args, lhs), rhs);
   }
 
-  inline const auto Object = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
+  inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
     T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) / T(Assign) / T(Expr) /
-    T(ExprSeq) / T(TypeAssert);
+    T(ExprSeq);
+  inline const auto Object = Object0 / (T(TypeAssert) << (T(Type) * Object0));
   inline const auto Operator = T(FunctionName) / T(Selector) / T(TypeAssertOp);
   inline const auto Apply = (Selector << (Ident ^ apply) << TypeArgs);
 
@@ -745,11 +750,6 @@ namespace verona
           return lambda;
         },
 
-      T(Ref) >>
-        [](Match& _) {
-          return err(_[Ref], "must use `ref` in front of a variable or call");
-        },
-
       T(Ellipsis) >>
         [](Match& _) {
           return err(_[Ellipsis], "must use `...` after a value in a tuple");
@@ -758,11 +758,6 @@ namespace verona
       In(Expr) * T(DontCare) >>
         [](Match& _) {
           return err(_[DontCare], "must use `_` in a partial application");
-        },
-
-      In(Expr) * (Any * Any)[Expr] >>
-        [](Match& _) {
-          return err(_[Expr], "adjacency on this expression isn't meaningful");
         },
     };
   }
@@ -800,6 +795,16 @@ namespace verona
       on_lhs(T(Expr) << (T(TypeAssert) << (T(Type)[Type] * T(RefVar)[lhs]))) >>
         [](Match& _) {
           return Expr << (TypeAssert << _(Type) << (RefVarLHS << *_[lhs]));
+        },
+
+      T(Ref) >>
+        [](Match& _) {
+          return err(_[Ref], "must use `ref` in front of a variable or call");
+        },
+
+      T(Expr)[Expr] << (Any * Any * End) >>
+        [](Match& _) {
+          return err(_[Expr], "adjacency on this expression isn't meaningful");
         },
     };
   }

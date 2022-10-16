@@ -8,6 +8,7 @@
 #include "wf.h"
 
 #include <CLI/CLI.hpp>
+#include <filesystem>
 #include <random>
 
 namespace trieste
@@ -18,6 +19,7 @@ namespace trieste
     constexpr static auto parse_only = "parse";
     using PassCheck = std::tuple<std::string, Pass, wf::WellformedF>;
 
+    std::string name;
     CLI::App app;
     Parse parser;
     wf::WellformedF wfParser;
@@ -30,7 +32,7 @@ namespace trieste
       Parse parser,
       wf::WellformedF wfParser,
       std::initializer_list<PassCheck> passes)
-    : app(name), parser(parser), wfParser(wfParser), passes(passes)
+    : name(name), app(name), parser(parser), wfParser(wfParser), passes(passes)
     {
       limits.push_back(parse_only);
 
@@ -48,21 +50,21 @@ namespace trieste
       // Build command line options.
       auto build = app.add_subcommand("build", "Build a path");
 
-      bool emit_ast = false;
-      build->add_flag("-a,--ast", emit_ast, "Emit an abstract syntax tree.");
-
       bool diag = false;
       build->add_flag("-d,--diagnostics", diag, "Emit diagnostics.");
 
       bool wfcheck = false;
       build->add_flag("-w,--wf-check", wfcheck, "Check well-formedness.");
 
-      std::string limit;
+      std::string limit = limits.back();
       build->add_option("-p,--pass", limit, "Run up to this pass.")
         ->transform(CLI::IsMember(limits));
 
-      std::string path;
+      std::filesystem::path path;
       build->add_option("path", path, "Path to compile.")->required();
+
+      std::filesystem::path output;
+      build->add_option("-o,--output", output, "Output path.");
 
       // Test command line options.
       auto test = app.add_subcommand("test", "Run automated tests");
@@ -74,12 +76,12 @@ namespace trieste
       uint32_t test_seed = std::random_device()();
       test->add_option("-s,--seed", test_seed, "Random seed for testing");
 
-      std::string start_pass;
-      test->add_option("start", start_pass, "Start at this pass.")
+      std::string test_start_pass;
+      test->add_option("start", test_start_pass, "Start at this pass.")
         ->transform(CLI::IsMember(limits));
 
-      std::string end_pass;
-      test->add_option("end", end_pass, "End at this pass.")
+      std::string test_end_pass;
+      test->add_option("end", test_end_pass, "End at this pass.")
         ->transform(CLI::IsMember(limits));
 
       bool test_verbose = false;
@@ -105,121 +107,199 @@ namespace trieste
 
       if (*build)
       {
-        auto ast = parser.parse(path);
+        Node ast;
+        size_t start_pass = 1;
+        size_t end_pass = pass_index(limit);
 
-        if (wfParser && !wfParser.check(ast, std::cout))
+        if (path.extension() == ".trieste")
         {
-          limit = parse_only;
-          ret = -1;
+          auto source = SourceDef::load(path);
+          auto view = source->view();
+          auto pos = std::min(view.find_first_of('\n'), view.size());
+
+          if (view.compare(0, pos, name) != 0)
+          {
+            std::cerr << "Not a " << name << " file" << std::endl;
+            return -1;
+          }
+
+          auto pos2 = std::min(view.find_first_of('\n', pos + 1), view.size());
+          auto pass = view.substr(pos + 1, pos2 - pos - 1);
+          start_pass = pass_index(pass);
+          end_pass = std::max(start_pass, end_pass);
+
+          if (start_pass > limits.size())
+          {
+            std::cerr << "Unknown pass: " << pass << std::endl;
+            return -1;
+          }
+
+          auto wf = std::get<2>(passes.at(start_pass - 1));
+
+          if (!wf)
+          {
+            std::cerr << "No well-formedness check for pass: " << pass
+                      << std::endl;
+            return -1;
+          }
+
+          ast = wf.build_ast(source, pos2 + 1);
+          start_pass++;
+
+          if (!ast)
+          {
+            std::cerr << "Failed to parse AST" << std::endl;
+            return -1;
+          }
+
+          wf.build_st(ast);
+
+          if (!wf.check(ast, std::cout))
+          {
+            std::cerr << "Well-formedness check failed on parsed AST"
+                      << std::endl;
+            return -1;
+          }
+        }
+        else
+        {
+          ast = parser.parse(path);
+
+          if (wfParser && !wfParser.check(ast, std::cout))
+          {
+            end_pass = 0;
+            ret = -1;
+          }
         }
 
-        if (limit != parse_only)
+        for (auto i = start_pass; i <= end_pass; i++)
         {
-          for (auto& [name, pass, wf] : passes)
+          auto& [name, pass, wf] = passes.at(i - 1);
+          auto [new_ast, count, changes] = pass->run(ast);
+          ast = new_ast;
+
+          if (diag)
           {
-            auto [new_ast, count, changes] = pass->run(ast);
-            ast = new_ast;
+            std::cout << "Pass " << name << ": " << count << " iterations, "
+                      << changes << " nodes rewritten." << std::endl;
+          }
 
-            if (diag)
-            {
-              std::cout << "Pass " << name << ": " << count << " iterations, "
-                        << changes << " nodes rewritten." << std::endl;
-            }
+          if (wf)
+            wf.build_st(ast);
 
-            if (wf)
-              wf.build_st(ast);
-
-            if (wfcheck && wf && !wf.check(ast, std::cout))
-            {
-              ret = -1;
-              break;
-            }
-
-            if (limit == name)
-              break;
+          if (wfcheck && wf && !wf.check(ast, std::cout))
+          {
+            end_pass = i;
+            ret = -1;
           }
         }
 
         if (ast->errors(std::cout))
           ret = -1;
 
-        if (emit_ast)
-          std::cout << ast;
+        if (output.empty())
+          output = path.stem().replace_extension(".trieste");
+
+        std::ofstream f(output, std::ios::binary | std::ios::out);
+
+        if (f)
+        {
+          f << name << std::endl << limits.at(end_pass) << std::endl << ast;
+        }
+        else
+        {
+          std::cerr << "Could not open " << output << " for writing."
+                    << std::endl;
+          ret = -1;
+        }
       }
       else if (*test)
       {
         std::cout << "Testing x" << test_seed_count << ", seed: " << test_seed
                   << std::endl;
 
-        if (start_pass.empty())
+        if (test_start_pass.empty())
         {
-          start_pass = parse_only;
-          end_pass = std::get<0>(passes.back());
+          test_start_pass = limits.at(1);
+          test_end_pass = limits.back();
         }
-        else if (end_pass.empty())
+        else if (test_end_pass.empty())
         {
-          end_pass = start_pass;
+          test_end_pass = test_start_pass;
         }
 
-        bool go = start_pass == parse_only;
-        auto prev = wfParser;
+        size_t start_pass = pass_index(test_start_pass);
+        size_t end_pass = pass_index(test_end_pass);
 
-        for (auto& [name, pass, wf] : passes)
+        for (auto i = start_pass; i <= end_pass; i++)
         {
-          if (name == start_pass)
-            go = true;
+          auto& [name, pass, wf] = passes.at(i - 1);
+          auto& prev = i > 1 ? std::get<2>(passes.at(i - 2)) : wfParser;
 
-          if (go && prev && wf)
+          if (!prev || !wf)
           {
-            std::cout << "Testing pass: " << name << std::endl;
-
-            for (size_t i = 0; i < test_seed_count; i++)
-            {
-              std::stringstream ss1;
-              std::stringstream ss2;
-
-              auto ast = prev.gen(test_seed + i, test_max_depth);
-              ss1 << "============" << std::endl
-                  << "Pass: " << name << ", seed: " << (test_seed + i)
-                  << std::endl
-                  << "------------" << std::endl
-                  << ast << "------------" << std::endl;
-
-              if (test_verbose)
-                std::cout << ss1.str();
-
-              auto [new_ast, count, changes] = pass->run(ast);
-              ss2 << new_ast << "------------" << std::endl << std::endl;
-
-              if (test_verbose)
-                std::cout << ss2.str();
-
-              std::stringstream ss3;
-
-              if (!wf.check(new_ast, ss3))
-              {
-                if (!test_verbose)
-                  std::cout << ss1.str() << ss2.str();
-
-                std::cout << ss3.str() << "============" << std::endl
-                          << "Failed pass: " << name
-                          << ", seed: " << (test_seed + i) << std::endl;
-                ret = -1;
-
-                if (test_failfast)
-                  return ret;
-              }
-            }
+            std::cout << "Skipping pass: " << name << std::endl;
+            continue;
           }
 
-          if (name == end_pass)
-            return ret;
+          std::cout << "Testing pass: " << name << std::endl;
 
-          prev = wf;
+          for (size_t i = 0; i < test_seed_count; i++)
+          {
+            std::stringstream ss1;
+            std::stringstream ss2;
+
+            auto ast = prev.gen(test_seed + i, test_max_depth);
+            ss1 << "============" << std::endl
+                << "Pass: " << name << ", seed: " << (test_seed + i)
+                << std::endl
+                << "------------" << std::endl
+                << ast << "------------" << std::endl;
+
+            if (test_verbose)
+              std::cout << ss1.str();
+
+            auto [new_ast, count, changes] = pass->run(ast);
+            ss2 << new_ast << "------------" << std::endl << std::endl;
+
+            if (test_verbose)
+              std::cout << ss2.str();
+
+            std::stringstream ss3;
+
+            if (!wf.check(new_ast, ss3))
+            {
+              if (!test_verbose)
+                std::cout << ss1.str() << ss2.str();
+
+              std::cout << ss3.str() << "============" << std::endl
+                        << "Failed pass: " << name
+                        << ", seed: " << (test_seed + i) << std::endl;
+              ret = -1;
+
+              if (test_failfast)
+                return ret;
+            }
+          }
         }
       }
 
       return ret;
+    }
+
+    template<typename StringLike>
+    size_t pass_index(const StringLike& name)
+    {
+      if (name == parse_only)
+        return 0;
+
+      for (size_t i = 0; i < passes.size(); i++)
+      {
+        if (std::get<0>(passes[i]) == name)
+          return i + 1;
+      }
+
+      return std::numeric_limits<size_t>::max();
     }
   };
 }

@@ -186,9 +186,10 @@ namespace verona
         "let\\b" >> [](auto& m) { m.add(Let); },
         "ref\\b" >> [](auto& m) { m.add(Ref); },
         "throw\\b" >> [](auto& m) { m.add(Throw); },
-        "iso\\b" >> [](auto& m) { m.add(Iso); },
-        "imm\\b" >> [](auto& m) { m.add(Imm); },
-        "mut\\b" >> [](auto& m) { m.add(Mut); },
+        "lin\\b" >> [](auto& m) { m.add(Lin); },
+        "in\\b" >> [](auto& m) { m.add(In_); },
+        "out\\b" >> [](auto& m) { m.add(Out); },
+        "const\\b" >> [](auto& m) { m.add(Const); },
 
         // Don't care.
         "_(?![_[:alnum:]])" >> [](auto& m) { m.add(DontCare); },

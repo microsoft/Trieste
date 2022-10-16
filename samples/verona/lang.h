@@ -46,9 +46,10 @@ namespace verona
   inline constexpr auto Let = TokenDef("let", flag::lookup | flag::shadowing);
   inline constexpr auto Ref = TokenDef("ref");
   inline constexpr auto Throw = TokenDef("throw");
-  inline constexpr auto Iso = TokenDef("iso");
-  inline constexpr auto Imm = TokenDef("imm");
-  inline constexpr auto Mut = TokenDef("mut");
+  inline constexpr auto Lin = TokenDef("lin");
+  inline constexpr auto In_ = TokenDef("in");
+  inline constexpr auto Out = TokenDef("out");
+  inline constexpr auto Const = TokenDef("const");
 
   // Semantic structure.
   inline constexpr auto TypeTrait = TokenDef("typetrait", flag::symtab);
