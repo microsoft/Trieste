@@ -9,11 +9,6 @@ builtins
 
 list inside TypeParams or TypeArgs along with groups or other lists
 
-lookup
-- isect: lookup in lhs and rhs?
-- lookups in typetraits
-- error on too many typeargs
-
 `new` to create an instance of the enclosing class
 public/private
 object literals
@@ -25,14 +20,10 @@ CallLHS
 - `fun f()` vs `fun ref f()`
 - if a `ref` function has no non-ref implementation, autogenerate one that calls the `ref` function and does `load` on the result
 
-## Symbol Tables
+## Parse AST
 
-if symbol table lookup has multiple definitions
-  and any of them isn't a flag::multidef node
-  then error
-
-catch unexpected bindings as well
-  or generate bindings from wf conditions
+Use WF to parse an AST dump
+Know what tokens to expect, so know the strings that can be understood
 
 ## Ellipsis
 
@@ -116,6 +107,8 @@ pre (let x (try block1 catch block2)) post
 ## Lookup
 
 lookup in union and intersection types
+may need to check typealias bounds during lookup
+- `type foo: T` means a subtype must have a type alias `foo` that's a subtype of `T`.
 
 ## type checker
 
@@ -141,32 +134,3 @@ pattern match on type
   (type)
 pattern match on value
   (expr)
-
-## Type Language
-
-functions on types (functors, higher-kinded types)
-  kind is functor arity
-
-write functions of type->type explicitly?
-  treat any type alias as a function of type->type?
-
-use DontCare to create type lambdas?
-  `T: Array[_]`, `T[U]` -> `Array[U]`
-
-```ts
-type ?[T] = Some[T] | None
-type ->[T, U] = Fun[T, U]
-
-type Fun[T, U] =
-{
-  (self, x: T): U
-}
-
-x: ?[T] // awkward
-x: ?T // better - implies adjacency is application
-x: T.? // reverse application? prefer . as viewpoint
-x: Array U32 // awkward or good?
-
-type |[T, U] = Union[T, U] // no, unions are fundamental
-
-```

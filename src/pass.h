@@ -142,7 +142,6 @@ namespace trieste
               }
             }
 
-            match.bind();
             replaced = true;
             changes++;
             break;

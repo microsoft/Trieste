@@ -23,14 +23,14 @@ int main(int argc, char** argv)
 
 ## Building the Samples
 
-Here's an example of how to build the `verona` sample and run the self-tests:
+Here's an example of how to build the `verona` sample and run the self-tests. Other build systems and compilers may work as well.
 
 ```sh
 git clone --recursive https://github.com/microsoft/trieste
 cd trieste
 mkdir build
 cd build
-cmake -G Ninja .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++-12
+cmake -G Ninja .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++-14
 ninja install
 ./dist/verona/verona test
 ```

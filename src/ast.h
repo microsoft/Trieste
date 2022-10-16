@@ -41,9 +41,8 @@ namespace trieste
 
   private:
     // The location in `symbols` is used as an identifier.
-    // The location in `includes` is used for its position in the file.
     std::map<Location, Nodes> symbols;
-    std::vector<std::pair<Location, Node>> includes;
+    std::vector<Node> includes;
     size_t next_id = 0;
 
   public:
@@ -52,6 +51,13 @@ namespace trieste
     Location fresh()
     {
       return Location("$" + std::to_string(next_id++));
+    }
+
+    void clear()
+    {
+      // Don't reset next_id, so that we don't reuse identifiers.
+      symbols.clear();
+      includes.clear();
     }
 
     std::string str(size_t level);
@@ -172,6 +178,11 @@ namespace trieste
       return children.size();
     }
 
+    Node at(size_t index)
+    {
+      return children.at(index);
+    }
+
     template<typename... Ts>
     Node at(const Index& index, const Ts&... indices)
     {
@@ -183,7 +194,9 @@ namespace trieste
         throw std::runtime_error("invalid index");
       }
 
-      assert(index.index < children.size());
+      if (index.index >= children.size())
+        throw std::runtime_error("invalid index");
+
       return children.at(index.index);
     }
 
@@ -283,117 +296,80 @@ namespace trieste
       return {};
     }
 
-    Nodes lookup_all(const Location& loc)
+    template<typename F>
+    Nodes get_symbols(const Location& loc, F&& f)
     {
-      // Find all bindings for this identifier by looking upwards in the symbol
-      // table chain.
-      Nodes r;
-      auto st = scope();
-
-      while (st)
-      {
-        auto unordered = !(st->type_ & flag::defbeforeuse);
-        auto it = st->symtab_->symbols.find(loc);
-
-        if (it != st->symtab_->symbols.end())
-        {
-          // If we aren't unordered, use only bindings that occur before the
-          // identifier's file location.
-          for (auto& def : it->second)
-          {
-            if (unordered || def->location_.before(loc))
-              r.push_back(def);
-          }
-        }
-
-        for (auto& [def, target] : st->symtab_->includes)
-        {
-          // If we aren't unordered, use only includes that occur before the
-          // identifier's file location.
-          if (unordered || def.before(loc))
-          {
-            // Use all bindings, as order is meaningless through an include.
-            auto find = target->symtab_->symbols.find(loc);
-            if (find != target->symtab_->symbols.end())
-              r.insert(r.end(), find->second.begin(), find->second.end());
-          }
-        }
-
-        st = st->scope();
-      }
-
-      return r;
-    }
-
-    Node lookup_first()
-    {
-      // Find ourself in the enclosing symbol table chain.
-      return lookup_first(location_);
-    }
-
-    Node lookup_first(const Location& loc)
-    {
-      // Find this location in the enclosing symbol table chain.
-      Node r;
-      auto st = scope();
-
-      while (st)
-      {
-        auto unordered = !(st->type_ & flag::defbeforeuse);
-        auto it = st->symtab_->symbols.find(loc);
-
-        if (it != st->symtab_->symbols.end())
-        {
-          // Select the last definition. In a defbeforeuse context, select the
-          // last definition before the use site.
-          for (auto& def : it->second)
-          {
-            if (
-              (unordered || def->location_.before(loc)) &&
-              (!r || r->location_.before(def->location_)))
-            {
-              r = def;
-            }
-          }
-        }
-
-        for (auto& [def, target] : st->symtab_->includes)
-        {
-          // An include before the use site or current result is ignored.
-          if (
-            (unordered || def.before(loc)) && (!r || r->location().before(def)))
-          {
-            r = *target->lookdown(loc).first;
-          }
-        }
-
-        if (r)
-          break;
-
-        st = st->scope();
-      }
-
-      return r;
-    }
-
-    NodeRange lookdown(Node that)
-    {
-      // Find the location of this node in our symbol table.
-      return lookdown(that->location_);
-    }
-
-    NodeRange lookdown(const Location& loc)
-    {
-      // This is used for scoped resolution, where we're looking in this symbol
-      // table specifically. Don't use includes, as those are for lookup only.
       if (!symtab_)
         return {};
 
-      auto find = symtab_->symbols.find(loc);
-      if (find == symtab_->symbols.end())
+      auto it = symtab_->symbols.find(loc);
+      if (it == symtab_->symbols.end())
         return {};
 
-      return {find->second.begin(), find->second.end()};
+      Nodes result;
+      std::copy_if(
+        it->second.begin(), it->second.end(), std::back_inserter(result), f);
+
+      return result;
+    }
+
+    void clear_symbols()
+    {
+      if (symtab_)
+        symtab_->clear();
+    }
+
+    Nodes lookup()
+    {
+      return lookup(location_);
+    }
+
+    Nodes lookup(const Location& loc)
+    {
+      auto st = scope();
+      if (!st)
+        return {};
+
+      // If the type of the symbol table is flag::defbeforeuse, then the
+      // definition has to appear earlier in the same file.
+      auto result = st->get_symbols(loc, [&](auto& n) {
+        return (n->type() & flag::lookup) &&
+          (!(st->type() & flag::defbeforeuse) || n->location_.before(loc));
+      });
+
+      // Includes are always returned, regardless of what's being looked up.
+      result.insert(
+        result.end(),
+        st->symtab_->includes.begin(),
+        st->symtab_->includes.end());
+
+      // Sort the results by definition location, with the latest position in
+      // the file coming first.
+      if (st->type() & flag::defbeforeuse)
+      {
+        std::sort(result.begin(), result.end(), [](auto& a, auto& b) {
+          return b->location_.before(a->location_);
+        });
+      }
+
+      // There are no shadowing definitions. Append any parent lookup results.
+      if (!std::any_of(result.begin(), result.end(), [](auto& n) {
+            return n->type() & flag::shadowing;
+          }))
+      {
+        auto presult = st->lookup(loc);
+        result.insert(result.end(), presult.begin(), presult.end());
+      }
+
+      return result;
+    }
+
+    Nodes lookdown(const Location& loc)
+    {
+      // This is used for scoped resolution, where we're looking in this symbol
+      // table specifically. Don't use includes, as those are for lookup only.
+      return get_symbols(
+        loc, [](auto& n) { return n->type() & flag::lookdown; });
     }
 
     void bind(const Location& loc)
@@ -408,24 +384,27 @@ namespace trieste
       st->symtab_->symbols[loc].push_back(shared_from_this());
     }
 
-    void include(Node target)
+    void include()
     {
       auto st = scope();
 
       if (!st)
         throw std::runtime_error("No symbol table");
 
-      st->symtab_->includes.emplace_back(location_, target);
+      st->symtab_->includes.emplace_back(shared_from_this());
     }
 
     Location fresh()
     {
+      // This actually returns a unique name, rather than a fresh one.
       auto p = this;
 
       while (p->parent_)
         p = p->parent_;
 
-      assert(p->type_ == Top);
+      if (p->type_ != Top)
+        throw std::runtime_error("No Top node");
+
       return p->symtab_->fresh();
     }
 
@@ -512,7 +491,7 @@ namespace trieste
       }
     }
 
-    for (auto& [loc, node] : includes)
+    for (auto& node : includes)
     {
       ss << std::endl
          << indent(level + 1) << "include " << node->location().view();

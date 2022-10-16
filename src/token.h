@@ -7,7 +7,6 @@
 namespace trieste
 {
   struct Token;
-  using Binding = std::pair<Token, Node>;
 
   struct TokenDef
   {
@@ -21,10 +20,6 @@ namespace trieste
     TokenDef(const TokenDef&) = delete;
 
     operator Node() const;
-
-    Binding operator=(const TokenDef& token) const;
-    Binding operator=(const Token& token) const;
-    Binding operator=(Node n) const;
 
     constexpr bool has(TokenDef::flag f) const
     {
@@ -44,11 +39,6 @@ namespace trieste
     constexpr bool operator&(TokenDef::flag f) const
     {
       return (def->has(f)) != 0;
-    }
-
-    Binding operator=(Node n) const
-    {
-      return {*this, n};
     }
 
     constexpr bool operator==(const Token& that) const
@@ -81,7 +71,7 @@ namespace trieste
       return def >= that.def;
     }
 
-    constexpr bool in(std::initializer_list<Token> list) const
+    constexpr bool in(const std::initializer_list<Token>& list) const
     {
       return std::find(list.begin(), list.end(), *this) != list.end();
     }
@@ -92,28 +82,31 @@ namespace trieste
     }
   };
 
-  inline Binding TokenDef::operator=(const TokenDef& token) const
-  {
-    return {Token(*this), Token(token)};
-  }
-
-  inline Binding TokenDef::operator=(const Token& token) const
-  {
-    return {Token(*this), token};
-  }
-
-  inline Binding TokenDef::operator=(Node n) const
-  {
-    return {Token(*this), n};
-  }
-
   namespace flag
   {
     constexpr TokenDef::flag none = 0;
+
+    // Print the location when printing an AST node of this type.
     constexpr TokenDef::flag print = 1 << 0;
+
+    // Include a symbol table in an AST node of this type.
     constexpr TokenDef::flag symtab = 1 << 1;
+
+    // If an AST node of this type has a symbol table, definitions can only be
+    // found from later in the same source file.
     constexpr TokenDef::flag defbeforeuse = 1 << 2;
-    constexpr TokenDef::flag multidef = 1 << 3;
+
+    // If a definition of this type is in a symbol table, it don't recurse into
+    // parent symbol tables.
+    constexpr TokenDef::flag shadowing = 1 << 3;
+
+    // If a definition of this type is in a symbol table, it can be found when
+    // looking up.
+    constexpr TokenDef::flag lookup = 1 << 4;
+
+    // If a definition of this type in a symbol table, it can be found when
+    // looking down.
+    constexpr TokenDef::flag lookdown = 1 << 5;
   }
 
   inline constexpr auto Invalid = TokenDef("invalid");
@@ -124,6 +117,7 @@ namespace trieste
   inline constexpr auto Directory = TokenDef("directory");
   inline constexpr auto Seq = TokenDef("seq");
   inline constexpr auto Lift = TokenDef("lift");
+  inline constexpr auto Include = TokenDef("include");
   inline constexpr auto Error = TokenDef("error");
   inline constexpr auto ErrorMsg = TokenDef("errormsg", flag::print);
   inline constexpr auto ErrorAst = TokenDef("errorast");

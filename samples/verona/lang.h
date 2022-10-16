@@ -21,7 +21,7 @@ namespace verona
   inline constexpr auto Ellipsis = TokenDef("ellipsis");
   inline constexpr auto Colon = TokenDef("colon");
   inline constexpr auto DoubleColon = TokenDef("doublecolon");
-  inline constexpr auto FatArrow = TokenDef("fatarrow");
+  inline constexpr auto Arrow = TokenDef("arrow");
   inline constexpr auto Bool = TokenDef("bool", flag::print);
   inline constexpr auto Hex = TokenDef("hex", flag::print);
   inline constexpr auto Bin = TokenDef("bin", flag::print);
@@ -35,12 +35,15 @@ namespace verona
   inline constexpr auto Ident = TokenDef("ident", flag::print);
 
   // Parsing keywords.
-  inline constexpr auto Class = TokenDef("class", flag::symtab);
-  inline constexpr auto TypeAlias = TokenDef("typealias", flag::symtab);
+  inline constexpr auto Class = TokenDef(
+    "class", flag::symtab | flag::lookup | flag::lookdown | flag::shadowing);
+  inline constexpr auto TypeAlias = TokenDef(
+    "typealias",
+    flag::symtab | flag::lookup | flag::lookdown | flag::shadowing);
   inline constexpr auto Use = TokenDef("use");
   inline constexpr auto Package = TokenDef("package");
-  inline constexpr auto Var = TokenDef("var");
-  inline constexpr auto Let = TokenDef("let");
+  inline constexpr auto Var = TokenDef("var", flag::lookup | flag::shadowing);
+  inline constexpr auto Let = TokenDef("let", flag::lookup | flag::shadowing);
   inline constexpr auto Ref = TokenDef("ref");
   inline constexpr auto Throw = TokenDef("throw");
   inline constexpr auto Iso = TokenDef("iso");
@@ -51,16 +54,19 @@ namespace verona
   inline constexpr auto TypeTrait = TokenDef("typetrait", flag::symtab);
   inline constexpr auto ClassBody = TokenDef("classbody");
   inline constexpr auto FieldLet =
-    TokenDef("fieldlet", flag::symtab | flag::defbeforeuse);
+    TokenDef("fieldlet", flag::symtab | flag::defbeforeuse | flag::lookdown);
   inline constexpr auto FieldVar =
-    TokenDef("fieldvar", flag::symtab | flag::defbeforeuse);
-  inline constexpr auto Function =
-    TokenDef("function", flag::symtab | flag::defbeforeuse | flag::multidef);
+    TokenDef("fieldvar", flag::symtab | flag::defbeforeuse | flag::lookdown);
+  inline constexpr auto Function = TokenDef(
+    "function",
+    flag::symtab | flag::defbeforeuse | flag::lookup | flag::lookdown);
   inline constexpr auto TypeParams = TokenDef("typeparams");
-  inline constexpr auto TypeParam = TokenDef("typeparam");
+  inline constexpr auto TypeParam =
+    TokenDef("typeparam", flag::lookup | flag::lookdown | flag::shadowing);
   inline constexpr auto Params = TokenDef("params");
-  inline constexpr auto Param =
-    TokenDef("param", flag::symtab | flag::defbeforeuse);
+  inline constexpr auto Param = TokenDef(
+    "param",
+    flag::symtab | flag::defbeforeuse | flag::lookup | flag::shadowing);
   inline constexpr auto FuncBody = TokenDef("funcbody");
 
   // Type structure.
@@ -92,16 +98,15 @@ namespace verona
   inline constexpr auto Selector = TokenDef("selector");
   inline constexpr auto Call = TokenDef("call");
   inline constexpr auto Args = TokenDef("args");
-  inline constexpr auto Include = TokenDef("include");
   inline constexpr auto TupleLHS = TokenDef("tuple-lhs");
   inline constexpr auto CallLHS = TokenDef("call-lhs");
   inline constexpr auto RefVarLHS = TokenDef("refvar-lhs");
   inline constexpr auto TupleFlatten = TokenDef("tupleflatten");
-  inline constexpr auto Bind = TokenDef("bind");
+  inline constexpr auto Bind = TokenDef("bind", flag::lookup | flag::shadowing);
 
   // Indexing names.
   inline constexpr auto IdSym = TokenDef("idsym");
-  inline constexpr auto Bounds = TokenDef("bounds");
+  inline constexpr auto Bound = TokenDef("bound");
   inline constexpr auto Default = TokenDef("default");
 
   // Rewrite identifiers.
@@ -120,30 +125,6 @@ namespace verona
   inline const auto apply = Location("apply");
   inline const auto load = Location("load");
   inline const auto store = Location("store");
-
-  struct Found
-  {
-    Node def;
-    NodeMap<Node> map;
-
-    Found() = default;
-    Found(const Found&) = default;
-    Found& operator=(const Found&) = default;
-
-    Found(Found&& that) : def(std::move(that.def)), map(std::move(that.map)) {}
-    Found(Node def) : def(def) {}
-
-    Found& operator|=(Found&& that)
-    {
-      def = std::move(that.def);
-      map.insert(that.map.begin(), that.map.end());
-      that.map.clear();
-      return *this;
-    }
-  };
-
-  Found resolve(Node typeName);
-  Node lookdown(Found& found, Node id);
 
   Parse parser();
   Driver& driver();

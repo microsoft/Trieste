@@ -4,3 +4,4 @@ build*/
 **/dump/*
 .*.swp
 compile_commands.json
+notes/
