@@ -6,7 +6,7 @@ include(FetchContent)
 FetchContent_Declare(
   cli11
   GIT_REPOSITORY https://github.com/CLIUtils/CLI11
-  GIT_TAG        v2.2.0
+  GIT_TAG        b9be5b9444772324459989177108a6a65b8b2769
 )
 
 FetchContent_MakeAvailable(cli11)
@@ -41,7 +41,7 @@ else()
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-target_compile_options(trieste INTERFACE -Wmismatched-tags -fstandalone-debug)
+  target_compile_options(trieste INTERFACE -Wmismatched-tags -fstandalone-debug)
 endif()
 
 ##############################################
