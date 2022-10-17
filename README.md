@@ -11,7 +11,7 @@ The project is not ready to be used outside of research.
 Trieste is a header-only C++20 library. To get started, you'll need to define your own `trieste::Driver`, and run it from `main`:
 
 ```c++
-#include <driver.h>
+#include <trieste/driver.h>
 
 int main(int argc, char** argv)
 {
@@ -26,13 +26,38 @@ int main(int argc, char** argv)
 Here's an example of how to build the `verona` sample and run the self-tests. Other build systems and compilers may work as well.
 
 ```sh
-git clone --recursive https://github.com/microsoft/trieste
+git clone https://github.com/microsoft/trieste
 cd trieste
 mkdir build
 cd build
 cmake -G Ninja .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++-14
 ninja install
 ./dist/verona/verona test
+```
+
+## Using Trieste in Your Project
+
+You can use Triest via FetchContent by including the following lines
+in your CMake:
+
+``` cmake
+FetchContent_Declare(
+  trieste
+  GIT_REPOSITORY https://github.com/matajoh/Trieste
+  GIT_TAG        a2a7fada4ab5250a4f8d1313b749ad336202841b
+)
+
+FetchContent_MakeAvailable(trieste)
+```
+
+And then adding it as a target link library, e.g.
+
+``` cmake
+target_link_libraries(verona
+  Threads::Threads
+  CLI11::CLI11
+  trieste::trieste
+  )
 ```
 
 ## [Contributing](CONTRIBUTING.md)
