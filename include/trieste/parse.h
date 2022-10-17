@@ -292,13 +292,13 @@ namespace trieste
       if (prefile_ && !prefile_(*this, filename))
         return {};
 
-      auto source = SourceDef::load(filename.string());
+      auto source = SourceDef::load(filename);
 
       if (!source)
         return {};
 
       auto make = detail::Make(filename.stem().string());
-      auto it = source->view().begin();
+      auto it = source->view().cbegin();
       auto st = it;
       auto end = source->view().cend();
 
@@ -315,7 +315,7 @@ namespace trieste
 
         for (auto& rule : find->second)
         {
-          matched = std::template regex_search(it, end, make.match_, rule.regex);
+          matched = std::regex_search(it, end, make.match_, rule.regex);
 
           if (matched)
           {

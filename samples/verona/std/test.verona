@@ -2,3 +2,9 @@ class I32
 {
 
 }
+
+// class ref[T]
+// {
+//   load(self): Self.T
+//   store(self: in, value: T): T
+// }

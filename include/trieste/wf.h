@@ -109,6 +109,17 @@ namespace trieste
         auto child = NodeDef::create(type, node->fresh());
         node->push_back(child);
       }
+
+      Token find_type(const std::string_view& type) const
+      {
+        for (auto& t : types)
+        {
+          if (t.str() == type)
+            return t;
+        }
+
+        return Invalid;
+      }
     };
 
     struct SequenceBase
@@ -181,6 +192,11 @@ namespace trieste
       {
         if (binding == Include)
           node->include();
+      }
+
+      Token find_type(const std::string_view& type) const
+      {
+        return types.find_type(type);
       }
     };
 
@@ -316,11 +332,11 @@ namespace trieste
         if (binding == Include)
           node->include();
         else if (binding != Invalid)
-          build_st_field<0>(node);
+          build_st_i<0>(node);
       }
 
       template<size_t I>
-      void build_st_field(Node node) const
+      void build_st_i(Node node) const
       {
         if constexpr (I < sizeof...(Ts))
         {
@@ -329,7 +345,31 @@ namespace trieste
           if (binding == field.name)
             node->bind(node->at(I)->location());
           else
-            build_st_field<I + 1>(node);
+            build_st_i<I + 1>(node);
+        }
+      }
+
+      Token find_type(const std::string_view& type) const
+      {
+        return find_type_i<0>(type);
+      }
+
+      template<size_t I>
+      Token find_type_i(const std::string_view& type) const
+      {
+        if constexpr (I < sizeof...(Ts))
+        {
+          auto& field = std::get<I>(fields);
+          auto t = field.types.find_type(type);
+
+          if (t != Invalid)
+            return t;
+          else
+            return find_type_i<I + 1>(type);
+        }
+        else
+        {
+          return Invalid;
         }
       }
     };
@@ -378,6 +418,7 @@ namespace trieste
       std::function<bool(Node, std::ostream&)> check;
       std::function<Node(Gen::Seed, size_t)> gen;
       std::function<void(Node)> build_st;
+      std::function<Node(Source, size_t)> build_ast;
 
       operator bool() const
       {
@@ -496,6 +537,9 @@ namespace trieste
 
       void build_st(Node node) const
       {
+        if (node->type() == Error)
+          return;
+
         node->clear_symbols();
         build_st_i(node);
 
@@ -517,6 +561,99 @@ namespace trieste
         }
       }
 
+      Node build_ast(Source source, size_t pos) const
+      {
+        std::regex hd(
+          "^[\\n[:blank:]]*\\(([^\\n[:blank:]\\)]*)"
+          "[[:blank:]]*([^\\n[:blank:]\\)]*)");
+        std::regex st("^[\\n[:blank:]]*\\{[^\\}]*\\}");
+        std::regex tl("^[\\n[:blank:]]*\\)");
+
+        auto start = source->view().cbegin();
+        auto it = start + pos;
+        auto end = source->view().cend();
+        std::cmatch match;
+        Node top;
+        Node ast;
+
+        while (it < end)
+        {
+          // Find the type and id of the node. If we didn't find a node, it's an
+          // error.
+          if (!std::regex_search(it, end, match, hd))
+            return {};
+
+          // If we don't have a valid node type, it's an error.
+          auto type_view = std::string_view(
+            it + match.position(1), it + match.position(1) + match.length(1));
+          auto type = find_type_i(ast, type_view);
+
+          if (type == Invalid)
+            return {};
+
+          // If we don't have an id, use the location of the type.
+          auto index = match.length(2) ? 2 : 1;
+          auto loc = Location(
+            source,
+            size_t((it - start) + match.position(index)),
+            size_t(match.length(index)));
+
+          auto node = NodeDef::create(type, loc);
+          it += match.length();
+
+          // Push the node into the AST.
+          if (ast)
+            ast->push_back(node);
+          else
+            top = node;
+
+          ast = node;
+
+          // Skip the symbol table.
+          if (std::regex_search(it, end, match, st))
+            it += match.length();
+
+          // `)` ends the node. Otherwise, we'll add children to this node.
+          while (std::regex_search(it, end, match, tl))
+          {
+            it += match.length();
+            auto parent = ast->parent();
+
+            if (!parent)
+              return ast;
+
+            ast = parent->shared_from_this();
+          }
+        }
+
+        // We never finished the AST, so it's an error.
+        return {};
+      }
+
+      template<size_t I = sizeof...(Ts) - 1>
+      Token find_type_i(Node node, const std::string_view& type) const
+      {
+        if constexpr (I < sizeof...(Ts))
+        {
+          auto& shape = std::get<I>(shapes);
+
+          if (shape.type.str() == type)
+            return shape.type;
+
+          if (node && (shape.type == node->type()))
+          {
+            auto t = shape.shape.find_type(type);
+
+            if (t != Invalid)
+              return t;
+          }
+
+          return find_type_i<I - 1>(node, type);
+        }
+
+        return Invalid;
+      }
+
       auto operator()() const
       {
         return WellformedF{
@@ -524,7 +661,9 @@ namespace trieste
           [this](Gen::Seed seed, size_t max_depth) {
             return gen(seed, max_depth);
           },
-          [this](Node node) { build_st(node); }};
+          [this](Node node) { build_st(node); },
+          [this](Source source, size_t pos) { return build_ast(source, pos); },
+        };
       }
     };
 

@@ -1,12 +1,11 @@
 # Todo
 
-minimum 1 thing in Expr?
-
 builtins
   if...else
   typetest
   match
 
+lazy[T]
 list inside TypeParams or TypeArgs along with groups or other lists
 
 `new` to create an instance of the enclosing class
@@ -19,11 +18,6 @@ CallLHS
 - separate implementation
 - `fun f()` vs `fun ref f()`
 - if a `ref` function has no non-ref implementation, autogenerate one that calls the `ref` function and does `load` on the result
-
-## Parse AST
-
-Use WF to parse an AST dump
-Know what tokens to expect, so know the strings that can be understood
 
 ## Ellipsis
 
