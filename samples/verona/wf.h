@@ -79,7 +79,7 @@ namespace verona
     | (Let <<= Ident)[Ident]
     | (Var <<= Ident)[Ident]
     | (Throw <<= Expr)
-    | (TypeAssert <<= Type * Expr)
+    | (TypeAssert <<= Expr * Type)
     | (Type <<=
         (Type | TypeTuple | TypeVar | TypeArgs | Package | Lin | In_ | Out |
          Const | DontCare | Ellipsis | Ident | Symbol | Dot | Throw |
@@ -191,7 +191,7 @@ namespace verona
     | (RefVar <<= Ident)
     | (Selector <<= wfIdSym * TypeArgs)
     | (FunctionName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
-    | (TypeAssertOp <<= Type * (op >>= Selector | FunctionName))
+    | (TypeAssertOp <<= (op >>= Selector | FunctionName) * Type)
 
     // Remove TypeArgs, Ident, Symbol, DoubleColon.
     // Add RefVar, RefLet, Selector, FunctionName, TypeAssertOp.
@@ -281,12 +281,14 @@ namespace verona
   // clang-format off
   inline constexpr auto wfPassANF =
       wfPassAssignment
-    | (FuncBody <<= (Use | Class | TypeAlias | Bind | RefLet | Throw)++)
+    | (FuncBody <<=
+        (Use | Class | TypeAlias | TypeAssert | Bind | RefLet | Throw)++)
     | (Tuple <<= (RefLet | TupleFlatten)++)
     | (TupleFlatten <<= RefLet)
     | (Throw <<= RefLet)
     | (Args <<= RefLet++)
     | (Conditional <<= RefLet * Lambda * Lambda)
+    | (TypeAssert <<= RefLet * Type)
     | (Bind <<= Ident * Type *
         (rhs >>=
           RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |

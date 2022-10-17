@@ -18,6 +18,26 @@ CallLHS
 - `fun f()` vs `fun ref f()`
 - if a `ref` function has no non-ref implementation, autogenerate one that calls the `ref` function and does `load` on the result
 
+## Type Inference
+
+T0 <: T1 => T0.upper += T1, T1.lower += T0
+
+`bind $0 $T0 (reflet $1)`
+  '$1 <: $T0
+`bind $0 $T0 (tuple (reflet $1) (reflet $2))`
+  ('$1, '$2) <: $T0
+`bind $0 $T0 (lambda ...)`
+  'lambda <: $T0
+  *free variables? problem is moving `lin`*
+`bind $0 $T0 (call (functionname f[$T1]) (args (reflet $1) (reflet $2)))`
+  ('f[$T1] <: '$1->'$2->$T0)
+`bind $0 $T0 (call (selector f[$T1]) (args (reflet $1) (reflet $2)))`
+  ('f[$T1] <: '$1->'$2->$T0) ∨ ('$1 <: { f[$T1]: '$1->'$2->$T0 })
+`bind $0 $T0 (conditional (reflet $1) lambda1 lambda2)`
+  'lambda1 <: ()->$T1
+  'lambda2 <: ()->$T2
+  ($T1 | $T2) <: $T0
+
 ## Ellipsis
 
 `expr...` flattens the tuple produced by `expr`
