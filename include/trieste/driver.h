@@ -119,7 +119,7 @@ namespace trieste
           auto pos2 = std::min(view.find_first_of('\n', pos + 1), view.size());
           auto pass = view.substr(pos + 1, pos2 - pos - 1);
 
-          if (view.compare(0, pos, name) == 0)
+          if (view.compare(0, pos, language_name) == 0)
           {
             start_pass = pass_index(pass);
             end_pass = std::max(start_pass, end_pass);
