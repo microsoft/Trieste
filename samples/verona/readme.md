@@ -1,7 +1,6 @@
 # Todo
 
 builtins
-  if...else
   typetest
   match
 
