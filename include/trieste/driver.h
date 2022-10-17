@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "lookup.h"
 #include "parse.h"
 #include "pass.h"
 #include "wf.h"

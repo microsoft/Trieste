@@ -178,41 +178,32 @@ namespace trieste
       return children.size();
     }
 
-    Node at(size_t index)
+    Node& at(size_t index)
     {
       return children.at(index);
     }
 
     template<typename... Ts>
-    Node at(const Index& index, const Ts&... indices)
+    Node& at(const Index& index, const Ts&... indices)
     {
       if (index.type != type_)
       {
         if constexpr (sizeof...(Ts) > 0)
           return at(indices...);
-
-        throw std::runtime_error("invalid index");
+        else
+          throw std::runtime_error("invalid index");
       }
-
-      if (index.index >= children.size())
-        throw std::runtime_error("invalid index");
 
       return children.at(index.index);
     }
 
-    Node front()
+    Node& front()
     {
-      if (children.empty())
-        return {};
-
       return children.front();
     }
 
-    Node back()
+    Node& back()
     {
-      if (children.empty())
-        return {};
-
       return children.back();
     }
 
@@ -294,6 +285,20 @@ namespace trieste
       }
 
       return {};
+    }
+
+    template<typename F>
+    Nodes get_symbols(F&& f)
+    {
+      if (!symtab_)
+        return {};
+
+      Nodes result;
+
+      for (auto& [loc, nodes] : symtab_->symbols)
+        std::copy_if(nodes.begin(), nodes.end(), std::back_inserter(result), f);
+
+      return result;
     }
 
     template<typename F>
@@ -417,6 +422,17 @@ namespace trieste
         node->push_back(child->clone());
 
       return node;
+    }
+
+    void replace(Node node1, Node node2)
+    {
+      auto it = std::find(children.begin(), children.end(), node1);
+      if (it == children.end())
+        throw std::runtime_error("Node not found");
+
+      node1->parent_ = nullptr;
+      node2->parent_ = this;
+      it->swap(node2);
     }
 
     std::string str(size_t level = 0)

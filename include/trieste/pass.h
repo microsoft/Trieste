@@ -15,9 +15,13 @@ namespace trieste
 
   class PassDef
   {
+  public:
+    using PreF = std::function<void()>;
+    using PostF = std::function<size_t()>;
+
   private:
-    Callback pre_;
-    Callback post_;
+    PreF pre_;
+    PostF post_;
     dir direction_;
     std::vector<detail::PatternEffect<Node>> rules_;
 
@@ -39,12 +43,12 @@ namespace trieste
       return std::make_shared<PassDef>(*this);
     }
 
-    void pre(Callback f)
+    void pre(PreF f)
     {
       pre_ = f;
     }
 
-    void post(Callback f)
+    void post(PostF f)
     {
       post_ = f;
     }
@@ -67,24 +71,24 @@ namespace trieste
       size_t changes_sum = 0;
       size_t count = 0;
 
-      if (pre_)
-        pre_();
-
       // Because apply runs over child nodes, the top node is never visited.
       do
       {
+        if (pre_)
+          pre_();
+
         changes = apply(node);
 
         auto lifted = lift(node);
         if (!lifted.empty())
           throw std::runtime_error("lifted nodes with no destination");
 
+        if (post_)
+          changes += post_();
+
         changes_sum += changes;
         count++;
       } while (changes > 0);
-
-      if (post_)
-        post_();
 
       return {node, count, changes_sum};
     }
@@ -118,6 +122,12 @@ namespace trieste
           {
             // Replace [start, it) with whatever the rule builds.
             auto replace = rule.second(match);
+
+            if (replace && (replace->type() == NoChange))
+            {
+              it = start;
+              continue;
+            }
 
             auto loc = (*start)->location() * (*(it - 1))->location();
             it = node->erase(start, it);

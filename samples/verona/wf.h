@@ -287,40 +287,60 @@ namespace verona
     | (TupleFlatten <<= RefLet)
     | (Throw <<= RefLet)
     | (Args <<= RefLet++)
-    | (Conditional <<= RefLet * Lambda * Lambda)
-    | (TypeAssert <<= RefLet * Type)
+    | (Conditional <<= (If >>= RefLet) * Lambda * Lambda)
+    | (TypeAssert <<= Ident * Type)
     | (Bind <<= Ident * Type *
         (rhs >>=
           RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
-          FunctionName | wfLiteral))
+          FunctionName | wfLiteral))[Ident]
     ;
   // clang-format on
+
+  // clang-format off
+  inline constexpr auto wfPassDrop =
+      wfPassANF
+
+    // Add Move, Drop.
+    | (Move <<= Ident)
+    | (Drop <<= Ident)
+    | (FuncBody <<=
+        (Use | Class | TypeAlias | TypeAssert | Bind | RefLet | Throw | Move |
+         Drop)++)
+    | (Tuple <<= (RefLet | TupleFlatten | Move)++)
+    | (TupleFlatten <<= RefLet | Move)
+    | (Throw <<= RefLet | Move)
+    | (Args <<= (RefLet | Move)++)
+    | (Conditional <<= (If >>= (RefLet | Move)) * Lambda * Lambda)
+    | (Bind <<= Ident * Type *
+        (rhs >>=
+          RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
+          FunctionName | wfLiteral | Move))[Ident]
+    ;
 
   // clang-format off
   inline constexpr auto wf =
       (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * (Default >>= Type))
     | (Class <<= Ident * TypeParams * Type * ClassBody)
-    | (ClassBody <<= (Use | Class | TypeAlias | FieldLet | FieldVar | Function)++)
     | (FieldLet <<= Ident * Type * Expr)
     | (FieldVar <<= Ident * Type * Expr)
     | (Function <<= wfIdSym * TypeParams * Params * (Type >>= wfType) * FuncBody)
-    | (Params <<= Param++) | (Param <<= Ident * Type * Expr)
+    | (Param <<= Ident * Type * Expr)
     | (Type <<= wfType)
     | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
-    | (TypeTuple <<= wfType++)
     | (TypeView <<= (lhs >>= wfType) * (rhs >>= wfType))
     | (TypeFunc <<= (lhs >>= wfType) * (rhs >>= wfType))
     | (TypeThrow <<= (Type >>= wfType))
-    | (TypeIsect <<= wfType++)
-    | (TypeUnion <<= wfType++)
     | (TypeTrait <<= ClassBody)
     | (Package <<= (id >>= String | Escaped))
     | (Var <<= Ident * Type)
     | (Let <<= Ident * Type)
     | (Throw <<= Expr)
-    | (TypeArgs <<= wfType++)
     | (Lambda <<= TypeParams * Params * FuncBody)
-    | (Assign <<= Expr++)
+    | (TypeAssert <<= RefLet * Type)
+    | (Bind <<= Ident * Type *
+        (rhs >>=
+          RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
+          FunctionName | wfLiteral))
     ;
   // clang-format on
 }
