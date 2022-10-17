@@ -10,10 +10,8 @@ add_executable(verona
 target_link_libraries(verona
   Threads::Threads
   CLI11::CLI11
+  trieste::trieste
   )
 
-install(CODE [[
-  file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX})
-  ]])
 install(TARGETS verona RUNTIME DESTINATION verona)
 install(DIRECTORY std DESTINATION verona)

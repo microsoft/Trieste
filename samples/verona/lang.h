@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include <driver.h>
+#include <trieste/driver.h>
 
 namespace verona
 {
