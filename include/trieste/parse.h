@@ -12,6 +12,8 @@ namespace trieste
 {
   class Parse;
 
+  using sv_match = std::match_results<std::string_view::const_iterator>;
+
   namespace detail
   {
     class Make;
@@ -40,7 +42,7 @@ namespace trieste
       Node top;
       Node node;
       Location location;
-      std::match_results<std::string_view::const_iterator> match_;
+      sv_match match_;
       std::optional<std::string> mode_;
 
     public:

@@ -572,7 +572,7 @@ namespace trieste
         auto start = source->view().cbegin();
         auto it = start + pos;
         auto end = source->view().cend();
-        std::cmatch match;
+        sv_match match;
         Node top;
         Node ast;
 
