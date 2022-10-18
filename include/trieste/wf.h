@@ -566,8 +566,9 @@ namespace trieste
 
       Node build_ast(Source source, size_t pos, std::ostream& out) const
       {
-        std::regex hd("^[[:space:]]*\\(([^[:space:]\\(\\)]*)");
+        std::regex hd("^[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
         std::regex st("^[[:space:]]*\\{[^\\}]*\\}");
+        std::regex id("^[[:space:]]*([[:digit:]]+):");
         std::regex tl("^[[:space:]]*\\)");
 
         auto start = source->view().cbegin();
@@ -604,33 +605,17 @@ namespace trieste
           // Find the source location of the node as a netstring.
           auto ident_loc = type_loc;
 
-          if (*it == ' ')
+          if (std::regex_search(it, end, match, id))
           {
-            ++it;
-            size_t len = 0;
-
-            while ((*it >= '0') && (*it <= '9'))
-            {
-              len = (len * 10) + (*it - '0');
-              ++it;
-            }
-
-            if (*it != ':')
-            {
-              auto loc = Location(source, it - start, 1);
-              out << loc.origin_linecol() << "expected ':'" << std::endl
-                  << loc.str() << std::endl;
-              return {};
-            }
-
-            ++it;
+            auto len = std::stoul(match.str(1));
+            it += match.length();
             ident_loc = Location(source, it - start, len);
             it += len;
           }
 
+          // Push the node into the AST.
           auto node = NodeDef::create(type, ident_loc);
 
-          // Push the node into the AST.
           if (ast)
             ast->push_back(node);
           else

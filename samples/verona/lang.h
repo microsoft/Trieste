@@ -50,6 +50,8 @@ namespace verona
   inline constexpr auto In_ = TokenDef("in");
   inline constexpr auto Out = TokenDef("out");
   inline constexpr auto Const = TokenDef("const");
+  inline constexpr auto If = TokenDef("if");
+  inline constexpr auto Else = TokenDef("else");
 
   // Semantic structure.
   inline constexpr auto TypeTrait = TokenDef("typetrait", flag::symtab);
@@ -103,6 +105,7 @@ namespace verona
   inline constexpr auto CallLHS = TokenDef("call-lhs");
   inline constexpr auto RefVarLHS = TokenDef("refvar-lhs");
   inline constexpr auto TupleFlatten = TokenDef("tupleflatten");
+  inline constexpr auto Conditional = TokenDef("conditional");
   inline constexpr auto Bind = TokenDef("bind", flag::lookup | flag::shadowing);
 
   // Indexing names.

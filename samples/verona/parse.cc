@@ -190,6 +190,8 @@ namespace verona
         "in\\b" >> [](auto& m) { m.add(In_); },
         "out\\b" >> [](auto& m) { m.add(Out); },
         "const\\b" >> [](auto& m) { m.add(Const); },
+        "if\\b" >> [](auto& m) { m.add(If); },
+        "else\\b" >> [](auto& m) { m.add(Else); },
 
         // Don't care.
         "_(?![_[:alnum:]])" >> [](auto& m) { m.add(DontCare); },

@@ -689,11 +689,38 @@ namespace verona
     };
   }
 
+  auto lazy(Node n = {})
+  {
+    Node body = FuncBody;
+
+    if (n)
+      body << (Expr << n);
+
+    return Lambda << TypeParams << Params << body;
+  }
+
   PassDef application()
   {
-    // These rules allow expressions such as `3 * -4` or `a and not b` to have
-    // the expected meaning.
+    // These rules allow expressions such as `-3 * -4` or `not a and not b` to
+    // have the expected meaning.
     return {
+      // Conditionals.
+      In(Expr) * (T(If) << End) * Object[Expr] >>
+        [](Match& _) { return If << (Expr << _(Expr)); },
+
+      In(Expr) * (T(If) << T(Expr)[Expr]) * T(Lambda)[lhs] * --T(Else) >>
+        [](Match& _) { return Conditional << _(Expr) << _(lhs) << lazy(); },
+
+      In(Expr) * (T(If) << T(Expr)[Expr]) * T(Lambda)[lhs] * T(Else) *
+          T(Lambda)[rhs] >>
+        [](Match& _) { return Conditional << _(Expr) << _(lhs) << _(rhs); },
+
+      In(Expr) * (T(If) << T(Expr)[Expr]) * T(Lambda)[lhs] * T(Else) *
+          T(Conditional)[rhs] >>
+        [](Match& _) {
+          return Conditional << _(Expr) << _(lhs) << lazy(_(rhs));
+        },
+
       // Adjacency: application.
       In(Expr) * Object[lhs] * Object[rhs] >>
         [](Match& _) { return call(clone(Apply), _(lhs), _(rhs)); },
@@ -795,6 +822,18 @@ namespace verona
       on_lhs(T(Expr) << (T(TypeAssert) << (T(Type)[Type] * T(RefVar)[lhs]))) >>
         [](Match& _) {
           return Expr << (TypeAssert << _(Type) << (RefVarLHS << *_[lhs]));
+        },
+
+      T(If) >>
+        [](Match& _) {
+          return err(_[If], "if must be followed by a condition and a lambda");
+        },
+
+      T(Else) >>
+        [](Match& _) {
+          return err(
+            _[Else],
+            "else must be preceded by an if and followed by an if or a lambda");
         },
 
       T(Ref) >>
@@ -922,7 +961,7 @@ namespace verona
   }
 
   inline const auto Liftable = T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) /
-    T(Selector) / T(FunctionName) / Literal / T(Throw);
+    T(Conditional) / T(Selector) / T(FunctionName) / Literal / T(Throw);
 
   PassDef anf()
   {
