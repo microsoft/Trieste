@@ -23,16 +23,16 @@ namespace verona
       // Module.
       T(Directory)[Directory] << (T(File)++)[File] >>
         [](Match& _) {
-          auto id = _(Directory)->location();
-          return Group << (Class ^ _(Directory)) << (Ident ^ id)
+          auto dir_id = _(Directory)->location();
+          return Group << (Class ^ _(Directory)) << (Ident ^ dir_id)
                        << (Brace << *_[File]);
         },
 
       // File on its own (no module).
       In(Top) * T(File)[File] >>
         [](Match& _) {
-          auto id = _(File)->location();
-          return Group << (Class ^ _(File)) << (Ident ^ id)
+          auto file_id = _(File)->location();
+          return Group << (Class ^ _(File)) << (Ident ^ file_id)
                        << (Brace << *_[File]);
         },
 
@@ -246,11 +246,11 @@ namespace verona
       // Lift anonymous structural types.
       TypeStruct * T(Brace)[ClassBody] >>
         [](Match& _) {
-          auto id = _(ClassBody)->parent(ClassBody)->fresh();
+          auto fresh_id = _(ClassBody)->parent(ClassBody)->fresh();
           return Seq << (Lift << ClassBody
-                              << (TypeTrait << (Ident ^ id)
+                              << (TypeTrait << (Ident ^ fresh_id)
                                             << (ClassBody << *_[ClassBody])))
-                     << (Ident ^ id);
+                     << (Ident ^ fresh_id);
         },
 
       // Allow `ref` to be used as a type name.
@@ -660,9 +660,9 @@ namespace verona
     return args;
   }
 
-  auto call(Node op, Node lhs = {}, Node rhs = {})
+  auto call(Node op_, Node lhs_ = {}, Node rhs_ = {})
   {
-    return Call << op << arg(arg(Args, lhs), rhs);
+    return Call << op_ << arg(arg(Args, lhs_), rhs_);
   }
 
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
@@ -764,9 +764,9 @@ namespace verona
           {
             if (arg->front()->type() == DontCare)
             {
-              auto id = _.fresh();
-              params << (Param << (Ident ^ id) << typevar(_) << DontCare);
-              args << (Expr << (RefLet << (Ident ^ id)));
+              auto fresh_id = _.fresh();
+              params << (Param << (Ident ^ fresh_id) << typevar(_) << DontCare);
+              args << (Expr << (RefLet << (Ident ^ fresh_id)));
             }
             else
             {
@@ -990,11 +990,11 @@ namespace verona
               ((T(TypeAssert) / T(TypeAssertOp))
                << (Liftable[Lift] * T(Type)[Type]))) >>
         [](Match& _) {
-          auto id = _.fresh();
+          auto fresh_id = _.fresh();
           return Seq << (Lift << FuncBody
-                              << (Bind << (Ident ^ id) << typevar(_, Type)
+                              << (Bind << (Ident ^ fresh_id) << typevar(_, Type)
                                        << _(Lift)))
-                     << (RefLet << (Ident ^ id));
+                     << (RefLet << (Ident ^ fresh_id));
         },
 
       // Compact an ExprSeq with only one element.

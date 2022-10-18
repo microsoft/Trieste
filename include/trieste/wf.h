@@ -574,7 +574,7 @@ namespace trieste
         auto start = source->view().cbegin();
         auto it = start + pos;
         auto end = source->view().cend();
-        std::cmatch match;
+        sv_match match;
         Node top;
         Node ast;
 
@@ -667,8 +667,10 @@ namespace trieste
 
           return find_type_i<I - 1>(node, type);
         }
-
-        return Invalid;
+        else
+        {
+          return Invalid;
+        }
       }
 
       auto operator()() const

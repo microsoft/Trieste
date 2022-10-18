@@ -35,7 +35,7 @@ target_include_directories(trieste
 target_compile_features(trieste INTERFACE cxx_std_20)
 
 if(MSVC)
-  target_compile_options(trieste INTERFACE /W4 /WX)
+  target_compile_options(trieste INTERFACE /W4 /WX /bigobj)
 else()
   target_compile_options(trieste INTERFACE -Wall -Wextra -Wpedantic -Werror)
 endif()
