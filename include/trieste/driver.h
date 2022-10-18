@@ -116,56 +116,62 @@ namespace trieste
           auto source = SourceDef::load(path);
           auto view = source->view();
           auto pos = std::min(view.find_first_of('\n'), view.size());
-
-          if (view.compare(0, pos, name) != 0)
-          {
-            std::cerr << "Not a " << name << " file" << std::endl;
-            return -1;
-          }
-
           auto pos2 = std::min(view.find_first_of('\n', pos + 1), view.size());
           auto pass = view.substr(pos + 1, pos2 - pos - 1);
-          start_pass = pass_index(pass);
-          end_pass = std::max(start_pass, end_pass);
 
-          if (start_pass > limits.size())
+          if (view.compare(0, pos, name) == 0)
           {
-            std::cerr << "Unknown pass: " << pass << std::endl;
-            return -1;
+            start_pass = pass_index(pass);
+            end_pass = std::max(start_pass, end_pass);
+
+            if (start_pass > limits.size())
+            {
+              std::cout << "Unknown pass: " << pass << std::endl;
+              return -1;
+            }
+
+            auto wf = std::get<2>(passes.at(start_pass - 1));
+
+            if (!wf)
+            {
+              std::cout << "No well-formedness check for pass: " << pass
+                        << std::endl;
+              return -1;
+            }
+
+            ast = wf.build_ast(source, pos2 + 1, std::cout);
+            wf.build_st(ast);
+            start_pass++;
+
+            if (!wf.check(ast, std::cout))
+              return -1;
           }
-
-          auto wf = std::get<2>(passes.at(start_pass - 1));
-
-          if (!wf)
+          else
           {
-            std::cerr << "No well-formedness check for pass: " << pass
-                      << std::endl;
-            return -1;
-          }
+            start_pass = 1;
+            end_pass = std::max(start_pass, end_pass);
 
-          ast = wf.build_ast(source, pos2 + 1);
-          start_pass++;
+            if (!wfParser)
+            {
+              std::cout << "No well-formedness check for parser" << std::endl;
+              return -1;
+            }
 
-          if (!ast)
-          {
-            std::cerr << "Failed to parse AST" << std::endl;
-            return -1;
-          }
+            ast = wfParser.build_ast(source, pos2 + 1, std::cout);
+            wfParser.build_st(ast);
 
-          wf.build_st(ast);
-
-          if (!wf.check(ast, std::cout))
-          {
-            std::cerr << "Well-formedness check failed on parsed AST"
-                      << std::endl;
-            return -1;
+            if (!wfParser.check(ast, std::cout))
+              return -1;
           }
         }
         else
         {
           ast = parser.parse(path);
 
-          if (wfParser && !wfParser.check(ast, std::cout))
+          if (wfParser)
+            wfParser.build_st(ast);
+
+          if (wfcheck && wfParser && !wfParser.check(ast, std::cout))
           {
             end_pass = 0;
             ret = -1;
@@ -208,7 +214,7 @@ namespace trieste
         }
         else
         {
-          std::cerr << "Could not open " << output << " for writing."
+          std::cout << "Could not open " << output << " for writing."
                     << std::endl;
           ret = -1;
         }

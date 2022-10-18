@@ -110,11 +110,11 @@ namespace trieste
         node->push_back(child);
       }
 
-      Token find_type(const std::string_view& type) const
+      Token find_type(const Location& type) const
       {
         for (auto& t : types)
         {
-          if (t.str() == type)
+          if (t.str() == type.view())
             return t;
         }
 
@@ -194,7 +194,7 @@ namespace trieste
           node->include();
       }
 
-      Token find_type(const std::string_view& type) const
+      Token find_type(const Location& type) const
       {
         return types.find_type(type);
       }
@@ -349,13 +349,13 @@ namespace trieste
         }
       }
 
-      Token find_type(const std::string_view& type) const
+      Token find_type(const Location& type) const
       {
         return find_type_i<0>(type);
       }
 
       template<size_t I>
-      Token find_type_i(const std::string_view& type) const
+      Token find_type_i(const Location& type) const
       {
         if constexpr (I < sizeof...(Ts))
         {
@@ -418,7 +418,7 @@ namespace trieste
       std::function<bool(Node, std::ostream&)> check;
       std::function<Node(Gen::Seed, size_t)> gen;
       std::function<void(Node)> build_st;
-      std::function<Node(Source, size_t)> build_ast;
+      std::function<Node(Source, size_t, std::ostream&)> build_ast;
 
       operator bool() const
       {
@@ -463,6 +463,9 @@ namespace trieste
 
       bool check(Node node, std::ostream& out) const
       {
+        if (!node)
+          return false;
+
         if (node->type() == Error)
           return true;
 
@@ -561,13 +564,11 @@ namespace trieste
         }
       }
 
-      Node build_ast(Source source, size_t pos) const
+      Node build_ast(Source source, size_t pos, std::ostream& out) const
       {
-        std::regex hd(
-          "^[\\n[:blank:]]*\\(([^\\n[:blank:]\\)]*)"
-          "[[:blank:]]*([^\\n[:blank:]\\)]*)");
-        std::regex st("^[\\n[:blank:]]*\\{[^\\}]*\\}");
-        std::regex tl("^[\\n[:blank:]]*\\)");
+        std::regex hd("^[[:space:]]*\\(([^[:space:]\\(\\)]*)");
+        std::regex st("^[[:space:]]*\\{[^\\}]*\\}");
+        std::regex tl("^[[:space:]]*\\)");
 
         auto start = source->view().cbegin();
         auto it = start + pos;
@@ -578,28 +579,56 @@ namespace trieste
 
         while (it < end)
         {
-          // Find the type and id of the node. If we didn't find a node, it's an
-          // error.
+          // Find the type the node. If we didn't find a node, it's an error.
           if (!std::regex_search(it, end, match, hd))
+          {
+            auto loc = Location(source, it - start, 1);
+            out << loc.origin_linecol() << "expected node" << std::endl
+                << loc.str() << std::endl;
             return {};
+          }
 
           // If we don't have a valid node type, it's an error.
-          auto type_view = std::string_view(
-            it + match.position(1), it + match.position(1) + match.length(1));
-          auto type = find_type_i(ast, type_view);
+          auto type_loc =
+            Location(source, (it - start) + match.position(1), match.length(1));
+          auto type = find_type_i(ast, type_loc);
+          it += match.length();
 
           if (type == Invalid)
+          {
+            out << type_loc.origin_linecol() << "unknown type" << std::endl
+                << type_loc.str() << std::endl;
             return {};
+          }
 
-          // If we don't have an id, use the location of the type.
-          auto index = match.length(2) ? 2 : 1;
-          auto loc = Location(
-            source,
-            size_t((it - start) + match.position(index)),
-            size_t(match.length(index)));
+          // Find the source location of the node as a netstring.
+          auto ident_loc = type_loc;
 
-          auto node = NodeDef::create(type, loc);
-          it += match.length();
+          if (*it == ' ')
+          {
+            ++it;
+            size_t len = 0;
+
+            while ((*it >= '0') && (*it <= '9'))
+            {
+              len = (len * 10) + (*it - '0');
+              ++it;
+            }
+
+            if (*it != ':')
+            {
+              auto loc = Location(source, it - start, 1);
+              out << loc.origin_linecol() << "expected ':'" << std::endl
+                  << loc.str() << std::endl;
+              return {};
+            }
+
+            ++it;
+            ident_loc = Location(source, it - start, len);
+            it += len;
+          }
+
+          auto node = NodeDef::create(type, ident_loc);
 
           // Push the node into the AST.
           if (ast)
@@ -627,17 +656,20 @@ namespace trieste
         }
 
         // We never finished the AST, so it's an error.
+        auto loc = Location(source, it - start, 1);
+        out << loc.origin_linecol() << "incomplete AST" << std::endl
+            << loc.str() << std::endl;
         return {};
       }
 
       template<size_t I = sizeof...(Ts) - 1>
-      Token find_type_i(Node node, const std::string_view& type) const
+      Token find_type_i(Node node, const Location& type) const
       {
         if constexpr (I < sizeof...(Ts))
         {
           auto& shape = std::get<I>(shapes);
 
-          if (shape.type.str() == type)
+          if (shape.type.str() == type.view())
             return shape.type;
 
           if (node && (shape.type == node->type()))
@@ -662,7 +694,9 @@ namespace trieste
             return gen(seed, max_depth);
           },
           [this](Node node) { build_st(node); },
-          [this](Source source, size_t pos) { return build_ast(source, pos); },
+          [this](Source source, size_t pos, std::ostream& out) {
+            return build_ast(source, pos, out);
+          },
         };
       }
     };
