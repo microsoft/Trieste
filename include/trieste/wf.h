@@ -650,8 +650,10 @@ namespace trieste
 
           return find_type_i<I - 1>(node, type);
         }
-
-        return Invalid;
+        else
+        {
+          return Invalid;
+        }
       }
 
       auto operator()() const
