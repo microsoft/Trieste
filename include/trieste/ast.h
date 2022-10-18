@@ -425,7 +425,7 @@ namespace trieste
       ss << indent(level) << "(" << type_.str();
 
       if (type_ & flag::print)
-        ss << " " << location_.view();
+        ss << " " << location_.view().size() << ":" << location_.view();
 
       if (symtab_)
         ss << std::endl << symtab_->str(level + 1);

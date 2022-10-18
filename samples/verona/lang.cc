@@ -385,7 +385,7 @@ namespace verona
       // wrapped in a TypeAssert, but an Expr containing a Tuple can be.
       T(Expr) << (((!T(Type))++)[Expr] * T(Type)[Type] * End) >>
         [](Match& _) {
-          return Expr << (TypeAssert << _(Type) << (Expr << _[Expr]));
+          return Expr << (TypeAssert << (Expr << _[Expr]) << _(Type));
         },
 
       In(Expr) *
@@ -634,8 +634,8 @@ namespace verona
 
       // TypeAssert on a Selector or FunctionName.
       T(TypeAssert)
-          << (T(Type)[lhs] *
-              (T(Expr) << (T(Selector) / T(FunctionName))[rhs])) >>
+          << ((T(Expr) << ((T(Selector) / T(FunctionName))[lhs] * End)) *
+              T(Type)[rhs]) >>
         [](Match& _) { return TypeAssertOp << _[lhs] << _[rhs]; },
 
       // Compact expressions.
@@ -668,7 +668,7 @@ namespace verona
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
     T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) / T(Assign) / T(Expr) /
     T(ExprSeq);
-  inline const auto Object = Object0 / (T(TypeAssert) << (T(Type) * Object0));
+  inline const auto Object = Object0 / (T(TypeAssert) << (Object0 * T(Type)));
   inline const auto Operator = T(FunctionName) / T(Selector) / T(TypeAssertOp);
   inline const auto Apply = (Selector << (Ident ^ apply) << TypeArgs);
 
@@ -689,11 +689,38 @@ namespace verona
     };
   }
 
+  auto lazy(Node n = {})
+  {
+    Node body = FuncBody;
+
+    if (n)
+      body << (Expr << n);
+
+    return Lambda << TypeParams << Params << body;
+  }
+
   PassDef application()
   {
-    // These rules allow expressions such as `3 * -4` or `a and not b` to have
-    // the expected meaning.
+    // These rules allow expressions such as `-3 * -4` or `not a and not b` to
+    // have the expected meaning.
     return {
+      // Conditionals.
+      In(Expr) * (T(If) << End) * Object[Expr] >>
+        [](Match& _) { return If << (Expr << _(Expr)); },
+
+      In(Expr) * (T(If) << T(Expr)[Expr]) * T(Lambda)[lhs] * --T(Else) >>
+        [](Match& _) { return Conditional << _(Expr) << _(lhs) << lazy(); },
+
+      In(Expr) * (T(If) << T(Expr)[Expr]) * T(Lambda)[lhs] * T(Else) *
+          T(Lambda)[rhs] >>
+        [](Match& _) { return Conditional << _(Expr) << _(lhs) << _(rhs); },
+
+      In(Expr) * (T(If) << T(Expr)[Expr]) * T(Lambda)[lhs] * T(Else) *
+          T(Conditional)[rhs] >>
+        [](Match& _) {
+          return Conditional << _(Expr) << _(lhs) << lazy(_(rhs));
+        },
+
       // Adjacency: application.
       In(Expr) * Object[lhs] * Object[rhs] >>
         [](Match& _) { return call(clone(Apply), _(lhs), _(rhs)); },
@@ -774,27 +801,39 @@ namespace verona
       on_lhs(T(Expr) << T(Tuple)[lhs]) >>
         [](Match& _) { return Expr << (TupleLHS << *_[lhs]); },
 
-      on_lhs(T(Expr) << (T(TypeAssert) << (T(Type)[Type] * T(Tuple)[lhs]))) >>
+      on_lhs(T(Expr) << (T(TypeAssert) << (T(Tuple)[lhs] * T(Type)[Type]))) >>
         [](Match& _) {
-          return Expr << (TypeAssert << _(Type) << (TupleLHS << *_[lhs]));
+          return Expr << (TypeAssert << (TupleLHS << *_[lhs]) << _(Type));
         },
 
       // Turn a Call on the LHS of an assignment into a CallLHS.
       on_lhs(T(Expr) << T(Call)[lhs]) >>
         [](Match& _) { return Expr << (CallLHS << *_[lhs]); },
 
-      on_lhs(T(Expr) << (T(TypeAssert) << (T(Type)[Type] * T(Call)[lhs]))) >>
+      on_lhs(T(Expr) << (T(TypeAssert) << (T(Call)[lhs] * T(Type)[Type]))) >>
         [](Match& _) {
-          return Expr << (TypeAssert << _(Type) << (CallLHS << *_[lhs]));
+          return Expr << (TypeAssert << (CallLHS << *_[lhs]) << _(Type));
         },
 
       // Turn a RefVar on the LHS of an assignment into a RefVarLHS.
       on_lhs(T(Expr) << T(RefVar)[lhs]) >>
         [](Match& _) { return Expr << (RefVarLHS << *_[lhs]); },
 
-      on_lhs(T(Expr) << (T(TypeAssert) << (T(Type)[Type] * T(RefVar)[lhs]))) >>
+      on_lhs(T(Expr) << (T(TypeAssert) << (T(RefVar)[lhs] * T(Type)[Type]))) >>
         [](Match& _) {
-          return Expr << (TypeAssert << _(Type) << (RefVarLHS << *_[lhs]));
+          return Expr << (TypeAssert << (RefVarLHS << *_[lhs]) << _(Type));
+        },
+
+      T(If) >>
+        [](Match& _) {
+          return err(_[If], "if must be followed by a condition and a lambda");
+        },
+
+      T(Else) >>
+        [](Match& _) {
+          return err(
+            _[Else],
+            "else must be preceded by an if and followed by an if or a lambda");
         },
 
       T(Ref) >>
@@ -842,7 +881,7 @@ namespace verona
       In(Assign) *
           (T(Expr)
            << ((T(Let) << T(Ident)[id]) /
-               (T(TypeAssert) << T(Type)[Type] << (T(Let) << T(Ident)[id])))) *
+               (T(TypeAssert) << (T(Let) << T(Ident)[id]) * T(Type)[Type]))) *
           T(Expr)[rhs] * End >>
         [](Match& _) {
           return Expr
@@ -857,7 +896,7 @@ namespace verona
           (T(Expr)
            << (T(TupleLHS)[lhs] /
                (T(TypeAssert)
-                << (T(Type)[Type] * (T(Expr) << T(TupleLHS)[lhs]))))) *
+                << ((T(Expr) << T(TupleLHS)[lhs]) * T(Type)[Type])))) *
           T(Expr)[rhs] * End >>
         [](Match& _) {
           // let $rhs_id = rhs
@@ -902,7 +941,7 @@ namespace verona
 
           // TypeAssert comes after the let bindings for the LHS.
           if (ty)
-            seq << (Expr << (TypeAssert << ty << lhs_tuple));
+            seq << (Expr << (TypeAssert << lhs_tuple << ty));
 
           // The RHS tuple is the last expression in the sequence.
           return Expr << (seq << rhs_e << (Expr << rhs_tuple));
@@ -922,7 +961,7 @@ namespace verona
   }
 
   inline const auto Liftable = T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) /
-    T(Selector) / T(FunctionName) / Literal / T(Throw);
+    T(Conditional) / T(Selector) / T(FunctionName) / Literal / T(Throw);
 
   PassDef anf()
   {
@@ -949,7 +988,7 @@ namespace verona
       T(Expr)
           << (Liftable[Lift] /
               ((T(TypeAssert) / T(TypeAssertOp))
-               << (T(Type)[Type] * Liftable[Lift]))) >>
+               << (Liftable[Lift] * T(Type)[Type]))) >>
         [](Match& _) {
           auto fresh_id = _.fresh();
           return Seq << (Lift << FuncBody
@@ -972,6 +1011,10 @@ namespace verona
         [](Match& _) {
           return err(_[TupleFlatten], "`...` can only appear in tuples");
         },
+
+      // Remaining type assertions.
+      T(Expr) << (T(TypeAssert) << (T(RefLet)[id] * T(Type)[Type])) >>
+        [](Match& _) { return TypeAssert << _(id) << _(Type); },
     };
   }
 
