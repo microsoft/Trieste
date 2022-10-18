@@ -19,7 +19,7 @@ namespace trieste
     constexpr static auto parse_only = "parse";
     using PassCheck = std::tuple<std::string, Pass, wf::WellformedF>;
 
-    std::string name;
+    std::string language_name;
     CLI::App app;
     Parse parser;
     wf::WellformedF wfParser;
@@ -28,11 +28,11 @@ namespace trieste
 
   public:
     Driver(
-      const std::string& name,
+      const std::string& language_name,
       Parse parser,
       wf::WellformedF wfParser,
       std::initializer_list<PassCheck> passes)
-    : name(name), app(name), parser(parser), wfParser(wfParser), passes(passes)
+    : language_name(language_name), app(language_name), parser(parser), wfParser(wfParser), passes(passes)
     {
       limits.push_back(parse_only);
 
@@ -117,9 +117,9 @@ namespace trieste
           auto view = source->view();
           auto pos = std::min(view.find_first_of('\n'), view.size());
 
-          if (view.compare(0, pos, name) != 0)
+          if (view.compare(0, pos, language_name) != 0)
           {
-            std::cerr << "Not a " << name << " file" << std::endl;
+            std::cerr << "Not a " << language_name << " file" << std::endl;
             return -1;
           }
 
@@ -174,13 +174,13 @@ namespace trieste
 
         for (auto i = start_pass; i <= end_pass; i++)
         {
-          auto& [name, pass, wf] = passes.at(i - 1);
+          auto& [pass_name, pass, wf] = passes.at(i - 1);
           auto [new_ast, count, changes] = pass->run(ast);
           ast = new_ast;
 
           if (diag)
           {
-            std::cout << "Pass " << name << ": " << count << " iterations, "
+            std::cout << "Pass " << pass_name << ": " << count << " iterations, "
                       << changes << " nodes rewritten." << std::endl;
           }
 
@@ -204,7 +204,7 @@ namespace trieste
 
         if (f)
         {
-          f << name << std::endl << limits.at(end_pass) << std::endl << ast;
+          f << language_name << std::endl << limits.at(end_pass) << std::endl << ast;
         }
         else
         {
@@ -233,25 +233,25 @@ namespace trieste
 
         for (auto i = start_pass; i <= end_pass; i++)
         {
-          auto& [name, pass, wf] = passes.at(i - 1);
+          auto& [pass_name, pass, wf] = passes.at(i - 1);
           auto& prev = i > 1 ? std::get<2>(passes.at(i - 2)) : wfParser;
 
           if (!prev || !wf)
           {
-            std::cout << "Skipping pass: " << name << std::endl;
+            std::cout << "Skipping pass: " << pass_name << std::endl;
             continue;
           }
 
-          std::cout << "Testing pass: " << name << std::endl;
+          std::cout << "Testing pass: " << pass_name << std::endl;
 
-          for (size_t i = 0; i < test_seed_count; i++)
+          for (size_t seed = test_seed; seed < test_seed + test_seed_count; seed++)
           {
             std::stringstream ss1;
             std::stringstream ss2;
 
-            auto ast = prev.gen(test_seed + i, test_max_depth);
+            auto ast = prev.gen(seed, test_max_depth);
             ss1 << "============" << std::endl
-                << "Pass: " << name << ", seed: " << (test_seed + i)
+                << "Pass: " << pass_name << ", seed: " << seed
                 << std::endl
                 << "------------" << std::endl
                 << ast << "------------" << std::endl;
@@ -273,8 +273,8 @@ namespace trieste
                 std::cout << ss1.str() << ss2.str();
 
               std::cout << ss3.str() << "============" << std::endl
-                        << "Failed pass: " << name
-                        << ", seed: " << (test_seed + i) << std::endl;
+                        << "Failed pass: " << pass_name
+                        << ", seed: " << seed << std::endl;
               ret = -1;
 
               if (test_failfast)
@@ -288,14 +288,14 @@ namespace trieste
     }
 
     template<typename StringLike>
-    size_t pass_index(const StringLike& name)
+    size_t pass_index(const StringLike& name_)
     {
-      if (name == parse_only)
+      if (name_ == parse_only)
         return 0;
 
       for (size_t i = 0; i < passes.size(); i++)
       {
-        if (std::get<0>(passes[i]) == name)
+        if (std::get<0>(passes[i]) == name_)
           return i + 1;
       }
 
