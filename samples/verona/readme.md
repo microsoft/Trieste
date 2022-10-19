@@ -26,6 +26,7 @@ T0 <: T1 => T0.upper += T1, T1.lower += T0
   '$1 <: $T0
 `bind $0 $T0 (tuple (reflet $1) (reflet $2))`
   ('$1, '$2) <: $T0
+  *tuple flatten?*
 `bind $0 $T0 (lambda ...)`
   'lambda <: $T0
   *free variables? problem is moving `lin`*
@@ -37,6 +38,16 @@ T0 <: T1 => T0.upper += T1, T1.lower += T0
   'lambda1 <: ()->$T1
   'lambda2 <: ()->$T2
   ($T1 | $T2) <: $T0
+`typeassert (reflet $0) $T0`
+  '$0 <: $T0
+
+## Lowering
+
+- mangled names for all types and functions
+- struct for every concrete type
+- static and virtual dispatch
+- conditionals
+- heap to stack with escape analysis
 
 ## Ellipsis
 

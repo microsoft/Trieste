@@ -117,6 +117,7 @@ namespace trieste
   inline constexpr auto Directory = TokenDef("directory");
   inline constexpr auto Seq = TokenDef("seq");
   inline constexpr auto Lift = TokenDef("lift");
+  inline constexpr auto NoChange = TokenDef("nochange");
   inline constexpr auto Include = TokenDef("include");
   inline constexpr auto Error = TokenDef("error");
   inline constexpr auto ErrorMsg = TokenDef("errormsg", flag::print);

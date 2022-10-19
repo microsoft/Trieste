@@ -197,7 +197,9 @@ namespace trieste
     bool before(const Location& that) const
     {
       // Returns true if `this` overlaps or precedes `that` in the same source.
-      return (source == that.source) && (pos < (that.pos + that.len));
+      // Always return true if either location is synthetic.
+      return ((source == that.source) && (pos < (that.pos + that.len))) ||
+        source->origin().empty() || that.source->origin().empty();
     }
 
     Location operator*(const Location& that) const

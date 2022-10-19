@@ -107,6 +107,8 @@ namespace verona
   inline constexpr auto TupleFlatten = TokenDef("tupleflatten");
   inline constexpr auto Conditional = TokenDef("conditional");
   inline constexpr auto Bind = TokenDef("bind", flag::lookup | flag::shadowing);
+  inline constexpr auto Move = TokenDef("move");
+  inline constexpr auto Drop = TokenDef("drop");
 
   // Indexing names.
   inline constexpr auto IdSym = TokenDef("idsym");

@@ -1013,9 +1013,54 @@ namespace verona
         },
 
       // Remaining type assertions.
-      T(Expr) << (T(TypeAssert) << (T(RefLet)[id] * T(Type)[Type])) >>
+      T(Expr)
+          << (T(TypeAssert) << ((T(RefLet) << T(Ident)[id]) * T(Type)[Type])) >>
         [](Match& _) { return TypeAssert << _(id) << _(Type); },
     };
+  }
+
+  PassDef drop()
+  {
+    auto last_map = std::make_shared<NodeMap<std::map<Location, Node>>>();
+
+    PassDef drop = {
+      T(RefLet)[RefLet] << T(Ident)[id] >> ([last_map](Match& _) -> Node {
+        (*last_map)[_(RefLet)->parent(FuncBody)][_(id)->location()] = _(RefLet);
+        return NoChange;
+      }),
+
+      (In(Move) / In(Drop)) * T(Ident)[id] >> ([last_map](Match& _) -> Node {
+        (*last_map)[_(id)->parent(FuncBody)][_(id)->location()] = {};
+        return NoChange;
+      }),
+    };
+
+    drop.post([last_map]() {
+      size_t changes = 0;
+
+      std::for_each(last_map->begin(), last_map->end(), [&changes](auto& p) {
+        auto& map = p.second;
+        std::for_each(map.begin(), map.end(), [&changes](auto& p) {
+          auto& reflet = p.second;
+          if (reflet)
+          {
+            auto parent = reflet->parent();
+
+            if ((parent->type() == FuncBody) && (parent->back() != reflet))
+              parent->replace(reflet, Drop << reflet->front());
+            else
+              parent->replace(reflet, Move << reflet->front());
+
+            changes++;
+          }
+        });
+      });
+
+      last_map->clear();
+      return changes;
+    });
+
+    return drop;
   }
 
   Driver& driver()
@@ -1040,6 +1085,7 @@ namespace verona
         {"localvar", localvar(), wfPassLocalVar()},
         {"assignment", assignment(), wfPassAssignment()},
         {"anf", anf(), wfPassANF()},
+        {"drop", drop(), wfPassDrop()},
       });
 
     return d;
