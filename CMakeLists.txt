@@ -37,7 +37,7 @@ target_compile_features(trieste INTERFACE cxx_std_20)
 if(MSVC)
   target_compile_options(trieste INTERFACE /W4 /WX /bigobj)
 else()
-  target_compile_options(trieste INTERFACE -Wall -Wextra -Wpedantic -Werror)
+  target_compile_options(trieste INTERFACE -Wall -Wextra -Wpedantic -Werror -Wshadow)
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -98,5 +98,6 @@ export(PACKAGE trieste)
 ##############################################
 ## Add samples
 if( TRIESTE_BUILD_SAMPLES )
+  enable_testing()
   add_subdirectory(samples/verona)
 endif()

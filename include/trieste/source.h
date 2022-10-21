@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "defines.h"
+
 #include <algorithm>
 #include <cassert>
 #include <filesystem>

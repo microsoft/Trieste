@@ -152,7 +152,7 @@ namespace verona
         "0b[_01]+\\b" >> [](auto& m) { m.add(Bin); },
 
         // Float.
-        "[[]:digit:]]+\\.[[:digit:]]+(?:e[+-]?[[:digit:]]+)?\\b" >>
+        "[[:digit:]]+\\.[[:digit:]]+(?:e[+-]?[[:digit:]]+)?\\b" >>
           [](auto& m) { m.add(Float); },
 
         // Int.

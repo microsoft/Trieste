@@ -132,17 +132,17 @@ namespace trieste
       size_t minlen;
       Token binding;
 
-      consteval Sequence(const Choice<N>& types)
+      CONSTEVAL Sequence(const Choice<N>& types)
       : types(types), minlen(0), binding(Invalid)
       {}
-      consteval Sequence(const Sequence<N>& seq, const Token& binding)
+      CONSTEVAL Sequence(const Sequence<N>& seq, const Token& binding)
       : types(seq.types), minlen(seq.minlen), binding(binding)
       {}
-      consteval Sequence(const Choice<N>& types, size_t minlen, Token binding)
+      CONSTEVAL Sequence(const Choice<N>& types, size_t minlen, Token binding)
       : types(types), minlen(minlen), binding(binding)
       {}
 
-      consteval auto operator[](size_t new_minlen) const
+      CONSTEVAL auto operator[](size_t new_minlen) const
       {
         return Sequence<N>(types, new_minlen, binding);
       }
@@ -228,20 +228,20 @@ namespace trieste
       std::tuple<Ts...> fields;
       Token binding;
 
-      consteval Fields() : fields(), binding(Invalid) {}
+      CONSTEVAL Fields() : fields(), binding(Invalid) {}
 
       template<size_t N>
-      consteval Fields(const Field<N>& field)
+      CONSTEVAL Fields(const Field<N>& field)
       : fields(std::make_tuple(field)), binding(Invalid)
       {}
 
       template<typename... Ts2, typename... Ts3>
-      consteval Fields(const Fields<Ts2...>& fst, const Fields<Ts3...>& snd)
+      CONSTEVAL Fields(const Fields<Ts2...>& fst, const Fields<Ts3...>& snd)
       : fields(std::tuple_cat(fst.fields, snd.fields)), binding(Invalid)
       {}
 
       template<typename... Ts2>
-      consteval Fields(const Fields<Ts2...>& fields, const Token& binding)
+      CONSTEVAL Fields(const Fields<Ts2...>& fields, const Token& binding)
       : fields(fields.fields), binding(binding)
       {}
 
@@ -399,9 +399,9 @@ namespace trieste
       Token type;
       T shape;
 
-      consteval Shape(Token type, const T& shape) : type(type), shape(shape) {}
+      CONSTEVAL Shape(Token type, const T& shape) : type(type), shape(shape) {}
 
-      consteval auto operator[](const Token& binding) const
+      CONSTEVAL auto operator[](const Token& binding) const
       {
         return Shape<T>(type, T(shape, binding));
       }
@@ -434,15 +434,15 @@ namespace trieste
 
       std::tuple<Ts...> shapes;
 
-      consteval Wellformed() : shapes() {}
+      CONSTEVAL Wellformed() : shapes() {}
 
       template<typename T>
-      consteval Wellformed(const Shape<T>& shape)
+      CONSTEVAL Wellformed(const Shape<T>& shape)
       : shapes(std::make_tuple(shape))
       {}
 
       template<typename... Ts1, typename... Ts2>
-      consteval Wellformed(
+      CONSTEVAL Wellformed(
         const Wellformed<Ts1...>& wf1, const Wellformed<Ts2...>& wf2)
       : shapes(std::tuple_cat(wf1.shapes, wf2.shapes))
       {}
@@ -708,8 +708,8 @@ namespace trieste
 
         return index_fields<I + 1>(fields, type, name);
       }
-
-      return {};
+      else
+        return {};
     }
 
     template<size_t I = 0, typename... Ts>
@@ -725,29 +725,29 @@ namespace trieste
           // If this shape is for the right type, search it.
           if constexpr (std::is_base_of_v<FieldsBase, decltype(shape.shape)>)
             return index_fields<0>(shape.shape, shape.type, name);
-
-          // Unless it's a sequence, which doesn't have fields.
-          return {};
+          else
+            // Unless it's a sequence, which doesn't have fields.
+            return {};
         }
-
-        return index_wellformed<I + 1>(wf, type, name);
+        else
+          return index_wellformed<I + 1>(wf, type, name);
       }
-
-      return {};
+      else
+        return {};
     }
 
     template<size_t N>
-    inline consteval auto to_wf(const Choice<N>& choice);
+    inline CONSTEVAL auto to_wf(const Choice<N>& choice);
 
     namespace ops
     {
-      inline consteval auto operator|(const Token& type1, const Token& type2)
+      inline CONSTEVAL auto operator|(const Token& type1, const Token& type2)
       {
         return Choice<2>{type1, type2};
       }
 
       template<size_t N>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator|(const Token& type, const Choice<N>& choice)
       {
         Choice<N + 1> result;
@@ -757,7 +757,7 @@ namespace trieste
       }
 
       template<size_t N>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator|(const Choice<N>& choice, const Token& type)
       {
         Choice<N + 1> result;
@@ -767,7 +767,7 @@ namespace trieste
       }
 
       template<size_t N1, size_t N2>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator|(const Choice<N1>& choice1, const Choice<N2>& choice2)
       {
         Choice<N1 + N2> result;
@@ -776,104 +776,104 @@ namespace trieste
         return result;
       }
 
-      inline consteval auto operator++(const Token& type, int)
+      inline CONSTEVAL auto operator++(const Token& type, int)
       {
         return Sequence<1>(Choice<1>{type});
       }
 
       template<size_t N>
-      inline consteval auto operator++(const Choice<N>& choice, int)
+      inline CONSTEVAL auto operator++(const Choice<N>& choice, int)
       {
         return Sequence<N>(choice);
       }
 
       template<size_t N>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator>>=(const Token& name, const Choice<N>& choice)
       {
         return Fields(Field<N>{{}, name, choice});
       }
 
-      inline consteval auto operator>>=(const Token& name, const Token& type)
+      inline CONSTEVAL auto operator>>=(const Token& name, const Token& type)
       {
         return Fields(Field<1>{{}, name, Choice<1>{type}});
       }
 
       template<typename... Ts1, typename... Ts2>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator*(const Fields<Ts1...>& fst, const Fields<Ts2...>& snd)
       {
         return Fields(fst, snd);
       }
 
       template<typename... Ts>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator*(const Fields<Ts...>& fst, const Token& snd)
       {
         return fst * (snd >>= snd);
       }
 
       template<typename... Ts>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator*(const Token& fst, const Fields<Ts...>& snd)
       {
         return (fst >>= fst) * snd;
       }
 
-      inline consteval auto operator*(const Token& fst, const Token& snd)
+      inline CONSTEVAL auto operator*(const Token& fst, const Token& snd)
       {
         return (fst >>= fst) * (snd >>= snd);
       }
 
       template<size_t N>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator<<=(const Token& type, const Sequence<N>& seq)
       {
         return Shape(type, seq);
       }
 
       template<typename... Ts>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator<<=(const Token& type, const Fields<Ts...>& fields)
       {
         return Shape(type, fields);
       }
 
       template<size_t N>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator<<=(const Token& type, const Choice<N>& choice)
       {
         return type <<= (type >>= choice);
       }
 
-      inline consteval auto operator<<=(const Token& type1, const Token& type2)
+      inline CONSTEVAL auto operator<<=(const Token& type1, const Token& type2)
       {
         return type1 <<= (type2 >>= type2);
       }
 
       template<typename... Ts1, typename... Ts2>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator|(const Wellformed<Ts1...>& wf1, const Wellformed<Ts2...>& wf2)
       {
         return Wellformed(wf1, wf2);
       }
 
       template<typename... Ts, typename T>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator|(const Wellformed<Ts...>& wf, const Shape<T>& shape)
       {
         return wf | Wellformed(shape);
       }
 
       template<typename T, typename... Ts>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator|(const Shape<T>& shape, const Wellformed<Ts...>& wf)
       {
         return Wellformed(shape) | wf;
       }
 
       template<typename T1, typename T2>
-      inline consteval auto
+      inline CONSTEVAL auto
       operator|(const Shape<T1>& shape1, const Shape<T2>& shape2)
       {
         return Wellformed(shape1) | Wellformed(shape2);
@@ -881,14 +881,14 @@ namespace trieste
     }
 
     template<typename T>
-    inline consteval auto to_wf(const Shape<T>& shape)
+    inline CONSTEVAL auto to_wf(const Shape<T>& shape)
     {
       using namespace ops;
       return Wellformed() | shape;
     }
 
     template<size_t I, size_t N, typename... Ts>
-    inline consteval auto
+    inline CONSTEVAL auto
     to_wf(const Choice<N>& choice, const Wellformed<Ts...>& wf)
     {
       using namespace ops;
@@ -900,12 +900,12 @@ namespace trieste
     }
 
     template<size_t N>
-    inline consteval auto to_wf(const Choice<N>& choice)
+    inline CONSTEVAL auto to_wf(const Choice<N>& choice)
     {
       return to_wf<0>(choice, Wellformed());
     }
 
-    inline consteval auto to_wf(const Token& type)
+    inline CONSTEVAL auto to_wf(const Token& type)
     {
       using namespace ops;
       return Wellformed(type <<= type);
@@ -913,14 +913,14 @@ namespace trieste
   }
 
   template<typename... Ts>
-  inline consteval auto
+  inline CONSTEVAL auto
   operator/(const wf::Wellformed<Ts...>& wf, const Token& type)
   {
     return std::make_pair(wf, type);
   }
 
   template<typename... Ts>
-  inline consteval Index operator/(
+  inline CONSTEVAL Index operator/(
     const std::pair<wf::Wellformed<Ts...>, Token>& pair, const Token& name)
   {
     return wf::index_wellformed(pair.first, pair.second, name);

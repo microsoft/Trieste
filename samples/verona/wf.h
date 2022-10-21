@@ -97,7 +97,7 @@ namespace verona
 
     // Add TypeName, TypeView, TypeList.
     | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
-    | (TypeView <<= (lhs >>= Type) * (rhs >>= Type))
+    | (TypeView <<= (Lhs >>= Type) * (Rhs >>= Type))
     | (TypeList <<= Type)
 
     // Remove DontCare, Ident, TypeArgs, DoubleColon, Dot, Ellipsis from Type.
@@ -112,7 +112,7 @@ namespace verona
       wfPassTypeView
 
     // Add TypeFunc.
-    | (TypeFunc <<= (lhs >>= Type) * (rhs >>= Type))
+    | (TypeFunc <<= (Lhs >>= Type) * (Rhs >>= Type))
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
          Symbol | Throw | TypeName | TypeView | TypeList | TypeFunc)++)
@@ -160,8 +160,8 @@ namespace verona
     // No Type nodes inside of type structure.
     | (TypeList <<= wfType)
     | (TypeTuple <<= wfType++[2])
-    | (TypeView <<= (lhs >>= wfType) * (rhs >>= wfType))
-    | (TypeFunc <<= (lhs >>= wfType) * (rhs >>= wfType))
+    | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))
+    | (TypeFunc <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeUnion <<= (wfTypeNoAlg | TypeIsect | TypeThrow)++[2])
     | (TypeThrow <<= wfTypeNoAlg | TypeIsect | TypeUnion)
     | (TypeIsect <<= (wfTypeNoAlg | TypeUnion | TypeThrow)++[2])
@@ -191,7 +191,7 @@ namespace verona
     | (RefVar <<= Ident)
     | (Selector <<= wfIdSym * TypeArgs)
     | (FunctionName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
-    | (TypeAssertOp <<= (op >>= Selector | FunctionName) * Type)
+    | (TypeAssertOp <<= (Op >>= Selector | FunctionName) * Type)
 
     // Remove TypeArgs, Ident, Symbol, DoubleColon.
     // Add RefVar, RefLet, Selector, FunctionName, TypeAssertOp.
@@ -290,7 +290,7 @@ namespace verona
     | (Conditional <<= (If >>= RefLet) * Lambda * Lambda)
     | (TypeAssert <<= Ident * Type)
     | (Bind <<= Ident * Type *
-        (rhs >>=
+        (Rhs >>=
           RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
           FunctionName | wfLiteral))[Ident]
     ;
@@ -312,7 +312,7 @@ namespace verona
     | (Args <<= (RefLet | Move)++)
     | (Conditional <<= (If >>= (RefLet | Move)) * Lambda * Lambda)
     | (Bind <<= Ident * Type *
-        (rhs >>=
+        (Rhs >>=
           RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
           FunctionName | wfLiteral | Move))[Ident]
     ;
@@ -327,18 +327,18 @@ namespace verona
     | (Param <<= Ident * Type * Expr)
     | (Type <<= wfType)
     | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
-    | (TypeView <<= (lhs >>= wfType) * (rhs >>= wfType))
-    | (TypeFunc <<= (lhs >>= wfType) * (rhs >>= wfType))
+    | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))
+    | (TypeFunc <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeThrow <<= (Type >>= wfType))
     | (TypeTrait <<= ClassBody)
-    | (Package <<= (id >>= String | Escaped))
+    | (Package <<= (Id >>= String | Escaped))
     | (Var <<= Ident * Type)
     | (Let <<= Ident * Type)
     | (Throw <<= Expr)
     | (Lambda <<= TypeParams * Params * FuncBody)
     | (TypeAssert <<= RefLet * Type)
     | (Bind <<= Ident * Type *
-        (rhs >>=
+        (Rhs >>=
           RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
           FunctionName | wfLiteral))
     ;
