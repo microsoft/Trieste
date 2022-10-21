@@ -13,10 +13,10 @@ jobs:
         platform: [ "ubuntu-latest", "windows-latest" ]
         build-type: [ "Release", "Debug" ]
         
-      include:
-      - platform: "ubuntu-latest"
-        cmake-flags: "-G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang"
-        dependencies: "sudo apt install ninja-build"
+        include:
+        - platform: "ubuntu-latest"
+          cmake-flags: "-G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang"
+          dependencies: "sudo apt install ninja-build"
     runs-on: ${{matrix.platform}}
 
     steps:
