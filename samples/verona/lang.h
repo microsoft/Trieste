@@ -116,12 +116,12 @@ namespace verona
   inline constexpr auto Default = TokenDef("default");
 
   // Rewrite identifiers.
-  inline constexpr auto id = TokenDef("id");
-  inline constexpr auto lhs = TokenDef("lhs");
-  inline constexpr auto rhs = TokenDef("rhs");
-  inline constexpr auto op = TokenDef("op");
-  inline constexpr auto ltype = TokenDef("ltype");
-  inline constexpr auto rtype = TokenDef("rtype");
+  inline constexpr auto Id = TokenDef("Id");
+  inline constexpr auto Lhs = TokenDef("Lhs");
+  inline constexpr auto Rhs = TokenDef("Rhs");
+  inline constexpr auto Op = TokenDef("Op");
+  inline constexpr auto LType = TokenDef("LType");
+  inline constexpr auto RType = TokenDef("RType");
 
   // Sythetic locations.
   inline const auto standard = Location("std");

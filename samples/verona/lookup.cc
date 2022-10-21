@@ -103,7 +103,7 @@ namespace verona
       else if (lookup.def->type() == TypeView)
       {
         // Replace the def with the rhs of the view and try again.
-        lookup.def = lookup.def->at(wf / TypeView / rhs);
+        lookup.def = lookup.def->at(wf / TypeView / Rhs);
       }
       else if (lookup.def->type() == TypeThrow)
       {

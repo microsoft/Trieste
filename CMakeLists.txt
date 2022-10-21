@@ -37,7 +37,7 @@ target_compile_features(trieste INTERFACE cxx_std_20)
 if(MSVC)
   target_compile_options(trieste INTERFACE /W4 /WX /bigobj /MP)
 else()
-  target_compile_options(trieste INTERFACE -Wall -Wextra -Wpedantic -Werror)
+  target_compile_options(trieste INTERFACE -Wall -Wextra -Wpedantic -Werror -Wshadow)
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
