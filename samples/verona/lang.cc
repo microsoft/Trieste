@@ -17,6 +17,13 @@ namespace verona
     return lookup_name(*n.first, {}).one(t);
   }
 
+  bool lookup_local(const NodeRange& n, std::initializer_list<Token> t)
+  {
+    auto id = *n.first;
+    auto defs = id->scope()->look(id->location());
+    return (defs.size() == 1) && defs.front()->type().in(t);
+  }
+
   PassDef modules()
   {
     return {
@@ -107,14 +114,15 @@ namespace verona
       // Function: (equals (group name square parens type) group)
       In(ClassBody) *
           (T(Equals)
-           << (T(Group) << (~Name[Id] * ~T(Square)[TypeParams] *
-                            T(Paren)[Params] * ~T(Type)[Type]) *
-                 T(Group)++[Rhs])) >>
+           << ((T(Group)
+                << (~Name[Id] * ~T(Square)[TypeParams] * T(Paren)[Params] *
+                    ~T(Type)[Type])) *
+               T(Group)++[Rhs])) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
           return Function << _(Id) << (TypeParams << *_[TypeParams])
                           << (Params << *_[Params]) << typevar(_, Type)
-                          << (Expr << (Brace << (Default << _[Rhs])));
+                          << (FuncBody << (Expr << (Default << _[Rhs])));
         },
 
       // Function: (group name square parens type brace)
@@ -579,13 +587,19 @@ namespace verona
         },
 
       // Local reference.
-      In(Expr) * T(Ident)[Id]([](auto& n) { return lookup(n, {Var}); }) >>
+      In(Expr) * T(Ident)[Id]([](auto& n) { return lookup_local(n, {Var}); }) >>
         [](Match& _) { return RefVar << _(Id); },
 
       In(Expr) * T(Ident)[Id]([](auto& n) {
-        return lookup(n, {Let, Param});
+        return lookup_local(n, {Let, Param});
       }) >>
         [](Match& _) { return RefLet << _(Id); },
+
+      // Free variable.
+      In(Expr) * T(Ident)[Id]([](auto& n) {
+        return lookup(n, {Var, Let, Param});
+      }) >>
+        [](Match& _) { return RefFree << _(Id); },
 
       // Unscoped type reference.
       In(Expr) * T(Ident)[Id]([](auto& n) {
@@ -642,6 +656,104 @@ namespace verona
         [](Match& _) { return _(Expr); },
       T(Expr) << (T(Expr)[Expr] * End) >> [](Match& _) { return _(Expr); },
     };
+  }
+
+  PassDef lambda()
+  {
+    auto freevars = std::make_shared<std::vector<std::set<Location>>>();
+
+    PassDef lambda =
+      {
+        dir::bottomup,
+        {
+          T(RefFree)[RefFree] << T(Ident)[Id] >> ([freevars](Match& _) -> Node {
+            // Accumulate all the free variables, changing RefFree to RefLet.
+            freevars->back().insert(_(Id)->location());
+            return RefLet << _(Id);
+          }),
+
+          T(Lambda)[Lambda]
+              << (T(TypeParams)[TypeParams] * T(Params)[Params] *
+                  T(FuncBody)[FuncBody]) >>
+            [freevars](Match& _) {
+              // Create the anonymous type.
+              Node class_body = ClassBody;
+              auto class_id = _.fresh();
+              auto classdef = Class << (Ident ^ class_id) << TypeParams
+                                    << (Type << TypeUnit) << class_body;
+
+              // The create function will capture the free variables.
+              Node create_params = Params;
+              Node new_args = Tuple;
+              auto create_func = Function
+                << (Ident ^ create) << TypeParams << create_params
+                << (Type << (TypeVar ^ _.fresh()))
+                << (FuncBody << (Expr << New << new_args));
+
+              // The create call will instantiate the anonymous type.
+              Node create_args = Tuple;
+              auto create_call = FunctionName
+                << (TypeName << TypeUnit << (Ident ^ class_id) << TypeArgs)
+                << (Ident ^ create) << TypeArgs;
+
+              Node apply_body = FuncBody;
+              auto& fv = freevars->back();
+
+              std::for_each(
+                fv.begin(), fv.end(), [&](auto& fv_id) {
+                  // Add a field for the free variable to the anonymous type.
+                  auto type_id = _.fresh();
+                  class_body
+                    << (FieldLet << (Ident ^ fv_id)
+                                 << (Type << (TypeVar ^ type_id)) << DontCare);
+
+                  // Add a parameter to the create function to capture the free
+                  // variable as a field.
+                  create_params
+                    << (Param << (Ident ^ fv_id)
+                              << (Type << (TypeVar ^ type_id)) << DontCare);
+                  new_args << (Expr << (RefLet << (Ident ^ fv_id)));
+
+                  // Add an argument to the create call. This is always a
+                  // RefLet, even if the free variable is a `var`.
+                  create_args << (Expr << (RefLet << (Ident ^ fv_id)));
+
+                  // At the start of the lambda body, assign the field to a
+                  // local variable with the same name as the free variable.
+                  apply_body
+                    << (Expr
+                        << (Assign << (Expr << (Let << (Ident ^ fv_id)))
+                                   << (Expr << (RefLet << (Ident ^ self)) << Dot
+                                            << (Selector << (Ident ^ fv_id)
+                                                         << TypeArgs))));
+                });
+
+              // The apply function is the original lambda.
+              // Prepend a `self` parameter to the lambda parameters.
+              auto apply_func = Function
+                << (Ident ^ apply) << _(TypeParams)
+                << (Params << (Param << (Ident ^ self)
+                                     << (Type << (TypeVar ^ _.fresh()))
+                                     << DontCare)
+                           << *_[Params])
+                << (Type << (TypeVar ^ _.fresh()))
+                << (apply_body << *_[FuncBody]);
+
+              // Add the create and apply functions to the anonymous type.
+              class_body << create_func << apply_func;
+
+              freevars->pop_back();
+              return Seq << (Lift << FuncBody << classdef) << create_call
+                         << create_args;
+            },
+        }};
+
+    lambda.pre(Lambda, [freevars](Node) {
+      freevars->push_back({});
+      return 0;
+    });
+
+    return lambda;
   }
 
   auto arg(Node args, Node arg)
@@ -773,6 +885,8 @@ namespace verona
           return lambda;
         },
 
+      In(Expr) * T(New)[New] >> [](Match& _) { return call(_(New)); },
+
       T(Ellipsis) >>
         [](Match& _) {
           return err(_[Ellipsis], "must use `...` after a value in a tuple");
@@ -824,9 +938,6 @@ namespace verona
         [](Match& _) {
           return Expr << (TypeAssert << (RefVarLHS << *_[Lhs]) << _(Type));
         },
-
-      T(New) >>
-        [](Match& _) { return err(_[New], "must use `new` as an operator"); },
 
       T(If) >>
         [](Match& _) {
@@ -1034,12 +1145,12 @@ namespace verona
       }),
     };
 
-    drop.pre(FuncBody, [drop_map]() {
+    drop.pre(FuncBody, [drop_map](Node) {
       drop_map->push_back({});
       return 0;
     });
 
-    drop.post(FuncBody, [drop_map]() {
+    drop.post(FuncBody, [drop_map](Node) {
       auto& last_map = drop_map->back();
       size_t changes = 0;
 
@@ -1084,6 +1195,7 @@ namespace verona
         {"typeflat", typeflat(), wfPassTypeFlat()},
         {"typednf", typednf(), wfPassTypeDNF()},
         {"reference", reference(), wfPassReference()},
+        {"lambda", lambda(), wfPassLambda()},
         {"reverseapp", reverseapp(), wfPassReverseApp()},
         {"application", application(), wfPassApplication()},
         {"assignlhs", assignlhs(), wfPassAssignLHS()},

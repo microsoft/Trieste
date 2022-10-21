@@ -31,57 +31,21 @@ when we hit a `throw`, we need to `drop` anything that's still in scope
 
 ## Free Variables
 
+selectors and functionnames as values
+- can we wrap them in a lambda?
+- that makes all types `T1->T2` sugar for `{ apply(Self, T1...): T2 }`
+
+using lambdas for default initialisers
+- no wrapping funcbody when we do anf
+
 free variables in lambdas
-- create field initializers?
-  - if it's the last reference to `$0`, we'll get `move`
-  - for if/else, each lambda is "last" or not independently
-- free `refvar` are captured by `ref[T]`, `reflet` are dup'd or moved
-  - this is just "never `load`" when capturing, but load as usual in the body of the lambda
-- type of the lambda:
-  - no captures, or all captures are `const` = `const`, `self: const`
-  - any `lin` captures = `lin`, `self: lin`
-  - 0 `lin`, 1 or more `in`, 0 or more `const` = `lin`, `self: in`
-  - don't know if any `out` captures
+- for if/else, each lambda is "last" or not independently
 
-```ts
-{ p1, p2 -> ... x ... y ... }
-
-class $0
-{
-  let x: $T1
-  let y: $T2
-
-  create(x: $T1, y: $T1): $0 & lin = new (x, y)
-
-  apply(self, p1, p2...): _
-  {
-    // Self.$T1, losing `lin`
-    // if Self <: lin, can change the type of Self here and extract `lin`
-    let x = self.x
-    let y = self.y
-  }
-}
-
-(class
-  (ident $0)
-  (typeparams)
-  (type)
-  (classbody
-    (fieldlet (ident $freevar) (type (typevar $2)) (dontcare))
-    (function (ident create) (typeparams)
-      (params (param (ident $freevar) (type (typevar $2)) (dontcare)))
-      (type (typename typeunit (ident $0) typeargs))
-      (funcbody
-        (call new (args (ident $freevar)))))
-    (function (ident apply) (typeparams)
-      (params
-        (param (ident self) (type (typename typeunit (ident Self))) (dontcare))
-         ...)
-      (type (typevar $3))
-      (funcbody
-        (let (ident $freevar) (type (typevar $2))
-          (call (ident $1) (args (ident $1))))))))
-```
+type of the lambda:
+- no captures, or all captures are `const` = `const`, `self: const`
+- any `lin` captures = `lin`, `self: lin`
+- 0 `lin`, 1 or more `in`, 0 or more `const` = `lin`, `self: in`
+- don't know if any `out` captures
 
 ## Destructuring Binds and `lin`
 

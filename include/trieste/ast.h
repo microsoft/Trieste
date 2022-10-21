@@ -207,6 +207,15 @@ namespace trieste
       return children.back();
     }
 
+    void push_front(Node node)
+    {
+      if (!node)
+        return;
+
+      children.insert(children.begin(), node);
+      node->parent_ = this;
+    }
+
     void push_back(Node node)
     {
       if (!node)

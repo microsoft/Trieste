@@ -189,16 +189,30 @@ namespace verona
     // Add RefLet, RefVar, Selector, FunctionName, TypeAssertOp.
     | (RefLet <<= Ident)
     | (RefVar <<= Ident)
+    | (RefFree <<= Ident)
     | (Selector <<= wfIdSym * TypeArgs)
     | (FunctionName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeAssertOp <<= (Op >>= Selector | FunctionName) * Type)
 
     // Remove TypeArgs, Ident, Symbol, DoubleColon.
-    // Add RefVar, RefLet, Selector, FunctionName, TypeAssertOp.
+    // Add RefVar, RefLet, RefFree, Selector, FunctionName, TypeAssertOp.
     | (Expr <<=
         (Expr | ExprSeq | Tuple | Assign | Lambda | Let | Var | Throw | If |
          Else | New | Ref | DontCare | Ellipsis | Dot | wfLiteral | TypeAssert |
-         RefVar | RefLet | Selector | FunctionName | TypeAssertOp)++[1])
+         RefVar | RefLet | RefFree | Selector | FunctionName |
+         TypeAssertOp)++[1])
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline constexpr auto wfPassLambda =
+      wfPassReference
+
+    // Remove RefFree, Lambda.
+    | (Expr <<=
+        (Expr | ExprSeq | Tuple | Assign | Let | Var | Throw | If | Else | New |
+         Ref | DontCare | Ellipsis | Dot | wfLiteral | TypeAssert | RefVar |
+         RefLet | Selector | FunctionName | TypeAssertOp)++[1])
     ;
   // clang-format on
 
@@ -213,9 +227,9 @@ namespace verona
 
     // Remove Dot. Add Call.
     | (Expr <<=
-        (Expr | ExprSeq | Tuple | Assign | Lambda | Let | Var | Throw | If |
-         Else | New | Ref | DontCare | Ellipsis | wfLiteral | TypeAssert |
-         RefVar | RefLet | Selector | FunctionName | TypeAssertOp | Call)++[1])
+        (Expr | ExprSeq | Tuple | Assign | Let | Var | Throw | If | Else | New |
+         Ref | DontCare | Ellipsis | wfLiteral | TypeAssert | RefVar | RefLet |
+         Selector | FunctionName | TypeAssertOp | Call)++[1])
     ;
   // clang-format on
 
@@ -226,12 +240,11 @@ namespace verona
     // Add Conditional.
     | (Conditional <<= Expr * (Lhs >>= Lambda) * (Rhs >>= Conditional | Lambda))
 
-    // Remove DontCare, Ellipsis. Add Conditional, TupleFlatten.
+    // Remove New, DontCare, Ellipsis. Add Conditional, TupleFlatten.
     | (Expr <<=
-        (Expr | ExprSeq | Tuple | Assign | Lambda | Let | Var | Throw | If |
-         Else | New | Ref | wfLiteral | TypeAssert | RefVar | RefLet |
-         Selector | FunctionName | TypeAssertOp | Call | Conditional |
-         TupleFlatten)++[1])
+        (Expr | ExprSeq | Tuple | Assign | Let | Var | Throw | If | Else | Ref |
+         wfLiteral | TypeAssert | RefVar | RefLet | Selector | FunctionName |
+         TypeAssertOp | Call | Conditional | TupleFlatten)++[1])
     ;
   // clang-format on
 
@@ -245,11 +258,11 @@ namespace verona
     | (CallLHS <<=
         (Selector >>= (Selector | FunctionName | TypeAssertOp)) * Args)
 
-    // Remove Expr, Ref, If, Else, New. Add TupleLHS, CallLHS, RefVarLHS.
+    // Remove Expr, Ref, If, Else. Add TupleLHS, CallLHS, RefVarLHS.
     | (Expr <<=
-        ExprSeq | Tuple | Assign | Lambda | Let | Var | Throw | wfLiteral |
-        TypeAssert | RefVar | RefLet | Selector | FunctionName | TypeAssertOp |
-        Call | Conditional | TupleFlatten | TupleLHS | CallLHS | RefVarLHS)
+        ExprSeq | Tuple | Assign | Let | Var | Throw | wfLiteral | TypeAssert |
+        RefVar | RefLet | Selector | FunctionName | TypeAssertOp | Call |
+        Conditional | TupleFlatten | TupleLHS | CallLHS | RefVarLHS)
     ;
   // clang-format on
 
@@ -259,9 +272,9 @@ namespace verona
 
     // Remove Var, RefVar, RefVarLHS.
     | (Expr <<=
-        ExprSeq | Tuple | Assign | Lambda | Let | Throw | wfLiteral |
-        TypeAssert | RefLet | Selector | FunctionName | TypeAssertOp | Call |
-        Conditional | TupleFlatten | TupleLHS | CallLHS)
+        ExprSeq | Tuple | Assign | Let | Throw | wfLiteral | TypeAssert |
+        RefLet | Selector | FunctionName | TypeAssertOp | Call | Conditional |
+        TupleFlatten | TupleLHS | CallLHS)
     ;
   // clang-format on
 
@@ -274,9 +287,9 @@ namespace verona
 
     // Remove Assign, Let, TupleLHS. Add Bind.
     | (Expr <<=
-        ExprSeq | Tuple | Lambda | Throw | wfLiteral | TypeAssert | RefLet |
-        Selector | FunctionName | TypeAssertOp | Call | Conditional |
-        TupleFlatten | CallLHS | Bind)
+        ExprSeq | Tuple | Throw | wfLiteral | TypeAssert | RefLet | Selector |
+        FunctionName | TypeAssertOp | Call | Conditional | TupleFlatten |
+        CallLHS | Bind)
     ;
   // clang-format on
 
@@ -294,7 +307,7 @@ namespace verona
     | (TypeAssert <<= Ident * Type)
     | (Bind <<= Ident * Type *
         (Rhs >>=
-          RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
+          RefLet | Tuple | Call | Conditional | CallLHS | Selector |
           FunctionName | wfLiteral))[Ident]
     ;
   // clang-format on
@@ -319,8 +332,8 @@ namespace verona
         (Rhs >>= Lambda | Conditional))
     | (Bind <<= Ident * Type *
         (Rhs >>=
-          Tuple | Lambda | Call | Conditional | CallLHS | Selector |
-          FunctionName | wfLiteral | Copy | Move))[Ident]
+          Tuple | Call | Conditional | CallLHS | Selector | FunctionName |
+          wfLiteral | Copy | Move))[Ident]
     ;
   // clang-format on
 
@@ -346,7 +359,7 @@ namespace verona
     | (TypeAssert <<= RefLet * Type)
     | (Bind <<= Ident * Type *
         (Rhs >>=
-          RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
+          RefLet | Tuple | Call | Conditional | CallLHS | Selector |
           FunctionName | wfLiteral))
     ;
   // clang-format on

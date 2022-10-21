@@ -16,8 +16,8 @@ namespace trieste
   class PassDef
   {
   public:
-    using PreF = std::function<size_t()>;
-    using PostF = std::function<size_t()>;
+    using PreF = std::function<size_t(Node)>;
+    using PostF = std::function<size_t(Node)>;
 
   private:
     std::map<Token, PreF> pre_;
@@ -94,7 +94,7 @@ namespace trieste
 
       auto pre_f = pre_.find(node->type());
       if (pre_f != pre_.end())
-        changes += pre_f->second();
+        changes += pre_f->second(node);
 
       auto it = node->begin();
 
@@ -172,7 +172,7 @@ namespace trieste
 
       auto post_f = post_.find(node->type());
       if (post_f != post_.end())
-        changes += post_f->second();
+        changes += post_f->second(node);
 
       return changes;
     }
