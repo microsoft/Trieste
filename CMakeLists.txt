@@ -98,5 +98,6 @@ export(PACKAGE trieste)
 ##############################################
 ## Add samples
 if( TRIESTE_BUILD_SAMPLES )
+  enable_testing()
   add_subdirectory(samples/verona)
 endif()
