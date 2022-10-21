@@ -377,6 +377,13 @@ namespace trieste
         loc, [](auto& n) { return n->type() & flag::lookdown; });
     }
 
+    Nodes look(const Location& loc)
+    {
+      // This is used for immediate resolution in the parent scope, ignoring
+      // flag::lookup and flag::lookdown.
+      return get_symbols(loc, [](auto&) { return true; });
+    }
+
     void bind(const Location& loc)
     {
       // Find the enclosing scope and bind the new location to this node in the
@@ -424,15 +431,22 @@ namespace trieste
       return node;
     }
 
-    void replace(Node node1, Node node2)
+    void replace(Node node1, Node node2 = {})
     {
       auto it = std::find(children.begin(), children.end(), node1);
       if (it == children.end())
         throw std::runtime_error("Node not found");
 
-      node1->parent_ = nullptr;
-      node2->parent_ = this;
-      it->swap(node2);
+      if (node2)
+      {
+        node1->parent_ = nullptr;
+        node2->parent_ = this;
+        it->swap(node2);
+      }
+      else
+      {
+        children.erase(it);
+      }
     }
 
     std::string str(size_t level = 0)

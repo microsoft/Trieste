@@ -16,12 +16,12 @@ namespace trieste
   class PassDef
   {
   public:
-    using PreF = std::function<void()>;
+    using PreF = std::function<size_t()>;
     using PostF = std::function<size_t()>;
 
   private:
-    PreF pre_;
-    PostF post_;
+    std::map<Token, PreF> pre_;
+    std::map<Token, PostF> post_;
     dir direction_;
     std::vector<detail::PatternEffect<Node>> rules_;
 
@@ -43,14 +43,14 @@ namespace trieste
       return std::make_shared<PassDef>(*this);
     }
 
-    void pre(PreF f)
+    void pre(const Token& type, PreF f)
     {
-      pre_ = f;
+      pre_[type] = f;
     }
 
-    void post(PostF f)
+    void post(const Token& type, PostF f)
     {
-      post_ = f;
+      post_[type] = f;
     }
 
     template<typename... Ts>
@@ -74,17 +74,11 @@ namespace trieste
       // Because apply runs over child nodes, the top node is never visited.
       do
       {
-        if (pre_)
-          pre_();
-
         changes = apply(node);
 
         auto lifted = lift(node);
         if (!lifted.empty())
           throw std::runtime_error("lifted nodes with no destination");
-
-        if (post_)
-          changes += post_();
 
         changes_sum += changes;
         count++;
@@ -96,8 +90,13 @@ namespace trieste
   private:
     size_t apply(Node node)
     {
-      auto it = node->begin();
       size_t changes = 0;
+
+      auto pre_f = pre_.find(node->type());
+      if (pre_f != pre_.end())
+        changes += pre_f->second();
+
+      auto it = node->begin();
 
       while (it != node->end())
       {
@@ -158,7 +157,11 @@ namespace trieste
           }
         }
 
-        if (!replaced)
+        if (replaced)
+        {
+          it = node->begin();
+        }
+        else
         {
           if (direction_ == dir::topdown)
             changes += apply(*it);
@@ -166,6 +169,10 @@ namespace trieste
           ++it;
         }
       }
+
+      auto post_f = post_.find(node->type());
+      if (post_f != post_.end())
+        changes += post_f->second();
 
       return changes;
     }

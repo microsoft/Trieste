@@ -265,6 +265,7 @@ namespace trieste
               std::cout << ss1.str();
 
             auto [new_ast, count, changes] = pass->run(ast);
+            wf.build_st(new_ast);
             ss2 << new_ast << "------------" << std::endl << std::endl;
 
             if (test_verbose)

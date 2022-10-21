@@ -290,7 +290,7 @@ namespace trieste
 
           if ((binding != Invalid) && (field.name == binding))
           {
-            auto defs = (*child)->lookup();
+            auto defs = node->scope()->look((*child)->location());
             auto find = std::find(defs.begin(), defs.end(), node);
 
             if (find == defs.end())

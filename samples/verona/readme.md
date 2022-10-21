@@ -7,16 +7,86 @@ builtins
 lazy[T]
 list inside TypeParams or TypeArgs along with groups or other lists
 
-`new` to create an instance of the enclosing class
-public/private
 object literals
+public/private
 package schemes
 type assertions are accidentally allowed as types
+
+## Build ST
+
+two `shadowing` defs of the same symbol in the same scope should produce an error
+
+## `ref` Functions
 
 CallLHS
 - separate implementation
 - `fun f()` vs `fun ref f()`
 - if a `ref` function has no non-ref implementation, autogenerate one that calls the `ref` function and does `load` on the result
+
+## Exceptions and Drop
+
+when we hit a `throw`, we need to `drop` anything that's still in scope
+- the issue is dropping variables out of the parent scope of a lambda
+- same thing can happen for any `call`
+
+## Free Variables
+
+free variables in lambdas
+- create field initializers?
+  - if it's the last reference to `$0`, we'll get `move`
+  - for if/else, each lambda is "last" or not independently
+- free `refvar` are captured by `ref[T]`, `reflet` are dup'd or moved
+  - this is just "never `load`" when capturing, but load as usual in the body of the lambda
+- type of the lambda:
+  - no captures, or all captures are `const` = `const`, `self: const`
+  - any `lin` captures = `lin`, `self: lin`
+  - 0 `lin`, 1 or more `in`, 0 or more `const` = `lin`, `self: in`
+  - don't know if any `out` captures
+
+```ts
+{ p1, p2 -> ... x ... y ... }
+
+class $0
+{
+  let x: $T1
+  let y: $T2
+
+  create(x: $T1, y: $T1): $0 & lin = new (x, y)
+
+  apply(self, p1, p2...): _
+  {
+    // Self.$T1, losing `lin`
+    // if Self <: lin, can change the type of Self here and extract `lin`
+    let x = self.x
+    let y = self.y
+  }
+}
+
+(class
+  (ident $0)
+  (typeparams)
+  (type)
+  (classbody
+    (fieldlet (ident $freevar) (type (typevar $2)) (dontcare))
+    (function (ident create) (typeparams)
+      (params (param (ident $freevar) (type (typevar $2)) (dontcare)))
+      (type (typename typeunit (ident $0) typeargs))
+      (funcbody
+        (call new (args (ident $freevar)))))
+    (function (ident apply) (typeparams)
+      (params
+        (param (ident self) (type (typename typeunit (ident Self))) (dontcare))
+         ...)
+      (type (typevar $3))
+      (funcbody
+        (let (ident $freevar) (type (typevar $2))
+          (call (ident $1) (args (ident $1))))))))
+```
+
+## Destructuring Binds and `lin`
+
+if a tuple field is `lin`, it's not `lin` in the destructuring bind
+if the tuple itself is also `lin`, can we make this work?
 
 ## Type Inference
 
@@ -38,8 +108,13 @@ T0 <: T1 => T0.upper += T1, T1.lower += T0
   'lambda1 <: ()->$T1
   'lambda2 <: ()->$T2
   ($T1 | $T2) <: $T0
-`typeassert (reflet $0) $T0`
+`typeassert $0 $T0`
   '$0 <: $T0
+
+typeof (reflet $0) =
+  dup(node->lookup()->at(wf / Bind / Type)) // dup drops `lin`?
+typeof (move $0) =
+  node->lookup()->at(wf / Bind / Type) // no dup
 
 ## Lowering
 
