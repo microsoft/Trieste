@@ -12,6 +12,10 @@ public/private
 package schemes
 type assertions are accidentally allowed as types
 
+## Conditionals
+
+not lambdas?
+
 ## Build ST
 
 two `shadowing` defs of the same symbol in the same scope should produce an error
@@ -51,6 +55,7 @@ type of the lambda:
 
 if a tuple field is `lin`, it's not `lin` in the destructuring bind
 if the tuple itself is also `lin`, can we make this work?
+the same thing happens with lambda captures
 
 ## Type Inference
 

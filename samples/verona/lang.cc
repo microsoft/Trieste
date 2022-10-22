@@ -650,11 +650,6 @@ namespace verona
           << ((T(Expr) << ((T(Selector) / T(FunctionName))[Lhs] * End)) *
               T(Type)[Rhs]) >>
         [](Match& _) { return TypeAssertOp << _[Lhs] << _[Rhs]; },
-
-      // Compact expressions.
-      In(Expr) * T(Expr) << (Any[Expr] * End) >>
-        [](Match& _) { return _(Expr); },
-      T(Expr) << (T(Expr)[Expr] * End) >> [](Match& _) { return _(Expr); },
     };
   }
 
@@ -676,6 +671,9 @@ namespace verona
               << (T(TypeParams)[TypeParams] * T(Params)[Params] *
                   T(FuncBody)[FuncBody]) >>
             [freevars](Match& _) {
+              // Parent scope of the lambda.
+              auto scope = _(Lambda)->scope();
+
               // Create the anonymous type.
               Node class_body = ClassBody;
               auto class_id = _.fresh();
@@ -715,8 +713,11 @@ namespace verona
                   new_args << (Expr << (RefLet << (Ident ^ fv_id)));
 
                   // Add an argument to the create call. This is always a
-                  // RefLet, even if the free variable is a `var`.
-                  create_args << (Expr << (RefLet << (Ident ^ fv_id)));
+                  // RefLet or RefFree, even if the free variable is a `var`.
+                  create_args
+                    << (Expr
+                        << ((scope->look(fv_id).empty() ? RefFree : RefLet)
+                            << (Ident ^ fv_id)));
 
                   // At the start of the lambda body, assign the field to a
                   // local variable with the same name as the free variable.
@@ -743,8 +744,8 @@ namespace verona
               class_body << create_func << apply_func;
 
               freevars->pop_back();
-              return Seq << (Lift << FuncBody << classdef) << create_call
-                         << create_args;
+              return Seq << (Lift << FuncBody << classdef)
+                         << (Expr << create_call << create_args);
             },
         }};
 
@@ -896,6 +897,11 @@ namespace verona
         [](Match& _) {
           return err(_[DontCare], "must use `_` in a partial application");
         },
+
+      // Compact expressions.
+      In(Expr) * T(Expr) << (Any[Expr] * End) >>
+        [](Match& _) { return _(Expr); },
+      T(Expr) << (T(Expr)[Expr] * End) >> [](Match& _) { return _(Expr); },
     };
   }
 
