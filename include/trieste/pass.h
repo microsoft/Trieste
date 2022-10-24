@@ -100,8 +100,8 @@ namespace trieste
 
       while (it != node->end())
       {
-        // Don't examine Error nodes.
-        if ((*it)->type() == Error)
+        // Don't examine Error or Lift nodes.
+        if ((*it)->type().in({Error, Lift}))
         {
           ++it;
           continue;
@@ -197,7 +197,7 @@ namespace trieste
         for (auto& lnode : lifted)
         {
           if (lnode->front()->type() == node->type())
-            it = node->insert(it, lnode->begin() + 1, lnode->end()) + 1;
+            it = node->insert(it, lnode->begin() + 1, lnode->end());
           else
             uplift.push_back(lnode);
         }

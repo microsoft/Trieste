@@ -96,7 +96,6 @@ namespace verona
   inline constexpr auto Assign = TokenDef("assign");
   inline constexpr auto RefVar = TokenDef("refvar");
   inline constexpr auto RefLet = TokenDef("reflet");
-  inline constexpr auto RefFree = TokenDef("reffree");
   inline constexpr auto FunctionName = TokenDef("funcname");
   inline constexpr auto Selector = TokenDef("selector");
   inline constexpr auto Call = TokenDef("call");

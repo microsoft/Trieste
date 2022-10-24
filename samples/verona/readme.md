@@ -14,7 +14,26 @@ type assertions are accidentally allowed as types
 
 ## Conditionals
 
-not lambdas?
+need to do `(call (selector apply typeargs) lambda args)` on both sides
+- anf needs to preserve these groupings
+- the lambda create can't get lifted
+- does wrapping in a FuncBody work?
+  - no, it's messing up move/copy/drop
+  - also messing up lifting anonymous types
+
+another pass, after `drop`, to handle move/copy/drop in conditionals
+
+conditional
+  reflet
+  on-true
+    $0 = ... reflet0*
+    (∀ id . move id ∈ reflet1* ∧ copy id ∈ reflet0*) (copy id -> move id)
+    (∀ id . move id ∈ reflet1* ∧ move id ∉ reflet0*) drop id
+    apply $0 noargs
+  on-false
+    $0 = ... reflet1*
+    (∀ id . move id ∈ reflet0* ∧ move id ∉ reflet1*) drop id
+    apply $0 noargs
 
 ## Build ST
 
@@ -33,7 +52,7 @@ when we hit a `throw`, we need to `drop` anything that's still in scope
 - the issue is dropping variables out of the parent scope of a lambda
 - same thing can happen for any `call`
 
-## Free Variables
+## Lambdas
 
 selectors and functionnames as values
 - can we wrap them in a lambda?
