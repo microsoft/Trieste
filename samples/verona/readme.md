@@ -11,46 +11,42 @@ object literals
 public/private
 package schemes
 type assertions are accidentally allowed as types
+allow assignment to DontCare
 
 ## Conditionals
 
-need to do `(call (selector apply typeargs) lambda args)` on both sides
-- anf needs to preserve these groupings
-- the lambda create can't get lifted
-- does wrapping in a FuncBody work?
-  - no, it's messing up move/copy/drop
-  - also messing up lifting anonymous types
+early exit
+- breaks things, the other branch doesn't join with us
+- need all moves/drops in any continuation
 
-another pass, after `drop`, to handle move/copy/drop in conditionals
-
-conditional
-  reflet
-  on-true
-    $0 = ... reflet0*
-    (∀ id . move id ∈ reflet1* ∧ copy id ∈ reflet0*) (copy id -> move id)
-    (∀ id . move id ∈ reflet1* ∧ move id ∉ reflet0*) drop id
-    apply $0 noargs
-  on-false
-    $0 = ... reflet1*
-    (∀ id . move id ∈ reflet0* ∧ move id ∉ reflet1*) drop id
-    apply $0 noargs
+type test conditionals
 
 ## Build ST
 
 two `shadowing` defs of the same symbol in the same scope should produce an error
 
+## Key Words
+
+get rid of the `package` keyword
+- accept a string as a type, indicating a package
+get rid of capabilities as keywords
+- make them types in `std`?
+- or just handle those `typename` nodes specially in the typechecker?
+get rid of `throw` as a keyword
+- it's a type, like return, break, continue
+add `try`
+
+## Partial Application with DontCare
+
+what does `f _ x` compile to?
+- want `{ $0 -> f $0 x }`, but that's probably not working right
+
 ## `ref` Functions
 
 CallLHS
 - separate implementation
-- `fun f()` vs `fun ref f()`
+- `f()` vs `ref f()`
 - if a `ref` function has no non-ref implementation, autogenerate one that calls the `ref` function and does `load` on the result
-
-## Exceptions and Drop
-
-when we hit a `throw`, we need to `drop` anything that's still in scope
-- the issue is dropping variables out of the parent scope of a lambda
-- same thing can happen for any `call`
 
 ## Lambdas
 

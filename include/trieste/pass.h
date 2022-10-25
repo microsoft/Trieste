@@ -4,10 +4,12 @@
 
 namespace trieste
 {
-  enum class dir
+  namespace dir
   {
-    bottomup,
-    topdown,
+    using flag = uint32_t;
+    constexpr flag bottomup = 1 << 0;
+    constexpr flag topdown = 1 << 1;
+    constexpr flag once = 1 << 2;
   };
 
   class PassDef;
@@ -22,18 +24,18 @@ namespace trieste
   private:
     std::map<Token, PreF> pre_;
     std::map<Token, PostF> post_;
-    dir direction_;
+    dir::flag direction_;
     std::vector<detail::PatternEffect<Node>> rules_;
 
   public:
-    PassDef(dir direction = dir::topdown) : direction_(direction) {}
+    PassDef(dir::flag direction = dir::topdown) : direction_(direction) {}
 
     PassDef(const std::initializer_list<detail::PatternEffect<Node>>& r)
     : direction_(dir::topdown), rules_(r)
     {}
 
     PassDef(
-      dir direction,
+      dir::flag direction,
       const std::initializer_list<detail::PatternEffect<Node>>& r)
     : direction_(direction), rules_(r)
     {}
@@ -82,12 +84,20 @@ namespace trieste
 
         changes_sum += changes;
         count++;
+
+        if (flag(dir::once))
+          break;
       } while (changes > 0);
 
       return {node, count, changes_sum};
     }
 
   private:
+    bool flag(dir::flag f) const
+    {
+      return (direction_ & f) != 0;
+    }
+
     size_t apply(Node node)
     {
       size_t changes = 0;
@@ -107,7 +117,7 @@ namespace trieste
           continue;
         }
 
-        if (direction_ == dir::bottomup)
+        if (flag(dir::bottomup))
           changes += apply(*it);
 
         bool replaced = false;
@@ -157,13 +167,13 @@ namespace trieste
           }
         }
 
-        if (replaced)
+        if (replaced && !flag(dir::once))
         {
           it = node->begin();
         }
         else
         {
-          if (direction_ == dir::topdown)
+          if (flag(dir::topdown))
             changes += apply(*it);
 
           ++it;

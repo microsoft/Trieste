@@ -38,7 +38,7 @@ namespace trieste
 
     constexpr bool operator&(TokenDef::flag f) const
     {
-      return (def->has(f)) != 0;
+      return def->has(f);
     }
 
     constexpr bool operator==(const Token& that) const

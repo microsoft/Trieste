@@ -333,12 +333,12 @@ namespace trieste
         symtab_->clear();
     }
 
-    Nodes lookup()
+    Nodes lookup(Node until = {})
     {
-      return lookup(location_);
+      return lookup(location_, until);
     }
 
-    Nodes lookup(const Location& loc)
+    Nodes lookup(const Location& loc, Node until = {})
     {
       auto st = scope();
       if (!st)
@@ -366,10 +366,13 @@ namespace trieste
         });
       }
 
-      // There are no shadowing definitions. Append any parent lookup results.
-      if (!std::any_of(result.begin(), result.end(), [](auto& n) {
-            return n->type() & flag::shadowing;
-          }))
+      // If we haven't reached the scope limit and there are no shadowing
+      // definitions, append any parent lookup results.
+      if (
+        (st != until) &&
+        !std::any_of(result.begin(), result.end(), [](auto& n) {
+          return n->type() & flag::shadowing;
+        }))
       {
         auto presult = st->lookup(loc);
         result.insert(result.end(), presult.begin(), presult.end());

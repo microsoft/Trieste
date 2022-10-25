@@ -214,7 +214,7 @@ namespace trieste
       return {source, lo, hi - lo};
     }
 
-    Location operator*=(const Location& that)
+    Location& operator*=(const Location& that)
     {
       *this = *this * that;
       return *this;

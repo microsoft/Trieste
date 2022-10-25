@@ -115,18 +115,18 @@ namespace verona
           _.def(Id, Ident ^ apply);
           return Function << _(Id) << (TypeParams << *_[TypeParams])
                           << (Params << *_[Params]) << typevar(_, Type)
-                          << (FuncBody << (Expr << (Default << _[Rhs])));
+                          << (Block << (Expr << (Default << _[Rhs])));
         },
 
       // Function: (group name square parens type brace)
       In(ClassBody) * T(Group)
           << (~Name[Id] * ~T(Square)[TypeParams] * T(Paren)[Params] *
-              ~T(Type)[Type] * ~T(Brace)[FuncBody] * (Any++)[Rhs]) >>
+              ~T(Type)[Type] * ~T(Brace)[Block] * (Any++)[Rhs]) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
           return Seq << (Function << _(Id) << (TypeParams << *_[TypeParams])
                                   << (Params << *_[Params]) << typevar(_, Type)
-                                  << (FuncBody << *_[FuncBody]))
+                                  << (Block << *_[Block]))
                      << (Group << _[Rhs]);
         },
 
@@ -171,8 +171,7 @@ namespace verona
         [](Match& _) { return err(_[Param], "expected a parameter"); },
 
       // Use.
-      (In(ClassBody) / In(FuncBody)) * T(Group)
-          << T(Use)[Use] * (Any++)[Type] >>
+      (In(ClassBody) / In(Block)) * T(Group) << T(Use)[Use] * (Any++)[Type] >>
         [](Match& _) {
           return (Use ^ _(Use)) << (Type << (_[Type] | DontCare));
         },
@@ -181,7 +180,7 @@ namespace verona
         [](Match& _) { return err(_[Use], "can't put a `use` here"); },
 
       // TypeAlias: (group typealias ident typeparams type)
-      (In(ClassBody) / In(FuncBody)) * T(Group)
+      (In(ClassBody) / In(Block)) * T(Group)
           << (T(TypeAlias) * T(Ident)[Id] * ~T(Square)[TypeParams] *
               ~T(Type)[Type] * End) >>
         [](Match& _) {
@@ -190,7 +189,7 @@ namespace verona
         },
 
       // TypeAlias: (equals (group typealias typeparams type) group)
-      (In(ClassBody) / In(FuncBody)) * T(Equals)
+      (In(ClassBody) / In(Block)) * T(Equals)
           << ((T(Group)
                << (T(TypeAlias) * T(Ident)[Id] * ~T(Square)[TypeParams] *
                    ~T(Type)[Type] * End)) *
@@ -200,7 +199,7 @@ namespace verona
                            << typevar(_, Type) << (Type << (Default << _[Rhs]));
         },
 
-      (In(ClassBody) / In(FuncBody)) * T(TypeAlias)[TypeAlias] << End >>
+      (In(ClassBody) / In(Block)) * T(TypeAlias)[TypeAlias] << End >>
         [](Match& _) {
           return err(_[TypeAlias], "expected a `type` definition");
         },
@@ -210,7 +209,7 @@ namespace verona
         },
 
       // Class. Special case `ref` to allow using it as a class name.
-      (In(Top) / In(ClassBody) / In(FuncBody)) * T(Group)
+      (In(Top) / In(ClassBody) / In(Block)) * T(Group)
           << (T(Class) * (T(Ident)[Id] / T(Ref)) * ~T(Square)[TypeParams] *
               ~T(Type)[Type] * T(Brace)[ClassBody] * (Any++)[Rhs]) >>
         [](Match& _) {
@@ -221,7 +220,7 @@ namespace verona
                      << (Group << _[Rhs]);
         },
 
-      (In(Top) / In(ClassBody) / In(FuncBody)) * T(Class)[Class] << End >>
+      (In(Top) / In(ClassBody) / In(Block)) * T(Class)[Class] << End >>
         [](Match& _) { return err(_[Class], "expected a `class` definition"); },
       T(Class)[Class] << End >>
         [](Match& _) {
@@ -261,19 +260,19 @@ namespace verona
            T(Brace) / T(Ref) / Literal)[Type] >>
         [](Match& _) { return err(_[Type], "can't put this in a type"); },
 
-      // A group can be in a FuncBody, Expr, ExprSeq, Tuple, or Assign.
-      (In(FuncBody) / In(Expr) / In(ExprSeq) / In(Tuple) / In(Assign)) *
+      // A group can be in a Block, Expr, ExprSeq, Tuple, or Assign.
+      (In(Block) / In(Expr) / In(ExprSeq) / In(Tuple) / In(Assign)) *
           T(Group)[Group] >>
         [](Match& _) { return Expr << *_[Group]; },
 
-      // An equals can be in a FuncBody, an ExprSeq, a Tuple, or an Expr.
-      (In(FuncBody) / In(ExprSeq) / In(Tuple)) * T(Equals)[Equals] >>
+      // An equals can be in a Block, ExprSeq, Tuple, or Expr.
+      (In(Block) / In(ExprSeq) / In(Tuple)) * T(Equals)[Equals] >>
         [](Match& _) { return Expr << (Assign << *_[Equals]); },
       In(Expr) * T(Equals)[Equals] >>
         [](Match& _) { return Assign << *_[Equals]; },
 
-      // A list can be in a FuncBody, an ExprSeq, or an Expr.
-      (In(FuncBody) / In(ExprSeq)) * T(List)[List] >>
+      // A list can be in a Block, ExprSeq, or Expr.
+      (In(Block) / In(ExprSeq)) * T(List)[List] >>
         [](Match& _) { return Expr << (Tuple << *_[List]); },
       In(Expr) * T(List)[List] >> [](Match& _) { return Tuple << *_[List]; },
 
@@ -299,13 +298,55 @@ namespace verona
       In(TypeArgs) * T(Paren)[Type] >>
         [](Match& _) { return Type << *_[Type]; },
 
+      // Conditionals are right-associative.
+      In(Expr) * T(If) * (!T(Brace))++[Expr] * T(Brace)[Lhs] *
+          (T(Else) * T(If) * (!T(Brace))++ * T(Brace))++[Op] *
+          ~(T(Else) * T(Brace)[Rhs]) >>
+        [](Match& _) {
+          // Pack all of the branches into a single conditional and unpack them
+          // in the follow-on rules.
+          return Conditional << (Expr << _[Expr]) << (Block << *_[Lhs])
+                             << (Block << (Conditional << _[Op] << _[Rhs]));
+        },
+
+      T(Conditional)
+          << ((T(Else) * T(If) * (!T(Brace))++[Expr] * T(Brace)[Lhs]) *
+              Any++[Rhs]) >>
+        [](Match& _) {
+          // Turn an `else if ...` into a `else { if ... }`.
+          return Expr
+            << (Conditional << (Expr << _[Expr]) << (Block << *_[Lhs])
+                            << (Block << (Conditional << _[Rhs])));
+        },
+
+      T(Conditional) << (~T(Brace)[Rhs] * End) >>
+        [](Match& _) {
+          // Handle a trailing `else`, inserting an empty tuple if needed.
+          if (_(Rhs))
+            return Seq << *_[Rhs];
+
+          return Expr << Tuple;
+        },
+
+      T(If) >>
+        [](Match& _) {
+          return err(_[If], "`if` must be followed by a condition and braces");
+        },
+
+      T(Else) >>
+        [](Match& _) {
+          return err(
+            _[Else],
+            "`else` must follow an `if` and be followed by an `if` or braces");
+        },
+
       // Lambda: (group typeparams) (list params...) -> Rhs
       In(Expr) * T(Brace)
           << (((T(Group) << T(Square)[TypeParams]) * T(List)[Params]) *
               (T(Group) << T(Arrow)) * (Any++)[Rhs]) >>
         [](Match& _) {
           return Lambda << (TypeParams << *_[TypeParams])
-                        << (Params << *_[Params]) << (FuncBody << _[Rhs]);
+                        << (Params << *_[Params]) << (Block << _[Rhs]);
         },
 
       // Lambda: (group typeparams) (group param) -> Rhs
@@ -314,7 +355,7 @@ namespace verona
               (T(Group) << T(Arrow)) * (Any++)[Rhs]) >>
         [](Match& _) {
           return Lambda << (TypeParams << *_[TypeParams])
-                        << (Params << _[Param]) << (FuncBody << _[Rhs]);
+                        << (Params << _[Param]) << (Block << _[Rhs]);
         },
 
       // Lambda: (list (group typeparams? param) params...) -> Rhs
@@ -326,7 +367,7 @@ namespace verona
         [](Match& _) {
           return Lambda << (TypeParams << *_[TypeParams])
                         << (Params << (Group << _[Param]) << _[Params])
-                        << (FuncBody << _[Rhs]);
+                        << (Block << _[Rhs]);
         },
 
       // Lambda: (group typeparams? param) -> Rhs
@@ -336,13 +377,13 @@ namespace verona
         [](Match& _) {
           return Lambda << (TypeParams << *_[TypeParams])
                         << (Params << (Group << _[Param]) << _[Params])
-                        << (FuncBody << _[Rhs]);
+                        << (Block << _[Rhs]);
         },
 
       // Zero argument lambda.
       In(Expr) * T(Brace) << (!(T(Group) << T(Arrow)))++[Lambda] >>
         [](Match& _) {
-          return Lambda << TypeParams << Params << (FuncBody << _[Lambda]);
+          return Lambda << TypeParams << Params << (Block << _[Lambda]);
         },
 
       // Var.
@@ -377,9 +418,9 @@ namespace verona
       In(Expr) * T(Ref) * T(Expr)[Expr] * End >>
         [](Match& _) { return Expr << Ref << *_[Expr]; },
 
-      // Lift Use, Class, TypeAlias to FuncBody.
+      // Lift Use, Class, TypeAlias to Block.
       In(Expr) * (T(Use) / T(Class) / T(TypeAlias))[Lift] >>
-        [](Match& _) { return Lift << FuncBody << _[Lift]; },
+        [](Match& _) { return Lift << Block << _[Lift]; },
 
       // A Type at the end of an Expr is a TypeAssert. A tuple is never directly
       // wrapped in a TypeAssert, but an Expr containing a Tuple can be.
@@ -655,6 +696,11 @@ namespace verona
     return args;
   }
 
+  auto call(Node op, Node lhs = {}, Node rhs = {})
+  {
+    return Call << op << arg(arg(Args, lhs), rhs);
+  }
+
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
     T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) / T(Assign) / T(Expr) /
     T(ExprSeq);
@@ -662,11 +708,6 @@ namespace verona
   inline const auto Operator =
     T(New) / T(FunctionName) / T(Selector) / T(TypeAssertOp);
   inline const auto Apply = (Selector << (Ident ^ apply) << TypeArgs);
-
-  auto call(Node op, Node lhs = {}, Node rhs = {})
-  {
-    return Call << op << arg(arg(Args, lhs), rhs);
-  }
 
   PassDef reverseapp()
   {
@@ -685,57 +726,11 @@ namespace verona
     };
   }
 
-  auto lazy(Node n = {})
-  {
-    Node body = FuncBody;
-
-    if (n)
-      body << (Expr << n);
-
-    return Lambda << TypeParams << Params << body;
-  }
-
-  auto make_cond(Node cond, Node lhs, NodeRange op = {}, NodeRange rhs = {})
-  {
-    return Conditional << (Expr << cond)
-                       << (FuncBody << (Expr << call(clone(Apply), lhs)))
-                       << (FuncBody << (Expr << (Conditional << op << rhs)));
-  }
-
   PassDef application()
   {
     // These rules allow expressions such as `-3 * -4` or `not a and not b` to
     // have the expected meaning.
     return {
-      // Conditionals.
-      In(Expr) * T(If) * Object[Expr] * T(Lambda)[Lhs] *
-          (T(Else) * T(If) * Object * T(Lambda))++[Op] *
-          ~(T(Else) * T(Lambda)[Rhs]) >>
-        [](Match& _) {
-          // Pack all of the branches into a single conditional and unpack them
-          // in the follow-on rules.
-          return make_cond(_(Expr), _(Lhs), _[Op], _[Rhs]);
-        },
-
-      T(Conditional)
-          << ((T(Else) * T(If) * Object[Expr] * T(Lambda)[Lhs]) * Any++[Rhs]) >>
-        [](Match& _) {
-          // Turn an `else if ...` into a `else { if ... }`.
-          return call(clone(Apply), lazy(make_cond(_(Expr), _(Lhs), _[Rhs])));
-        },
-
-      T(Conditional) << (T(Lambda)[Op] * End) >>
-        [](Match& _) {
-          // Handle a trailing `else`.
-          return call(clone(Apply), _(Op));
-        },
-
-      T(Conditional) << End >>
-        [](Match&) {
-          // Handle a missing trailing `else`.
-          return call(clone(Apply), lazy());
-        },
-
       // Adjacency: application.
       In(Expr) * Object[Lhs] * Object[Rhs] >>
         [](Match& _) { return call(clone(Apply), _(Lhs), _(Rhs)); },
@@ -766,9 +761,8 @@ namespace verona
         [](Match& _) {
           Node params = Params;
           Node args = Args;
-          auto lambda = Lambda
-            << TypeParams << params
-            << (FuncBody << (Expr << (Call << _(Op) << args)));
+          auto lambda = Lambda << TypeParams << params
+                               << (Block << (Expr << (Call << _(Op) << args)));
 
           for (auto& arg : *_(Args))
           {
@@ -844,18 +838,6 @@ namespace verona
       on_lhs(T(Expr) << (T(TypeAssert) << (T(RefVar)[Lhs] * T(Type)[Type]))) >>
         [](Match& _) {
           return Expr << (TypeAssert << (RefVarLHS << *_[Lhs]) << _(Type));
-        },
-
-      T(If) >>
-        [](Match& _) {
-          return err(_[If], "if must be followed by a condition and a lambda");
-        },
-
-      T(Else) >>
-        [](Match& _) {
-          return err(
-            _[Else],
-            "else must be preceded by an if and followed by an if or a lambda");
         },
 
       T(Ref) >>
@@ -990,26 +972,23 @@ namespace verona
       {dir::bottomup,
        {
          T(RefLet) << T(Ident)[Id] >> ([freevars](Match& _) -> Node {
-           // Accumulate all the free variables.
            if (!freevars->empty())
            {
+             // If we don't have a definition within the scope of the lambda,
+             // then it's a free variable.
              auto id = _(Id);
-             auto defs = id->scope()->look(id->location());
 
-             if (!(defs.size() == 1) || !defs.front()->type().in({Bind, Param}))
+             if (id->lookup(id->parent(Lambda)).empty())
                freevars->back().insert(id->location());
            }
 
            return NoChange;
          }),
 
-         T(Lambda)[Lambda]
+         T(Lambda)
              << (T(TypeParams)[TypeParams] * T(Params)[Params] *
-                 T(FuncBody)[FuncBody]) >>
+                 T(Block)[Block]) >>
            [freevars](Match& _) {
-             // Parent scope of the lambda.
-             auto scope = _(Lambda)->scope();
-
              // Create the anonymous type.
              Node class_body = ClassBody;
              auto class_id = _.fresh();
@@ -1022,7 +1001,7 @@ namespace verona
              auto create_func = Function
                << (Ident ^ create) << TypeParams << create_params
                << (Type << (TypeVar ^ _.fresh()))
-               << (FuncBody << (Expr << (Call << New << new_args)));
+               << (Block << (Expr << (Call << New << new_args)));
 
              // The create call will instantiate the anonymous type.
              Node create_args = Args;
@@ -1032,7 +1011,7 @@ namespace verona
                    << (Ident ^ create) << TypeArgs)
                << create_args;
 
-             Node apply_body = FuncBody;
+             Node apply_body = Block;
              auto& fv = freevars->back();
 
              std::for_each(
@@ -1076,14 +1055,13 @@ namespace verona
                                     << (Type << (TypeVar ^ _.fresh()))
                                     << DontCare)
                           << *_[Params])
-               << (Type << (TypeVar ^ _.fresh()))
-               << (apply_body << *_[FuncBody]);
+               << (Type << (TypeVar ^ _.fresh())) << (apply_body << *_[Block]);
 
              // Add the create and apply functions to the anonymous type.
              class_body << create_func << apply_func;
 
              freevars->pop_back();
-             return Seq << (Lift << FuncBody << classdef) << create_call;
+             return Seq << (Lift << Block << classdef) << create_call;
            },
        }};
 
@@ -1114,7 +1092,7 @@ namespace verona
 
       // Lift `let x` bindings, leaving the RefLet behind.
       T(Expr) << T(Bind)[Bind] >>
-        [](Match& _) { return Lift << FuncBody << _(Bind); },
+        [](Match& _) { return Lift << Block << _(Bind); },
 
       // Lift RefLet by one step everywhere.
       T(Expr) << T(RefLet)[RefLet] >> [](Match& _) { return _(RefLet); },
@@ -1126,7 +1104,7 @@ namespace verona
                << (Liftable[Lift] * T(Type)[Type]))) >>
         [](Match& _) {
           auto id = _.fresh();
-          return Seq << (Lift << FuncBody
+          return Seq << (Lift << Block
                               << (Bind << (Ident ^ id) << typevar(_, Type)
                                        << _(Lift)))
                      << (RefLet << (Ident ^ id));
@@ -1154,36 +1132,63 @@ namespace verona
     };
   }
 
+  PassDef refparams()
+  {
+    return {
+      dir::topdown | dir::once,
+      {
+        T(Function)
+            << (Name[Id] * T(TypeParams)[TypeParams] * T(Params)[Params] *
+                T(Type)[Type] * T(Block)[Block]) >>
+          [](Match& _) {
+            // Reference every parameter at the beginning of the function. This
+            // ensures that otherwise unused parameters are correctly dropped.
+            Node block = Block;
+            for (auto& p : *_(Params))
+            {
+              block
+                << (RefLet << (Ident ^ p->at(wf / Param / Ident)->location()));
+            }
+
+            return Function << _(Id) << _(TypeParams) << _(Params) << _(Type)
+                            << (block << *_[Block]);
+          },
+      }};
+  }
+
   PassDef drop()
   {
     auto drop_map = std::make_shared<std::vector<std::map<Location, Nodes>>>();
 
     PassDef drop = {
-      dir::bottomup,
+      dir::bottomup | dir::once,
       {
         T(RefLet)[RefLet] << T(Ident)[Id] >> ([drop_map](Match& _) -> Node {
           drop_map->back()[_(Id)->location()].push_back(_(RefLet));
           return NoChange;
         }),
 
-        T(FuncBody) >> ([drop_map](Match&) -> Node {
+        T(Function) >> ([drop_map](Match&) -> Node {
           auto& last_map = drop_map->back();
 
           std::for_each(last_map.begin(), last_map.end(), [](auto& p) {
             auto& refs = p.second;
             std::for_each(refs.begin(), refs.end(), [&refs](auto& ref) {
+              auto id = ref->front();
               auto parent = ref->parent();
+              bool immediate = parent->type() == Block;
               bool last = ref == refs.back();
 
-              if (
-                last && (parent->type() == FuncBody) && (parent->back() == ref))
-                parent->replace(ref, Move << ref->front());
-              else if (parent->type() == FuncBody)
+              if (immediate && last && (parent->back() == ref))
+                parent->replace(ref, Move << id);
+              else if (immediate && last)
+                parent->replace(ref, Drop << id);
+              else if (immediate)
                 parent->replace(ref);
               else if (last)
-                parent->replace(ref, Move << ref->front());
+                parent->replace(ref, Move << id);
               else
-                parent->replace(ref, Copy << ref->front());
+                parent->replace(ref, Copy << id);
             });
           });
 
@@ -1192,12 +1197,95 @@ namespace verona
         }),
       }};
 
-    drop.pre(FuncBody, [drop_map](Node) {
+    drop.pre(Function, [drop_map](Node) {
       drop_map->push_back({});
       return 0;
     });
 
     return drop;
+  }
+
+  PassDef conddrop()
+  {
+    auto conddrop_map =
+      std::make_shared<std::vector<std::vector<std::set<Location>>>>();
+
+    PassDef conddrop = {
+      dir::bottomup | dir::once,
+      {
+        (T(Move) / T(Drop))[Drop] << T(Ident)[Id] >>
+          ([conddrop_map](Match& _) -> Node {
+            if (!conddrop_map->empty() && !conddrop_map->back().empty())
+            {
+              // If we don't have a definition within our block, then track.
+              auto id = _(Id);
+
+              if (id->parent(Block)->look(id->location()).empty())
+                conddrop_map->back().back().insert(_(Id)->location());
+            }
+
+            return NoChange;
+          }),
+
+        T(Conditional) << (Any[If] * T(Block)[Lhs] * T(Block)[Rhs]) >>
+          [conddrop_map](Match& _) {
+            // Drop all moves and drops that appear in other blocks but not in
+            // this one.
+            auto diff = [](auto& a, auto& b) {
+              Node block = Block;
+              std::vector<Location> v;
+              std::set_difference(
+                a.begin(), a.end(), b.begin(), b.end(), std::back_inserter(v));
+
+              for (auto& loc : v)
+                block << (Drop << (Ident ^ loc));
+
+              return block;
+            };
+
+            auto& map = conddrop_map->back();
+            auto& lhs_map = map.at(0);
+            auto& rhs_map = map.at(1);
+            auto lhs = diff(rhs_map, lhs_map);
+            auto rhs = diff(lhs_map, rhs_map);
+
+            if (conddrop_map->size() > 1)
+            {
+              // If we don't have a definition within our parent block, then
+              // track these drops there.
+              auto parent_block = _(If)->parent(Block);
+              auto& parent_map =
+                conddrop_map->at(conddrop_map->size() - 2).back();
+              lhs_map.merge(rhs_map);
+
+              std::copy_if(
+                lhs_map.begin(),
+                lhs_map.end(),
+                std::inserter(parent_map, parent_map.end()),
+                [&parent_block](auto& loc) {
+                  return parent_block->look(loc).empty();
+                });
+            }
+
+            conddrop_map->pop_back();
+            return Conditional << _(If) << (lhs << *_[Lhs]) << (rhs << *_[Rhs]);
+          },
+      }};
+
+    conddrop.pre(Conditional, [conddrop_map](Node) {
+      // Start tracking drops in this conditional.
+      conddrop_map->push_back({});
+      return 0;
+    });
+
+    conddrop.pre(Block, [conddrop_map](Node) {
+      // A function Block is not in a conditional, so we may not be tracking.
+      if (!conddrop_map->empty())
+        conddrop_map->back().push_back({});
+      return 0;
+    });
+
+    return conddrop;
   }
 
   Driver& driver()
@@ -1223,7 +1311,9 @@ namespace verona
         {"assignment", assignment(), wfPassAssignment()},
         {"lambda", lambda(), wfPassLambda()},
         {"anf", anf(), wfPassANF()},
+        {"refparams", refparams(), wfPassANF()},
         {"drop", drop(), wfPassDrop()},
+        {"conddrop", conddrop(), wfPassDrop()},
       });
 
     return d;
