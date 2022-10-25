@@ -37,13 +37,9 @@ get rid of `throw` as a keyword
 add `try`
 
 could allow `->` as a user defined symbol
+- allow as a function name
 - consume only the first `->` in a lambda definition
 - after `typefunc`, convert it to a symbol
-
-## Partial Application with DontCare
-
-what does `f _ x` compile to?
-- want `{ $0 -> f $0 x }`, but that's probably not working right
 
 ## `ref` Functions
 

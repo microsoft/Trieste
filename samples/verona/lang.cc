@@ -773,7 +773,7 @@ namespace verona
 
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
     T(Unit) / T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) / T(Assign) /
-    T(Expr) / T(ExprSeq);
+    T(Expr) / T(ExprSeq) / T(DontCare);
   inline const auto Object = Object0 / (T(TypeAssert) << (Object0 * T(Type)));
   inline const auto Operator =
     T(New) / T(FunctionName) / T(Selector) / T(TypeAssertOp);
@@ -826,7 +826,10 @@ namespace verona
       T(Call)
           << (Operator[Op] *
               (T(Args)
-               << ((T(Expr) << !T(DontCare))++ * (T(Expr) << T(DontCare)) *
+               << ((T(Expr) << !T(DontCare))++ *
+                   (T(Expr)
+                    << (T(DontCare) /
+                        (T(TypeAssert) << (T(DontCare) * T(Type)[Type])))) *
                    T(Expr)++))[Args]) >>
         [](Match& _) {
           Node params = Params;
@@ -839,7 +842,7 @@ namespace verona
             if (arg->front()->type() == DontCare)
             {
               auto id = _.fresh();
-              params << (Param << (Ident ^ id) << typevar(_));
+              params << (Param << (Ident ^ id) << typevar(_, Type));
               args << (Expr << (RefLet << (Ident ^ id)));
             }
             else
