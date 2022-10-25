@@ -36,6 +36,10 @@ get rid of `throw` as a keyword
 - it's a type, like return, break, continue
 add `try`
 
+could allow `->` as a user defined symbol
+- consume only the first `->` in a lambda definition
+- after `typefunc`, convert it to a symbol
+
 ## Partial Application with DontCare
 
 what does `f _ x` compile to?
@@ -51,14 +55,12 @@ CallLHS
 ## Lambdas
 
 selectors and functionnames as values
+- an unbound selector must be a valid functionname
 - can we wrap them in a lambda?
-- that makes all types `T1->T2` sugar for `{ apply(Self, T1...): T2 }`
-
-using lambdas for default initialisers
-- no wrapping funcbody when we do anf
-
-free variables in lambdas
-- for if/else, each lambda is "last" or not independently
+  - `f` ~> `{ $0 -> f $0 }`
+  - gives us a function that takes a single argument
+  - if it has more arguments, this gets us back the partial application
+- makes all types `T1...->T2` sugar for `{ apply(Self, T1...): T2 }`
 
 type of the lambda:
 - no captures, or all captures are `const` = `const`, `self: const`

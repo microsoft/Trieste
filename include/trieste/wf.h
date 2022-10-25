@@ -75,7 +75,8 @@ namespace trieste
               out << "or ";
           }
 
-          out << std::endl << node->location().str() << std::endl;
+          out << std::endl
+              << node->location().str() << node->str() << std::endl;
         }
 
         return ok;
@@ -163,7 +164,7 @@ namespace trieste
         {
           out << node->location().origin_linecol() << "expected at least "
               << minlen << " children, found " << node->size() << std::endl
-              << node->location().str() << std::endl;
+              << node->location().str() << node->str() << std::endl;
           ok = false;
         }
 
@@ -172,7 +173,7 @@ namespace trieste
           out << node->location().origin_linecol() << "can't bind a "
               << node->type().str() << " sequence in the symbol table"
               << std::endl
-              << node->location().str() << std::endl;
+              << node->location().str() << node->str() << std::endl;
           ok = false;
         }
 
@@ -266,7 +267,7 @@ namespace trieste
             // Too few child nodes.
             out << node->location().origin_linecol()
                 << "too few child nodes in " << node->type().str() << std::endl
-                << node->location().str() << std::endl;
+                << node->location().str() << node->str() << std::endl;
             return false;
           }
           else
@@ -280,7 +281,7 @@ namespace trieste
           // Too many child nodes.
           out << (*child)->location().origin_linecol()
               << "too many child nodes in " << node->type().str() << std::endl
-              << (*child)->location().str() << std::endl;
+              << (*child)->location().str() << node->str() << std::endl;
           return false;
         }
         else
@@ -298,7 +299,7 @@ namespace trieste
               out << (*child)->location().origin_linecol()
                   << "missing symbol table binding for " << node->type().str()
                   << std::endl
-                  << (*child)->location().str() << std::endl;
+                  << (*child)->location().str() << node->str() << std::endl;
               ok = false;
             }
           }
@@ -442,8 +443,8 @@ namespace trieste
       {}
 
       template<typename... Ts1, typename... Ts2>
-      CONSTEVAL Wellformed(
-        const Wellformed<Ts1...>& wf1, const Wellformed<Ts2...>& wf2)
+      CONSTEVAL
+      Wellformed(const Wellformed<Ts1...>& wf1, const Wellformed<Ts2...>& wf2)
       : shapes(std::tuple_cat(wf1.shapes, wf2.shapes))
       {}
 
@@ -491,7 +492,7 @@ namespace trieste
           // Too many child nodes.
           out << node->location().origin_linecol() << "too many child nodes in "
               << node->type().str() << std::endl
-              << node->location().str() << std::endl;
+              << node->location().str() << node->str() << std::endl;
           return false;
         }
         else

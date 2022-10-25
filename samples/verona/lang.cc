@@ -76,7 +76,7 @@ namespace verona
                T(Group)++[Rhs])) >>
         [](Match& _) {
           return FieldLet << _(Id) << typevar(_, Type)
-                          << (Expr << (Brace << (Default << _[Rhs])));
+                          << (Block << (Expr << (Default << _[Rhs])));
         },
 
       // (group let ident type)
@@ -94,7 +94,7 @@ namespace verona
                T(Group)++[Rhs])) >>
         [](Match& _) {
           return FieldVar << _(Id) << typevar(_, Type)
-                          << (Expr << (Brace << (Default << _[Rhs])));
+                          << (Block << (Expr << (Default << _[Rhs])));
         },
 
       // (group var ident type)
@@ -164,7 +164,7 @@ namespace verona
               T(Group)++[Expr]) >>
         [](Match& _) {
           return Param << _(Id) << typevar(_, Type)
-                       << (Expr << (Brace << (Default << _[Expr])));
+                       << (Block << (Expr << (Default << _[Expr])));
         },
 
       In(Params) * (!T(Param))[Param] >>
@@ -231,7 +231,7 @@ namespace verona
       // Depending on how many they are, either repack them in an equals or
       // insert them directly into the parent node.
       (T(Default) << End) >> ([](Match&) -> Node { return DontCare; }),
-      (T(Default) << (T(Group)[Rhs]) * End) >>
+      (T(Default) << (T(Group)[Rhs] * End)) >>
         [](Match& _) { return Seq << *_[Rhs]; },
       (T(Default) << (T(Group)++[Rhs]) * End) >>
         [](Match& _) { return Equals << _[Rhs]; },
@@ -257,7 +257,7 @@ namespace verona
 
       TypeStruct *
           (T(Use) / T(Let) / T(Var) / T(Equals) / T(Class) / T(TypeAlias) /
-           T(Brace) / T(Ref) / Literal)[Type] >>
+           T(Ref) / Literal)[Type] >>
         [](Match& _) { return err(_[Type], "can't put this in a type"); },
 
       // A group can be in a Block, Expr, ExprSeq, Tuple, or Assign.
@@ -276,8 +276,16 @@ namespace verona
         [](Match& _) { return Expr << (Tuple << *_[List]); },
       In(Expr) * T(List)[List] >> [](Match& _) { return Tuple << *_[List]; },
 
-      // Empty parens are an empty Tuple.
-      In(Expr) * (T(Paren) << End) >> ([](Match&) -> Node { return Tuple; }),
+      // Empty parens are Unit.
+      In(Expr) * (T(Paren) << End) >> ([](Match&) -> Node { return Unit; }),
+
+      // A tuple of arity 1 is a scalar.
+      In(Expr) * (T(Tuple) << (T(Expr)[Expr] * End)) >>
+        [](Match& _) { return _(Expr); },
+
+      // A tuple of arity 0 is unit. This might happen through rewrites as well
+      // as directly from syntactically empty parens.
+      In(Expr) * (T(Tuple) << End) >> ([](Match&) -> Node { return Unit; }),
 
       // Parens with one element are an Expr. Put the group, list, or equals
       // into the expr, where it will become an expr, tuple, or assign.
@@ -325,7 +333,7 @@ namespace verona
           if (_(Rhs))
             return Seq << *_[Rhs];
 
-          return Expr << Tuple;
+          return Expr << Unit;
         },
 
       T(If) >>
@@ -435,7 +443,7 @@ namespace verona
           return err(_[Expr], "can't put this in an expression");
         },
 
-      // Remove empty groups.
+      // Remove empty and malformed groups.
       T(Group) << End >> ([](Match&) -> Node { return {}; }),
       T(Group)[Group] >> [](Match& _) { return err(_[Group], "syntax error"); },
     };
@@ -495,6 +503,8 @@ namespace verona
         [](Match& _) {
           return TypeFunc << (Type << _[Lhs]) << (Type << _[Rhs]);
         },
+      TypeStruct * T(Arrow)[Arrow] >>
+        [](Match& _) { return err(_[Arrow], "misplaced function type"); },
     };
   }
 
@@ -664,7 +674,7 @@ namespace verona
         [](Match& _) {
           return Expr << (FunctionName << _[Lhs] << (Ident ^ create)
                                        << (_[TypeArgs] | TypeArgs))
-                      << Tuple;
+                      << Unit;
         },
 
       // Lone TypeArgs are typeargs on apply.
@@ -689,7 +699,7 @@ namespace verona
         args->push_back({arg->begin(), arg->end()});
       else if (arg->type() == Expr)
         args << arg;
-      else
+      else if (arg->type() != Unit)
         args << (Expr << arg);
     }
 
@@ -702,8 +712,8 @@ namespace verona
   }
 
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
-    T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) / T(Assign) / T(Expr) /
-    T(ExprSeq);
+    T(Unit) / T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) / T(Assign) /
+    T(Expr) / T(ExprSeq);
   inline const auto Object = Object0 / (T(TypeAssert) << (Object0 * T(Type)));
   inline const auto Operator =
     T(New) / T(FunctionName) / T(Selector) / T(TypeAssertOp);
@@ -716,7 +726,7 @@ namespace verona
       (Object / Operator)[Lhs] * T(Dot) * Operator[Rhs] >>
         [](Match& _) { return call(_(Rhs), _(Lhs)); },
 
-      (Object / Operator)[Lhs] * T(Dot) * (T(Tuple) / Object)[Rhs] >>
+      (Object / Operator)[Lhs] * T(Dot) * Object[Rhs] >>
         [](Match& _) { return call(clone(Apply), _(Rhs), _(Lhs)); },
 
       T(Dot)[Dot] >>
@@ -750,7 +760,7 @@ namespace verona
 
       // Tuple flattening.
       In(Tuple) * T(Expr) << (Object[Lhs] * T(Ellipsis) * End) >>
-        [](Match& _) { return Expr << (TupleFlatten << (Expr << _(Lhs))); },
+        [](Match& _) { return TupleFlatten << (Expr << _(Lhs)); },
 
       // Use DontCare for partial application of arbitrary arguments.
       T(Call)
@@ -845,9 +855,16 @@ namespace verona
           return err(_[Ref], "must use `ref` in front of a variable or call");
         },
 
-      T(Expr)[Expr] << (Any * Any * End) >>
+      T(Expr)[Expr] << (Any * Any * Any++) >>
         [](Match& _) {
           return err(_[Expr], "adjacency on this expression isn't meaningful");
+        },
+
+      In(Expr) * T(Expr)[Expr] >>
+        [](Match& _) {
+          return err(
+            _[Expr],
+            "well-formedness allows this but it can't occur on written code");
         },
     };
   }
@@ -889,10 +906,7 @@ namespace verona
           T(Expr)[Rhs] * End >>
         [](Match& _) {
           return Expr
-            << (ExprSeq << (Expr
-                            << (Bind << (Ident ^ _(Id)) << typevar(_, Type)
-                                     << _(Rhs)))
-                        << (Expr << (RefLet << (Ident ^ _(Id)))));
+            << (Bind << (Ident ^ _(Id)) << typevar(_, Type) << _(Rhs));
         },
 
       // Destructuring assignment.
@@ -906,7 +920,7 @@ namespace verona
           // let $rhs_id = Rhs
           auto rhs_id = _.fresh();
           auto rhs_e = Expr
-            << (Assign << (Expr << (Let << (Ident ^ rhs_id))) << _(Rhs));
+            << (Bind << (Ident ^ rhs_id) << typevar(_) << _(Rhs));
           Node seq = ExprSeq;
 
           Node lhs_tuple = Tuple;
@@ -920,8 +934,7 @@ namespace verona
             auto lhs_id = _.fresh();
             seq
               << (Expr
-                  << (Assign << (Expr << (Let << (Ident ^ lhs_id)))
-                             << lhs_child));
+                  << (Bind << (Ident ^ lhs_id) << typevar(_) << lhs_child));
 
             // Build a LHS tuple that will only be used if there's a TypeAssert.
             if (ty)
@@ -961,6 +974,13 @@ namespace verona
 
       T(Let)[Let] >>
         [](Match& _) { return err(_[Let], "must assign to a `let` binding"); },
+
+      T(TupleLHS)[TupleLHS] >>
+        [](Match& _) {
+          return err(
+            _[TupleLHS],
+            "well-formedness allows this but it can't occur on written code");
+        },
     };
   }
 
@@ -1073,8 +1093,9 @@ namespace verona
     return lambda;
   }
 
-  inline const auto Liftable = T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) /
-    T(Conditional) / T(Selector) / T(FunctionName) / Literal / T(Throw);
+  inline const auto Liftable = T(Unit) / T(Tuple) / T(Lambda) / T(Call) /
+    T(CallLHS) / T(Conditional) / T(Selector) / T(FunctionName) / Literal /
+    T(Throw);
 
   PassDef anf()
   {
@@ -1083,16 +1104,12 @@ namespace verona
       In(Bind) * (T(Expr) << Liftable[Lift]) >>
         [](Match& _) { return _(Lift); },
 
-      In(Bind) * (T(Expr) << T(Bind)[Bind]) >>
+      // Lift `let x` bindings, leaving a RefLet behind.
+      T(Expr) << (T(Bind)[Bind] << (T(Ident)[Id] * T(Type) * T(Expr))) >>
         [](Match& _) {
-          return err(
-            _[Bind],
-            "well-formedness allows this but it can't occur on written code");
+          return Seq << (Lift << Block << _(Bind))
+                     << (RefLet << (Ident ^ _(Id)));
         },
-
-      // Lift `let x` bindings, leaving the RefLet behind.
-      T(Expr) << T(Bind)[Bind] >>
-        [](Match& _) { return Lift << Block << _(Bind); },
 
       // Lift RefLet by one step everywhere.
       T(Expr) << T(RefLet)[RefLet] >> [](Match& _) { return _(RefLet); },
@@ -1101,7 +1118,7 @@ namespace verona
       T(Expr)
           << (Liftable[Lift] /
               ((T(TypeAssert) / T(TypeAssertOp))
-               << (Liftable[Lift] * T(Type)[Type]))) >>
+               << ((Liftable / T(RefLet))[Lift] * T(Type)[Type]))) >>
         [](Match& _) {
           auto id = _.fresh();
           return Seq << (Lift << Block
@@ -1116,19 +1133,6 @@ namespace verona
       // Discard leading RefLets in ExprSeq.
       In(ExprSeq) * (T(RefLet) * Any[Lhs] * Any++[Rhs]) >>
         [](Match& _) { return Seq << _(Lhs) << _[Rhs]; },
-
-      // Tuple flattening.
-      In(Tuple) * (T(Expr) << T(TupleFlatten)[TupleFlatten]) * End >>
-        [](Match& _) { return _(TupleFlatten); },
-      T(TupleFlatten)[TupleFlatten] >>
-        [](Match& _) {
-          return err(_[TupleFlatten], "`...` can only appear in tuples");
-        },
-
-      // Remaining type assertions.
-      T(Expr)
-          << (T(TypeAssert) << ((T(RefLet) << T(Ident)[Id]) * T(Type)[Type])) >>
-        [](Match& _) { return TypeAssert << _(Id) << _(Type); },
     };
   }
 

@@ -94,6 +94,7 @@ namespace verona
   inline constexpr auto Lambda =
     TokenDef("lambda", flag::symtab | flag::defbeforeuse);
   inline constexpr auto Tuple = TokenDef("tuple");
+  inline constexpr auto Unit = TokenDef("unit");
   inline constexpr auto Assign = TokenDef("assign");
   inline constexpr auto RefVar = TokenDef("refvar");
   inline constexpr auto RefLet = TokenDef("reflet");
