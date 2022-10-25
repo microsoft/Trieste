@@ -76,7 +76,7 @@ namespace verona
                T(Group)++[Rhs])) >>
         [](Match& _) {
           return FieldLet << _(Id) << typevar(_, Type)
-                          << (Block << (Expr << (Default << _[Rhs])));
+                          << (Expr << (Brace << (Expr << (Default << _[Rhs]))));
         },
 
       // (group let ident type)
@@ -94,7 +94,7 @@ namespace verona
                T(Group)++[Rhs])) >>
         [](Match& _) {
           return FieldVar << _(Id) << typevar(_, Type)
-                          << (Block << (Expr << (Default << _[Rhs])));
+                          << (Expr << (Brace << (Expr << (Default << _[Rhs]))));
         },
 
       // (group var ident type)
@@ -164,7 +164,7 @@ namespace verona
               T(Group)++[Expr]) >>
         [](Match& _) {
           return Param << _(Id) << typevar(_, Type)
-                       << (Block << (Expr << (Default << _[Expr])));
+                       << (Expr << (Brace << (Expr << (Default << _[Expr]))));
         },
 
       In(Params) * (!T(Param))[Param] >>
@@ -447,6 +447,66 @@ namespace verona
       T(Group) << End >> ([](Match&) -> Node { return {}; }),
       T(Group)[Group] >> [](Match& _) { return err(_[Group], "syntax error"); },
     };
+  }
+
+  PassDef defaultargs()
+  {
+    return {
+      dir::topdown | dir::once,
+      {
+        T(Function)[Function]
+            << (Name[Id] * T(TypeParams)[TypeParams] *
+                (T(Params)
+                 << ((T(Param) << (T(Ident) * T(Type) * T(DontCare)))++[Lhs] *
+                     (T(Param) << (T(Ident) * T(Type) * T(Expr)))++[Rhs])) *
+                T(Type)[Type] * T(Block)[Block]) >>
+          [](Match& _) {
+            Node seq = Seq;
+            auto id = _(Id);
+            auto tp = _(TypeParams);
+            auto ty = _(Type);
+            Node params = Params;
+
+            auto tn = _(Function)->parent()->parent()->at(
+              wf / Class / Ident, wf / TypeTrait / Ident);
+            auto call = Expr << clone(tn) << DoubleColon << clone(id);
+
+            // Strip off the default value for parameters that don't have one.
+            for (auto it = _[Lhs].first; it != _[Lhs].second; ++it)
+            {
+              auto param_id = (*it)->at(wf / Param / Ident);
+              params
+                << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
+              call << clone(param_id);
+            }
+
+            for (auto it = _[Rhs].first; it != _[Rhs].second; ++it)
+            {
+              // Call the arity+1 function with the default argument.
+              auto defarg = (*it)->at(wf / Param / Default);
+              seq
+                << (Function << clone(id) << clone(tp) << clone(params)
+                             << clone(ty)
+                             << (Block << (clone(call) << (defarg << Unit))));
+
+              // Add a parameter.
+              auto param_id = (*it)->at(wf / Param / Ident);
+              params
+                << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
+
+              // Add a call argument.
+              call << clone(param_id);
+            }
+
+            // The original function.
+            return seq << (Function << id << tp << params << ty << _(Block));
+          },
+
+        T(Function)[Function] >>
+          [](Match& _) {
+            return err(_[Function], "default arguments must all be at the end");
+          },
+      }};
   }
 
   inline const auto TypeElem = T(Type) / T(TypeName) / T(TypeTuple) / T(Lin) /
@@ -779,7 +839,7 @@ namespace verona
             if (arg->front()->type() == DontCare)
             {
               auto id = _.fresh();
-              params << (Param << (Ident ^ id) << typevar(_) << DontCare);
+              params << (Param << (Ident ^ id) << typevar(_));
               args << (Expr << (RefLet << (Ident ^ id)));
             }
             else
@@ -1045,8 +1105,8 @@ namespace verona
                  // Add a parameter to the create function to capture the free
                  // variable as a field.
                  create_params
-                   << (Param << (Ident ^ fv_id) << (Type << (TypeVar ^ type_id))
-                             << DontCare);
+                   << (Param << (Ident ^ fv_id)
+                             << (Type << (TypeVar ^ type_id)));
                  new_args << (Expr << (RefLet << (Ident ^ fv_id)));
 
                  // Add an argument to the create call. Don't load the free
@@ -1072,8 +1132,7 @@ namespace verona
              auto apply_func = Function
                << (Ident ^ apply) << _(TypeParams)
                << (Params << (Param << (Ident ^ self)
-                                    << (Type << (TypeVar ^ _.fresh()))
-                                    << DontCare)
+                                    << (Type << (TypeVar ^ _.fresh())))
                           << *_[Params])
                << (Type << (TypeVar ^ _.fresh())) << (apply_body << *_[Block]);
 
@@ -1301,6 +1360,7 @@ namespace verona
       {
         {"modules", modules(), wfPassModules()},
         {"structure", structure(), wfPassStructure()},
+        {"defaultargs", defaultargs(), wfPassDefaultArgs()},
         {"typeview", typeview(), wfPassTypeView()},
         {"typefunc", typefunc(), wfPassTypeFunc()},
         {"typethrow", typethrow(), wfPassTypeThrow()},

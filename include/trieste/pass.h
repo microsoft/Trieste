@@ -120,7 +120,7 @@ namespace trieste
         if (flag(dir::bottomup))
           changes += apply(*it);
 
-        bool replaced = false;
+        ssize_t replaced = -1;
 
         for (auto& rule : rules_)
         {
@@ -142,40 +142,54 @@ namespace trieste
             it = node->erase(start, it);
 
             // If we return nothing, just remove the matched nodes.
-            if (replace)
+            if (!replace)
             {
-              if (replace->type() == Seq)
-              {
-                // Unpack the sequence.
-                std::for_each(replace->begin(), replace->end(), [&](Node n) {
-                  n->set_location(loc);
-                });
+              replaced = 0;
+            }
+            else if (replace->type() == Seq)
+            {
+              // Unpack the sequence.
+              std::for_each(replace->begin(), replace->end(), [&](Node n) {
+                n->set_location(loc);
+              });
 
-                it = node->insert(it, replace->begin(), replace->end());
-              }
-              else
-              {
-                // Replace with a single node.
-                replace->set_location(loc);
-                it = node->insert(it, replace);
-              }
+              replaced = replace->size();
+              it = node->insert(it, replace->begin(), replace->end());
+            }
+            else
+            {
+              // Replace with a single node.
+              replaced = 1;
+              replace->set_location(loc);
+              it = node->insert(it, replace);
             }
 
-            replaced = true;
-            changes++;
+            changes += replaced;
             break;
           }
         }
 
-        if (replaced && !flag(dir::once))
+        if (flag(dir::once))
         {
+          // If we did nothing, move down the tree.
+          if (flag(dir::topdown) && (replaced < 0))
+            changes += apply(*it);
+
+          // Skip over everything we examined or populated.
+          it += std::max(replaced, ssize_t(1));
+        }
+        else if (replaced >= 0)
+        {
+          // If we did something, reexamine from the beginning.
           it = node->begin();
         }
         else
         {
+          // If we did nothing, move down the tree.
           if (flag(dir::topdown))
             changes += apply(*it);
 
+          // Advance to the next node.
           ++it;
         }
       }

@@ -9,7 +9,7 @@ namespace verona
   using namespace wf::ops;
 
   inline constexpr auto wfIdSym = IdSym >>= Ident | Symbol;
-  inline constexpr auto wfDefault = Default >>= Block | DontCare;
+  inline constexpr auto wfDefault = Default >>= Expr | DontCare;
 
   inline constexpr auto wfLiteral =
     Bool | Int | Hex | Bin | Float | HexFloat | Char | Escaped | String;
@@ -93,8 +93,15 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassTypeView =
+  inline constexpr auto wfPassDefaultArgs =
       wfPassStructure
+    | (Param <<= Ident * Type)[Ident]
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline constexpr auto wfPassTypeView =
+      wfPassDefaultArgs
 
     // Add TypeName, TypeView, TypeList.
     | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
@@ -335,10 +342,10 @@ namespace verona
   inline constexpr auto wf =
       (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * (Default >>= Type))
     | (Class <<= Ident * TypeParams * Type * ClassBody)
-    | (FieldLet <<= Ident * Type * Expr)
-    | (FieldVar <<= Ident * Type * Expr)
+    | (FieldLet <<= Ident * Type * Default)
+    | (FieldVar <<= Ident * Type * Default)
     | (Function <<= wfIdSym * TypeParams * Params * (Type >>= wfType) * Block)
-    | (Param <<= Ident * Type * Expr)
+    | (Param <<= Ident * Type * Default)
     | (Type <<= wfType)
     | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))

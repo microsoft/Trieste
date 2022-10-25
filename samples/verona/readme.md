@@ -114,18 +114,19 @@ typeof (move $0) =
 
 `expr...` flattens the tuple produced by `expr`
 - only needed when putting `expr...` in another tuple
+
 `T...` is a tuple of unknown arity (0 or more) where every element is a `T`
 - `T...` in a tuple flattens the type into the tuple
 - `T...` in a function type flattens the type into the function arguments
 
 ```ts
 // multiply a tuple of things by a thing
-mul[n: type {*(n, n): n}, a: n...](x: n, y: a): a
+mul[n: {*(n, n): n}, a: n...](x: n, y: a): a
 {
   match y
   {
-    { () => () }
-    { y, ys => x * y, mul(x, ys)... }
+    { _: () -> () }
+    { y, ys -> x * y, mul(x, ys)... }
   }
 }
 
