@@ -449,66 +449,6 @@ namespace verona
     };
   }
 
-  PassDef defaultargs()
-  {
-    return {
-      dir::topdown | dir::once,
-      {
-        T(Function)[Function]
-            << (Name[Id] * T(TypeParams)[TypeParams] *
-                (T(Params)
-                 << ((T(Param) << (T(Ident) * T(Type) * T(DontCare)))++[Lhs] *
-                     (T(Param) << (T(Ident) * T(Type) * T(Expr)))++[Rhs])) *
-                T(Type)[Type] * T(Block)[Block]) >>
-          [](Match& _) {
-            Node seq = Seq;
-            auto id = _(Id);
-            auto tp = _(TypeParams);
-            auto ty = _(Type);
-            Node params = Params;
-
-            auto tn = _(Function)->parent()->parent()->at(
-              wf / Class / Ident, wf / TypeTrait / Ident);
-            auto call = Expr << clone(tn) << DoubleColon << clone(id);
-
-            // Strip off the default value for parameters that don't have one.
-            for (auto it = _[Lhs].first; it != _[Lhs].second; ++it)
-            {
-              auto param_id = (*it)->at(wf / Param / Ident);
-              params
-                << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
-              call << clone(param_id);
-            }
-
-            for (auto it = _[Rhs].first; it != _[Rhs].second; ++it)
-            {
-              // Call the arity+1 function with the default argument.
-              auto defarg = (*it)->at(wf / Param / Default);
-              seq
-                << (Function << clone(id) << clone(tp) << clone(params)
-                             << clone(ty)
-                             << (Block << (clone(call) << (defarg << Unit))));
-
-              // Add a parameter.
-              auto param_id = (*it)->at(wf / Param / Ident);
-              params
-                << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
-
-              // Add a call argument.
-              call << clone(param_id);
-            }
-
-            // The original function.
-            return seq << (Function << id << tp << params << ty << _(Block));
-          },
-
-        T(Function)[Function] >>
-          [](Match& _) {
-            return err(_[Function], "default arguments must all be at the end");
-          },
-      }};
-  }
-
   inline const auto TypeElem = T(Type) / T(TypeName) / T(TypeTuple) / T(Lin) /
     T(In_) / T(Out) / T(Const) / T(TypeList) / T(TypeView) / T(TypeFunc) /
     T(TypeThrow) / T(TypeIsect) / T(TypeUnion) / T(TypeVar) / T(TypeUnit) /
@@ -1108,8 +1048,8 @@ namespace verona
                  // Add a parameter to the create function to capture the free
                  // variable as a field.
                  create_params
-                   << (Param << (Ident ^ fv_id)
-                             << (Type << (TypeVar ^ type_id)));
+                   << (Param << (Ident ^ fv_id) << (Type << (TypeVar ^ type_id))
+                             << DontCare);
                  new_args << (Expr << (RefLet << (Ident ^ fv_id)));
 
                  // Add an argument to the create call. Don't load the free
@@ -1135,7 +1075,8 @@ namespace verona
              auto apply_func = Function
                << (Ident ^ apply) << _(TypeParams)
                << (Params << (Param << (Ident ^ self)
-                                    << (Type << (TypeVar ^ _.fresh())))
+                                    << (Type << (TypeVar ^ _.fresh()))
+                                    << DontCare)
                           << *_[Params])
                << (Type << (TypeVar ^ _.fresh())) << (apply_body << *_[Block]);
 
@@ -1153,6 +1094,75 @@ namespace verona
     });
 
     return lambda;
+  }
+
+  PassDef defaultargs()
+  {
+    return {
+      dir::bottomup | dir::once,
+      {
+        T(Function)[Function]
+            << (Name[Id] * T(TypeParams)[TypeParams] *
+                (T(Params)
+                 << ((T(Param) << (T(Ident) * T(Type) * T(DontCare)))++[Lhs] *
+                     (T(Param) << (T(Ident) * T(Type) * T(Expr)))++[Rhs])) *
+                T(Type)[Type] * T(Block)[Block]) >>
+          [](Match& _) {
+            Node seq = Seq;
+            auto id = _(Id);
+            auto tp = _(TypeParams);
+            auto ty = _(Type);
+            Node params = Params;
+
+            auto tn = _(Function)->parent()->parent()->at(
+              wf / Class / Ident, wf / TypeTrait / Ident);
+            Node args = Args;
+            auto fwd = Expr
+              << (Call << (FunctionName
+                           << (TypeName << TypeUnit << clone(tn) << TypeArgs)
+                           << clone(id) << TypeArgs)
+                       << args);
+
+            // Strip off the default value for parameters that don't have one.
+            for (auto it = _[Lhs].first; it != _[Lhs].second; ++it)
+            {
+              auto param_id = (*it)->at(wf / Param / Ident);
+              params
+                << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
+              args << (Expr << (RefLet << clone(param_id)));
+            }
+
+            for (auto it = _[Rhs].first; it != _[Rhs].second; ++it)
+            {
+              // Call the arity+1 function with the default argument.
+              args
+                << (Expr << call(
+                      clone(Apply), (*it)->at(wf / Param / Default), Unit));
+              seq
+                << (Function << clone(id) << clone(tp) << clone(params)
+                             << clone(ty) << (Block << clone(fwd)));
+
+              // Remove the default argument from args.
+              args->pop_back();
+
+              // Add a parameter.
+              auto param_id = (*it)->at(wf / Param / Ident);
+              params
+                << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
+
+              // Add an argument.
+              args << (Expr << (RefLet << clone(param_id)));
+            }
+
+            // The original function.
+            return seq << (Function << id << tp << params << ty << _(Block));
+          },
+
+        T(Function)[Function] >>
+          [](Match& _) {
+            return err(_[Function], "default arguments must all be at the end");
+          },
+      }};
   }
 
   inline const auto Liftable = T(Unit) / T(Tuple) / T(Lambda) / T(Call) /
@@ -1363,7 +1373,6 @@ namespace verona
       {
         {"modules", modules(), wfPassModules()},
         {"structure", structure(), wfPassStructure()},
-        {"defaultargs", defaultargs(), wfPassDefaultArgs()},
         {"typeview", typeview(), wfPassTypeView()},
         {"typefunc", typefunc(), wfPassTypeFunc()},
         {"typethrow", typethrow(), wfPassTypeThrow()},
@@ -1377,6 +1386,7 @@ namespace verona
         {"localvar", localvar(), wfPassLocalVar()},
         {"assignment", assignment(), wfPassAssignment()},
         {"lambda", lambda(), wfPassLambda()},
+        {"defaultargs", defaultargs(), wfPassDefaultArgs()},
         {"anf", anf(), wfPassANF()},
         {"refparams", refparams(), wfPassANF()},
         {"drop", drop(), wfPassDrop()},

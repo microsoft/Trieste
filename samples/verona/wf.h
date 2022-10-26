@@ -93,15 +93,8 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassDefaultArgs =
-      wfPassStructure
-    | (Param <<= Ident * Type)[Ident]
-    ;
-  // clang-format on
-
-  // clang-format off
   inline constexpr auto wfPassTypeView =
-      wfPassDefaultArgs
+      wfPassStructure
 
     // Add TypeName, TypeView, TypeList.
     | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
@@ -302,8 +295,15 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassANF =
+  inline constexpr auto wfPassDefaultArgs =
       wfPassLambda
+    | (Param <<= Ident * Type)[Ident]
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline constexpr auto wfPassANF =
+      wfPassDefaultArgs
     | (Block <<= (Use | Class | TypeAlias | Bind | RefLet)++)
     | (Tuple <<= (RefLet | TupleFlatten)++[2])
     | (TupleFlatten <<= RefLet)
