@@ -160,15 +160,21 @@ namespace verona
         [](Match& _) { return Params << *_[Params]; },
 
       // Param: (group ident type)
-      In(Params) * T(Group) << (T(Ident)[Id] * ~T(Type)[Type] * End) >>
-        [](Match& _) { return Param << _(Id) << typevar(_, Type) << DontCare; },
+      In(Params) * T(Group)
+          << ((T(Ident) / T(DontCare))[Id] * ~T(Type)[Type] * End) >>
+        [](Match& _) {
+          auto id = (_(Id)->type() == DontCare) ? (Ident ^ _.fresh()) : _(Id);
+          return Param << id << typevar(_, Type) << DontCare;
+        },
 
       // Param: (equals (group ident type) group)
       In(Params) * T(Equals)
-          << ((T(Group) << (T(Ident)[Id] * ~T(Type)[Type] * End)) *
+          << ((T(Group)
+               << ((T(Ident) / T(DontCare))[Id] * ~T(Type)[Type] * End)) *
               T(Group)++[Expr]) >>
         [](Match& _) {
-          return Param << _(Id) << typevar(_, Type)
+          auto id = (_(Id)->type() == DontCare) ? (Ident ^ _.fresh()) : _(Id);
+          return Param << id << typevar(_, Type)
                        << (Block << (Expr << (Default << _[Expr])));
         },
 
@@ -799,16 +805,17 @@ namespace verona
           return lambda;
         },
 
+      In(Expr) * T(DontCare) >>
+        [](Match& _) {
+          // Remaining DontCare are discarded bindings.
+          return Let << (Ident ^ _.fresh());
+        },
+
       In(Expr) * T(New)[New] >> [](Match& _) { return call(_(New)); },
 
       T(Ellipsis) >>
         [](Match& _) {
           return err(_[Ellipsis], "must use `...` after a value in a tuple");
-        },
-
-      In(Expr) * T(DontCare) >>
-        [](Match& _) {
-          return err(_[DontCare], "must use `_` in a partial application");
         },
 
       // Compact expressions.
@@ -980,13 +987,13 @@ namespace verona
       T(Assign) << ((T(Expr) << Any[Lhs]) * End) >>
         [](Match& _) { return _(Lhs); },
 
-      T(Let)[Let] >>
-        [](Match& _) { return err(_[Let], "must assign to a `let` binding"); },
+      T(Expr)[Expr] << T(Let)[Let] >>
+        [](Match& _) { return err(_[Expr], "must assign to a `let` binding"); },
 
-      T(TupleLHS)[TupleLHS] >>
+      T(Expr)[Expr] << T(TupleLHS)[TupleLHS] >>
         [](Match& _) {
           return err(
-            _[TupleLHS],
+            _[Expr],
             "well-formedness allows this but it can't occur on written code");
         },
     };
