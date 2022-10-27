@@ -191,7 +191,8 @@ namespace verona
     | (RefLet <<= Ident)
     | (RefVar <<= Ident)
     | (Selector <<= wfIdSym * TypeArgs)
-    | (FunctionName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
+    | (FunctionName <<=
+        (TypeName >>= (TypeName | TypeUnit)) * wfIdSym * TypeArgs)
     | (TypeAssertOp <<= (Op >>= Selector | FunctionName) * Type)
 
     // Remove TypeArgs, Ident, Symbol, DoubleColon.
