@@ -1,15 +1,14 @@
 # Todo
 
-- mixins
 - non-local returns
+- mixins
 - lazy[T]
-- list inside TypeParams or TypeArgs along with groups or other lists
 - object literals
+- match
 - public/private
 - package schemes
 - type assertions are accidentally allowed as types
-- allow assignment to DontCare
-- match
+- list inside TypeParams or TypeArgs along with groups or other lists
 
 ## Conditionals
 
