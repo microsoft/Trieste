@@ -9,7 +9,7 @@ namespace verona
   using namespace wf::ops;
 
   inline constexpr auto wfIdSym = IdSym >>= Ident | Symbol;
-  inline constexpr auto wfDefault = Default >>= Expr | DontCare;
+  inline constexpr auto wfDefault = Default >>= Block | DontCare;
 
   inline constexpr auto wfLiteral =
     Bool | Int | Hex | Bin | Float | HexFloat | Char | Escaped | String;
@@ -284,8 +284,16 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassLambda =
+  inline constexpr auto wfPassAutoCreate =
       wfPassAssignment
+    | (FieldLet <<= Ident * Type)[Ident]
+    | (FieldVar <<= Ident * Type)[Ident]
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline constexpr auto wfPassLambda =
+      wfPassAutoCreate
 
     // Remove Lambda.
     | (Expr <<=
@@ -296,7 +304,7 @@ namespace verona
 
   // clang-format off
   inline constexpr auto wfPassDefaultArgs =
-      wfPassLambda
+      wfPassAutoCreate
     | (Param <<= Ident * Type)[Ident]
     ;
   // clang-format on
