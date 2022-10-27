@@ -158,14 +158,24 @@ namespace trieste
       location_ *= loc;
     }
 
-    NodeIt begin()
+    auto begin()
     {
       return children.begin();
     }
 
-    NodeIt end()
+    auto end()
     {
       return children.end();
+    }
+
+    auto rbegin()
+    {
+      return children.rbegin();
+    }
+
+    auto rend()
+    {
+      return children.rend();
     }
 
     bool empty()

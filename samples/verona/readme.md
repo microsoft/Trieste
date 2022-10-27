@@ -1,18 +1,15 @@
 # Todo
 
-builtins
-  typetest
-  match
-
-lazy[T]
-list inside TypeParams or TypeArgs along with groups or other lists
-
-object literals
-public/private
-package schemes
-type assertions are accidentally allowed as types
-allow assignment to DontCare
-default field values
+- mixins
+- non-local returns
+- lazy[T]
+- list inside TypeParams or TypeArgs along with groups or other lists
+- object literals
+- public/private
+- package schemes
+- type assertions are accidentally allowed as types
+- allow assignment to DontCare
+- match
 
 ## Conditionals
 
@@ -71,28 +68,28 @@ the same thing happens with lambda captures
 T0 <: T1 => T0.upper += T1, T1.lower += T0
 
 `bind $0 $T0 (reflet $1)`
-  '$1 <: $T0
+- '$1 <: $T0
 `bind $0 $T0 (tuple (reflet $1) (reflet $2))`
-  ('$1, '$2) <: $T0
-  *tuple flatten?*
+- ('$1, '$2) <: $T0
+- *tuple flatten?*
 `bind $0 $T0 (lambda ...)`
-  'lambda <: $T0
-  *free variables? problem is moving `lin`*
+- 'lambda <: $T0
+- *free variables? problem is moving `lin`*
 `bind $0 $T0 (call (functionname f[$T1]) (args (reflet $1) (reflet $2)))`
-  ('f[$T1] <: '$1->'$2->$T0)
+- ('f[$T1] <: '$1->'$2->$T0)
 `bind $0 $T0 (call (selector f[$T1]) (args (reflet $1) (reflet $2)))`
-  ('f[$T1] <: '$1->'$2->$T0) ∨ ('$1 <: { f[$T1]: '$1->'$2->$T0 })
+- ('f[$T1] <: '$1->'$2->$T0) ∨ ('$1 <: { f[$T1]: '$1->'$2->$T0 })
 `bind $0 $T0 (conditional (reflet $1) lambda1 lambda2)`
-  'lambda1 <: ()->$T1
-  'lambda2 <: ()->$T2
-  ($T1 | $T2) <: $T0
+- 'lambda1 <: ()->$T1
+- 'lambda2 <: ()->$T2
+- ($T1 | $T2) <: $T0
 `typeassert $0 $T0`
-  '$0 <: $T0
+- '$0 <: $T0
 
 typeof (reflet $0) =
-  dup(node->lookup()->at(wf / Bind / Type)) // dup drops `lin`?
+- dup(node->lookup()->at(wf / Bind / Type)) // dup drops `lin`?
 typeof (move $0) =
-  node->lookup()->at(wf / Bind / Type) // no dup
+- node->lookup()->at(wf / Bind / Type) // no dup
 
 ## Lowering
 
@@ -128,15 +125,16 @@ let xs = mul(2, (1, 2, 3)) // xs = (2, 4, 6)
 ## Lookup
 
 lookup in union and intersection types
+
 may need to check typealias bounds during lookup
 - `type foo: T` means a subtype must have a type alias `foo` that's a subtype of `T`.
 
 ## param: values as parameters for pattern matching
 
 named parameters
-  (group ident type)
-  (equals (group ident type) group*)
+- (group ident type)
+- (equals (group ident type) group*)
 pattern match on type
-  (type)
+- (type)
 pattern match on value
-  (expr)
+- (expr)

@@ -12,6 +12,11 @@ namespace verona
     return Error << (ErrorMsg ^ msg) << (ErrorAst << r);
   }
 
+  auto err(Node node, const std::string& msg)
+  {
+    return Error << (ErrorMsg ^ msg) << (ErrorAst << node);
+  }
+
   bool lookup(const NodeRange& n, std::initializer_list<Token> t)
   {
     return lookup_name(*n.first, {}).one(t);
@@ -76,7 +81,7 @@ namespace verona
                T(Group)++[Rhs])) >>
         [](Match& _) {
           return FieldLet << _(Id) << typevar(_, Type)
-                          << (Expr << (Brace << (Expr << (Default << _[Rhs]))));
+                          << (Block << (Expr << (Default << _[Rhs])));
         },
 
       // (group let ident type)
@@ -94,7 +99,7 @@ namespace verona
                T(Group)++[Rhs])) >>
         [](Match& _) {
           return FieldVar << _(Id) << typevar(_, Type)
-                          << (Expr << (Brace << (Expr << (Default << _[Rhs]))));
+                          << (Block << (Expr << (Default << _[Rhs])));
         },
 
       // (group var ident type)
@@ -164,7 +169,7 @@ namespace verona
               T(Group)++[Expr]) >>
         [](Match& _) {
           return Param << _(Id) << typevar(_, Type)
-                       << (Expr << (Brace << (Expr << (Default << _[Expr]))));
+                       << (Block << (Expr << (Default << _[Expr])));
         },
 
       In(Params) * (!T(Param))[Param] >>
@@ -987,6 +992,65 @@ namespace verona
     };
   }
 
+  PassDef autocreate()
+  {
+    return {
+      dir::topdown | dir::once,
+      {
+        In(Class) * T(ClassBody)[ClassBody] >> ([](Match& _) -> Node {
+          // If we already have a create function, do nothing.
+          auto class_body = _(ClassBody);
+
+          if (!class_body->parent()->look(create).empty())
+            return NoChange;
+
+          // Create the create function.
+          Node create_params = Params;
+          Node new_args = Args;
+          auto create_func = Function
+            << (Ident ^ create) << TypeParams << create_params << typevar(_)
+            << (Block << (Expr << (Call << New << new_args)));
+
+          Nodes no_def;
+          Nodes def;
+
+          for (auto& node : *class_body)
+          {
+            if (node->type().in({FieldLet, FieldVar}))
+            {
+              auto id = node->at(wf / FieldLet / Ident, wf / FieldVar / Ident);
+              auto ty = node->at(wf / FieldLet / Type, wf / FieldVar / Type);
+              auto def_arg =
+                node->at(wf / FieldLet / Default, wf / FieldVar / Default);
+
+              // Add each field in order to the call to `new`.
+              new_args << (Expr << (RefLet << clone(id)));
+
+              // Order the parameters to the create function.
+              auto param = Param << clone(id) << clone(ty) << def_arg;
+
+              if (def_arg->type() == DontCare)
+                no_def.push_back(param);
+              else
+                def.push_back(param);
+            }
+          }
+
+          // Add the parameters to the create function, sorting parameters
+          // without a default value first.
+          create_params << no_def << def;
+          return ClassBody << *_[ClassBody] << create_func;
+        }),
+
+        // Strip the default field values.
+        T(FieldLet) << (T(Ident)[Id] * T(Type)[Type] * Any) >>
+          [](Match& _) { return FieldLet << _(Id) << _(Type); },
+
+        T(FieldVar) << (T(Ident)[Id] * T(Type)[Type] * Any) >>
+          [](Match& _) { return FieldVar << _(Id) << _(Type); },
+      }};
+  }
+
   PassDef lambda()
   {
     auto freevars = std::make_shared<std::vector<std::set<Location>>>();
@@ -1105,7 +1169,8 @@ namespace verona
             << (Name[Id] * T(TypeParams)[TypeParams] *
                 (T(Params)
                  << ((T(Param) << (T(Ident) * T(Type) * T(DontCare)))++[Lhs] *
-                     (T(Param) << (T(Ident) * T(Type) * T(Expr)))++[Rhs])) *
+                     (T(Param) << (T(Ident) * T(Type) * T(Block)))++[Rhs] *
+                     End)) *
                 T(Type)[Type] * T(Block)[Block]) >>
           [](Match& _) {
             Node seq = Seq;
@@ -1135,15 +1200,32 @@ namespace verona
             for (auto it = _[Rhs].first; it != _[Rhs].second; ++it)
             {
               // Call the arity+1 function with the default argument.
-              args
-                << (Expr << call(
-                      clone(Apply), (*it)->at(wf / Param / Default), Unit));
+              auto def_block = (*it)->at(wf / Param / Default);
+
+              // Get the last expression in the block.
+              auto def_it = std::find_if(
+                def_block->rbegin(), def_block->rend(), [&](auto& n) {
+                  return n->type() == Expr;
+                });
+
+              if (def_it != def_block->rend())
+              {
+                // Add the default argument to the forwarding call.
+                auto arg = *def_it;
+                def_block->replace(arg);
+                args << arg;
+                def_block << clone(fwd);
+                args->pop_back();
+              }
+              else
+              {
+                def_block = Block
+                  << err(def_block, "default argument is not an expression");
+              }
+
               seq
                 << (Function << clone(id) << clone(tp) << clone(params)
-                             << clone(ty) << (Block << clone(fwd)));
-
-              // Remove the default argument from args.
-              args->pop_back();
+                             << clone(ty) << def_block);
 
               // Add a parameter.
               auto param_id = (*it)->at(wf / Param / Ident);
@@ -1217,8 +1299,9 @@ namespace verona
             << (Name[Id] * T(TypeParams)[TypeParams] * T(Params)[Params] *
                 T(Type)[Type] * T(Block)[Block]) >>
           [](Match& _) {
-            // Reference every parameter at the beginning of the function. This
-            // ensures that otherwise unused parameters are correctly dropped.
+            // Reference every parameter at the beginning of the function.
+            // This ensures that otherwise unused parameters are correctly
+            // dropped.
             Node block = Block;
             for (auto& p : *_(Params))
             {
@@ -1385,6 +1468,7 @@ namespace verona
         {"assignlhs", assignlhs(), wfPassAssignLHS()},
         {"localvar", localvar(), wfPassLocalVar()},
         {"assignment", assignment(), wfPassAssignment()},
+        {"autocreate", autocreate(), wfPassAutoCreate()},
         {"lambda", lambda(), wfPassLambda()},
         {"defaultargs", defaultargs(), wfPassDefaultArgs()},
         {"anf", anf(), wfPassANF()},
