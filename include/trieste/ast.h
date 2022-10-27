@@ -396,7 +396,7 @@ namespace trieste
       return get_symbols(loc, [](auto&) { return true; });
     }
 
-    void bind(const Location& loc)
+    bool bind(const Location& loc)
     {
       // Find the enclosing scope and bind the new location to this node in the
       // symbol table.
@@ -405,7 +405,14 @@ namespace trieste
       if (!st)
         throw std::runtime_error("No symbol table");
 
-      st->symtab_->symbols[loc].push_back(shared_from_this());
+      auto& entry = st->symtab_->symbols[loc];
+      entry.push_back(shared_from_this());
+
+      // If there are multiple definitions, none can be shadowing.
+      return (entry.size() == 1) ||
+        !std::any_of(entry.begin(), entry.end(), [](auto& n) {
+               return n->type() & flag::shadowing;
+             });
     }
 
     void include()

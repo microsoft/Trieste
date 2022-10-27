@@ -12,6 +12,7 @@ public/private
 package schemes
 type assertions are accidentally allowed as types
 allow assignment to DontCare
+default field values
 
 ## Conditionals
 
@@ -53,9 +54,8 @@ CallLHS
 selectors and functionnames as values
 - an unbound selector must be a valid functionname
 - can we wrap them in a lambda?
-  - `f` ~> `{ $0 -> f $0 }`
-  - gives us a function that takes a single argument
-  - if it has more arguments, this gets us back the partial application
+  - `f` ~> `{ $0, $1, $2 -> f($0, $1, $2) }`
+  - need to know the arity of the function
 - makes all types `T1...->T2` sugar for `{ apply(Self, T1...): T2 }`
 
 type of the lambda:
@@ -129,83 +129,11 @@ mul[n: {*(n, n): n}, a: n...](x: n, y: a): a
 let xs = mul(2, (1, 2, 3)) // xs = (2, 4, 6)
 ```
 
-## If...Else
-
-pre (let x (if $1 block1 block2)) post
-->
-  pre:
-    condbr $1 block1 block2
-
-  block1:
-    ...
-    br post
-
-  block2:
-    ...
-    br post
-
-  post:
-    $x = phi [block1 $0, block2 $0]
-    ...
-
-## Try...Catch
-
-if there's no catch then insert one that drops the exception
-if there's no try around a call then insert one that rethrows the exception
-
-pre (let x (try block1 catch block2)) post
-->
-  pre:
-    br block1.1
-
-  block1.1:
-    $0 = call f1 ...
-    // intrinsic for carry flag checking?
-    %ok = intrinsic.carry_flag()
-    condbr $ok block1.2 cleanup1.1
-
-  block1.2:
-    $0 = call f2 ...
-    %ok = intrinsic.carry_flag()
-    condbr $ok post cleanup1.2
-
-  cleanup1.1:
-    // cleanup from failed block1.1
-    ...
-    br block2
-
-  cleanup1.2:
-    ...
-    br block2
-
-  block2:
-    $0 = ...
-    br post
-
-  post:
-    $x = phi [block1.2 $0, cleanup1.2 $0]
-    ...
-
 ## Lookup
 
 lookup in union and intersection types
 may need to check typealias bounds during lookup
 - `type foo: T` means a subtype must have a type alias `foo` that's a subtype of `T`.
-
-## type checker
-
-can probably do global inference
-
-finding selectors
-  don't bother: treat as a `{ selector }` constraint?
-  what about arity?
-    arg count gives minimum arity
-    a selector with higher arity is a subtype of a selector with lower arity
-    given `f(A, B, C): D`, type it as `A->B->C->D` not `(A, B, C)->D`
-
-selecting by reffunc arity
-  select the shortest, not the longest
-  use tuple notation to force a longer arity
 
 ## param: values as parameters for pattern matching
 

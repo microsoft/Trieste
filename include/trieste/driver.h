@@ -146,10 +146,11 @@ namespace trieste
             // Build the AST, set up the symbol table, check well-formedness,
             // and move on to the next pass.
             ast = wf.build_ast(source, pos2 + 1, std::cout);
-            wf.build_st(ast);
+            auto ok = wf.build_st(ast, std::cout);
+            ok = wf.check(ast, std::cout) && ok;
             start_pass++;
 
-            if (!wf.check(ast, std::cout))
+            if (!ok)
               return -1;
           }
           else
@@ -167,9 +168,10 @@ namespace trieste
 
             // Build the AST, set up the symbol table, check well-formedness,
             ast = wfParser.build_ast(source, pos2 + 1, std::cout);
-            wfParser.build_st(ast);
+            auto ok = wfParser.build_st(ast, std::cout);
+            ok = wfParser.check(ast, std::cout) && ok;
 
-            if (!wfParser.check(ast, std::cout))
+            if (!ok)
               return -1;
           }
         }
@@ -177,11 +179,17 @@ namespace trieste
         {
           // Parse the source path.
           ast = parser.parse(path);
+          bool ok = bool(ast);
 
-          if (wfParser)
-            wfParser.build_st(ast);
+          if (ok && wfParser)
+          {
+            ok = wfParser.build_st(ast, std::cout);
 
-          if (wfcheck && wfParser && !wfParser.check(ast, std::cout))
+            if (wfcheck)
+              ok = wfParser.check(ast, std::cout) && ok;
+          }
+
+          if (!ok)
           {
             end_pass = 0;
             ret = -1;
@@ -203,13 +211,17 @@ namespace trieste
           }
 
           if (wf)
-            wf.build_st(ast);
-
-          // Check well-formedness.
-          if (wfcheck && wf && !wf.check(ast, std::cout))
           {
-            end_pass = i;
-            ret = -1;
+            auto ok = wf.build_st(ast, std::cout);
+
+            if (wfcheck)
+              ok = wf.check(ast, std::cout) && ok;
+
+            if (!ok)
+            {
+              end_pass = i;
+              ret = -1;
+            }
           }
         }
 
@@ -282,7 +294,6 @@ namespace trieste
               std::cout << ss1.str();
 
             auto [new_ast, count, changes] = pass->run(ast);
-            wf.build_st(new_ast);
             ss2 << new_ast << "------------" << std::endl << std::endl;
 
             if (test_verbose)
@@ -290,7 +301,10 @@ namespace trieste
 
             std::stringstream ss3;
 
-            if (!wf.check(new_ast, ss3))
+            auto ok = wf.build_st(new_ast, ss3);
+            ok = wf.check(new_ast, ss3) && ok;
+
+            if (!ok)
             {
               if (!test_verbose)
                 std::cout << ss1.str() << ss2.str();
