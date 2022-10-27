@@ -22,10 +22,6 @@ early exit
 
 type test conditionals
 
-## Build ST
-
-two `shadowing` defs of the same symbol in the same scope should produce an error
-
 ## Key Words
 
 get rid of the `package` keyword
