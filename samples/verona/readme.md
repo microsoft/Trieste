@@ -1,5 +1,6 @@
 # Todo
 
+- mixins
 - non-local returns
 - lazy[T]
 - list inside TypeParams or TypeArgs along with groups or other lists
@@ -8,12 +9,7 @@
 - package schemes
 - type assertions are accidentally allowed as types
 - allow assignment to DontCare
-- default field values
 - match
-
-## Def Args
-
-(block (types...) (expr ...))
 
 ## Conditionals
 

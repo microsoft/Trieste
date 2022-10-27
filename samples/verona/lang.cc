@@ -995,15 +995,16 @@ namespace verona
   PassDef autocreate()
   {
     return {
-      dir::bottomup | dir::once,
+      dir::topdown | dir::once,
       {
-        In(Class)[Class] * T(ClassBody)[ClassBody] >> ([](Match& _) -> Node {
+        In(Class) * T(ClassBody)[ClassBody] >> ([](Match& _) -> Node {
           // If we already have a create function, do nothing.
-          if (!_(Class)->look(create).empty())
+          auto class_body = _(ClassBody);
+
+          if (!class_body->parent()->look(create).empty())
             return NoChange;
 
           // Create the create function.
-          auto class_body = _(ClassBody);
           Node create_params = Params;
           Node new_args = Args;
           auto create_func = Function
@@ -1017,14 +1018,18 @@ namespace verona
           {
             if (node->type().in({FieldLet, FieldVar}))
             {
-              // Add each field in order to the call to `new`.
               auto id = node->at(wf / FieldLet / Ident, wf / FieldVar / Ident);
               auto ty = node->at(wf / FieldLet / Type, wf / FieldVar / Type);
-              auto init = node->pop_back();
-              auto param = Param << clone(id) << clone(ty) << init;
+              auto def_arg =
+                node->at(wf / FieldLet / Default, wf / FieldVar / Default);
+
+              // Add each field in order to the call to `new`.
               new_args << (Expr << (RefLet << clone(id)));
 
-              if (init->type() == DontCare)
+              // Order the parameters to the create function.
+              auto param = Param << clone(id) << clone(ty) << def_arg;
+
+              if (def_arg->type() == DontCare)
                 no_def.push_back(param);
               else
                 def.push_back(param);
@@ -1036,6 +1041,13 @@ namespace verona
           create_params << no_def << def;
           return ClassBody << *_[ClassBody] << create_func;
         }),
+
+        // Strip the default field values.
+        T(FieldLet) << (T(Ident)[Id] * T(Type)[Type] * Any) >>
+          [](Match& _) { return FieldLet << _(Id) << _(Type); },
+
+        T(FieldVar) << (T(Ident)[Id] * T(Type)[Type] * Any) >>
+          [](Match& _) { return FieldVar << _(Id) << _(Type); },
       }};
   }
 
@@ -1287,8 +1299,9 @@ namespace verona
             << (Name[Id] * T(TypeParams)[TypeParams] * T(Params)[Params] *
                 T(Type)[Type] * T(Block)[Block]) >>
           [](Match& _) {
-            // Reference every parameter at the beginning of the function. This
-            // ensures that otherwise unused parameters are correctly dropped.
+            // Reference every parameter at the beginning of the function.
+            // This ensures that otherwise unused parameters are correctly
+            // dropped.
             Node block = Block;
             for (auto& p : *_(Params))
             {

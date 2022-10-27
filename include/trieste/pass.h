@@ -171,12 +171,20 @@ namespace trieste
 
         if (flag(dir::once))
         {
-          // If we did nothing, move down the tree.
-          if (flag(dir::topdown) && (replaced < 0))
-            changes += apply(*it);
+          if (flag(dir::topdown) && (replaced != 0))
+          {
+            // Move down the tree.
+            auto to = std::max(replaced, ssize_t(1));
+
+            for (ssize_t i = 0; i < to; ++i)
+              changes += apply(*(it + i));
+          }
 
           // Skip over everything we examined or populated.
-          it += std::max(replaced, ssize_t(1));
+          if (replaced >= 0)
+            it += replaced;
+          else
+            ++it;
         }
         else if (replaced >= 0)
         {
