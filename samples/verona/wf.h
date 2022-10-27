@@ -305,7 +305,7 @@ namespace verona
 
   // clang-format off
   inline constexpr auto wfPassDefaultArgs =
-      wfPassAutoCreate
+      wfPassLambda
     | (Param <<= Ident * Type)[Ident]
     ;
   // clang-format on
