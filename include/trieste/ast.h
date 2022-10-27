@@ -207,6 +207,15 @@ namespace trieste
       return children.back();
     }
 
+    void push_front(Node node)
+    {
+      if (!node)
+        return;
+
+      children.insert(children.begin(), node);
+      node->parent_ = this;
+    }
+
     void push_back(Node node)
     {
       if (!node)
@@ -324,12 +333,12 @@ namespace trieste
         symtab_->clear();
     }
 
-    Nodes lookup()
+    Nodes lookup(Node until = {})
     {
-      return lookup(location_);
+      return lookup(location_, until);
     }
 
-    Nodes lookup(const Location& loc)
+    Nodes lookup(const Location& loc, Node until = {})
     {
       auto st = scope();
       if (!st)
@@ -357,10 +366,13 @@ namespace trieste
         });
       }
 
-      // There are no shadowing definitions. Append any parent lookup results.
-      if (!std::any_of(result.begin(), result.end(), [](auto& n) {
-            return n->type() & flag::shadowing;
-          }))
+      // If we haven't reached the scope limit and there are no shadowing
+      // definitions, append any parent lookup results.
+      if (
+        (st != until) &&
+        !std::any_of(result.begin(), result.end(), [](auto& n) {
+          return n->type() & flag::shadowing;
+        }))
       {
         auto presult = st->lookup(loc);
         result.insert(result.end(), presult.begin(), presult.end());
@@ -375,6 +387,13 @@ namespace trieste
       // table specifically. Don't use includes, as those are for lookup only.
       return get_symbols(
         loc, [](auto& n) { return n->type() & flag::lookdown; });
+    }
+
+    Nodes look(const Location& loc)
+    {
+      // This is used for immediate resolution in the parent scope, ignoring
+      // flag::lookup and flag::lookdown.
+      return get_symbols(loc, [](auto&) { return true; });
     }
 
     void bind(const Location& loc)
@@ -424,15 +443,22 @@ namespace trieste
       return node;
     }
 
-    void replace(Node node1, Node node2)
+    void replace(Node node1, Node node2 = {})
     {
       auto it = std::find(children.begin(), children.end(), node1);
       if (it == children.end())
         throw std::runtime_error("Node not found");
 
-      node1->parent_ = nullptr;
-      node2->parent_ = this;
-      it->swap(node2);
+      if (node2)
+      {
+        node1->parent_ = nullptr;
+        node2->parent_ = this;
+        it->swap(node2);
+      }
+      else
+      {
+        children.erase(it);
+      }
     }
 
     std::string str(size_t level = 0)

@@ -52,14 +52,14 @@ namespace verona
   inline constexpr auto Const = TokenDef("const");
   inline constexpr auto If = TokenDef("if");
   inline constexpr auto Else = TokenDef("else");
+  inline constexpr auto New = TokenDef("new");
 
   // Semantic structure.
-  inline constexpr auto TypeTrait = TokenDef("typetrait", flag::symtab);
+  inline constexpr auto TypeTrait =
+    TokenDef("typetrait", flag::symtab | flag::lookup | flag::shadowing);
   inline constexpr auto ClassBody = TokenDef("classbody");
-  inline constexpr auto FieldLet =
-    TokenDef("fieldlet", flag::symtab | flag::defbeforeuse | flag::lookdown);
-  inline constexpr auto FieldVar =
-    TokenDef("fieldvar", flag::symtab | flag::defbeforeuse | flag::lookdown);
+  inline constexpr auto FieldLet = TokenDef("fieldlet", flag::lookdown);
+  inline constexpr auto FieldVar = TokenDef("fieldvar", flag::lookdown);
   inline constexpr auto Function = TokenDef(
     "function",
     flag::symtab | flag::defbeforeuse | flag::lookup | flag::lookdown);
@@ -67,10 +67,10 @@ namespace verona
   inline constexpr auto TypeParam =
     TokenDef("typeparam", flag::lookup | flag::lookdown | flag::shadowing);
   inline constexpr auto Params = TokenDef("params");
-  inline constexpr auto Param = TokenDef(
-    "param",
-    flag::symtab | flag::defbeforeuse | flag::lookup | flag::shadowing);
-  inline constexpr auto FuncBody = TokenDef("funcbody");
+  inline constexpr auto Param =
+    TokenDef("param", flag::lookup | flag::shadowing);
+  inline constexpr auto Block =
+    TokenDef("block", flag::symtab | flag::defbeforeuse);
 
   // Type structure.
   inline constexpr auto Type = TokenDef("type");
@@ -94,6 +94,7 @@ namespace verona
   inline constexpr auto Lambda =
     TokenDef("lambda", flag::symtab | flag::defbeforeuse);
   inline constexpr auto Tuple = TokenDef("tuple");
+  inline constexpr auto Unit = TokenDef("unit");
   inline constexpr auto Assign = TokenDef("assign");
   inline constexpr auto RefVar = TokenDef("refvar");
   inline constexpr auto RefLet = TokenDef("reflet");
@@ -108,6 +109,7 @@ namespace verona
   inline constexpr auto Conditional = TokenDef("conditional");
   inline constexpr auto Bind = TokenDef("bind", flag::lookup | flag::shadowing);
   inline constexpr auto Move = TokenDef("move");
+  inline constexpr auto Copy = TokenDef("copy");
   inline constexpr auto Drop = TokenDef("drop");
 
   // Indexing names.
@@ -131,6 +133,7 @@ namespace verona
   inline const auto apply = Location("apply");
   inline const auto load = Location("load");
   inline const auto store = Location("store");
+  inline const auto self = Location("self");
 
   Parse parser();
   Driver& driver();

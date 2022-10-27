@@ -9,7 +9,7 @@ namespace verona
   using namespace wf::ops;
 
   inline constexpr auto wfIdSym = IdSym >>= Ident | Symbol;
-  inline constexpr auto wfDefault = Default >>= FuncBody | DontCare;
+  inline constexpr auto wfDefault = Default >>= Expr | DontCare;
 
   inline constexpr auto wfLiteral =
     Bool | Int | Hex | Bin | Float | HexFloat | Char | Escaped | String;
@@ -27,16 +27,16 @@ namespace verona
     | (Group <<=
         (wfLiteral | Brace | Paren | Square | List | Equals | Arrow | Use |
          Class | TypeAlias | Var | Let | Ref | Throw | Lin | In_ | Out | Const |
-         If | Else | DontCare | Ident | Ellipsis | Dot | DoubleColon | Symbol |
-         Colon | Package)++)
+         If | Else | New | DontCare | Ident | Ellipsis | Dot | DoubleColon |
+         Symbol | Colon | Package)++)
     ;
   // clang-format on
 
   // Remove Colon. Add Type.
   inline constexpr auto wfModulesTokens = wfLiteral | Brace | Paren | Square |
     List | Equals | Arrow | Use | Class | TypeAlias | Var | Let | Ref | Throw |
-    Lin | In_ | Out | Const | If | Else | DontCare | Ident | Ellipsis | Dot |
-    DoubleColon | Symbol | Package | Type;
+    Lin | In_ | Out | Const | If | Else | New | DontCare | Ident | Ellipsis |
+    Dot | DoubleColon | Symbol | Package | Type;
 
   // clang-format off
   inline constexpr auto wfPassModules =
@@ -64,30 +64,31 @@ namespace verona
     | (TypeTrait <<= Ident * ClassBody)[Ident]
     | (FieldLet <<= Ident * Type * wfDefault)[Ident]
     | (FieldVar <<= Ident * Type * wfDefault)[Ident]
-    | (Function <<= wfIdSym * TypeParams * Params * Type * FuncBody)[IdSym]
+    | (Function <<= wfIdSym * TypeParams * Params * Type * Block)[IdSym]
     | (TypeParams <<= TypeParam++)
     | (TypeParam <<= Ident * (Bound >>= Type) * Type)[Ident]
     | (Params <<= Param++)
     | (Param <<= Ident * Type * wfDefault)[Ident]
     | (TypeTuple <<= Type++)
-    | (FuncBody <<= (Use | Class | TypeAlias | Expr)++)
+    | (Block <<= (Use | Class | TypeAlias | Expr)++)
     | (ExprSeq <<= Expr++[2])
-    | (Tuple <<= Expr++)
+    | (Tuple <<= Expr++[2])
     | (Assign <<= Expr++[2])
     | (TypeArgs <<= Type++)
-    | (Lambda <<= TypeParams * Params * FuncBody)
+    | (Conditional <<= (If >>= Expr) * Block * Block)
+    | (Lambda <<= TypeParams * Params * Block)
     | (Let <<= Ident)[Ident]
     | (Var <<= Ident)[Ident]
     | (Throw <<= Expr)
     | (TypeAssert <<= Expr * Type)
     | (Type <<=
         (Type | TypeTuple | TypeVar | TypeArgs | Package | Lin | In_ | Out |
-         Const | DontCare | Ellipsis | Ident | Symbol | Dot | Throw |
+         Const | DontCare | Ellipsis | Ident | Symbol | Dot | Arrow | Throw |
          DoubleColon)++)
     | (Expr <<=
-        (Expr | ExprSeq | Tuple | Assign | TypeArgs | Lambda | Let | Var |
-         Throw | If | Else | Ref | DontCare | Ellipsis | Dot | Ident | Symbol |
-         DoubleColon | wfLiteral | TypeAssert)++[1])
+        (Expr | ExprSeq | Unit | Tuple | Assign | TypeArgs | Conditional |
+         Lambda | Let | Var | Throw | New | Ref | DontCare | Ellipsis | Dot |
+         Ident | Symbol | DoubleColon | wfLiteral | TypeAssert)++[1])
     ;
   // clang-format on
 
@@ -100,10 +101,10 @@ namespace verona
     | (TypeView <<= (Lhs >>= Type) * (Rhs >>= Type))
     | (TypeList <<= Type)
 
-    // Remove DontCare, Ident, TypeArgs, DoubleColon, Dot, Ellipsis from Type.
+    // Remove DontCare, Ident, TypeArgs, DoubleColon, Dot, Ellipsis.
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
-         Symbol | Throw | TypeName | TypeView | TypeList)++)
+         Symbol | Arrow | Throw | TypeName | TypeView | TypeList)++)
     ;
   // clang-format on
 
@@ -111,7 +112,7 @@ namespace verona
   inline constexpr auto wfPassTypeFunc =
       wfPassTypeView
 
-    // Add TypeFunc.
+    // Remove Arrow. Add TypeFunc.
     | (TypeFunc <<= (Lhs >>= Type) * (Rhs >>= Type))
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
@@ -123,7 +124,7 @@ namespace verona
   inline constexpr auto wfPassTypeThrow =
       wfPassTypeFunc
 
-    // Add TypeThrow.
+    // Remove Throw. Add TypeThrow.
     | (TypeThrow <<= Type)
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
@@ -139,7 +140,7 @@ namespace verona
     | (TypeUnion <<= Type++[2])
     | (TypeIsect <<= Type++[2])
 
-    // Remove Symbol, add TypeUnion and TypeIsect.
+    // Remove Symbol. Add TypeUnion and TypeIsect.
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
          TypeThrow | TypeName | TypeView | TypeList | TypeFunc | TypeUnion |
@@ -196,9 +197,10 @@ namespace verona
     // Remove TypeArgs, Ident, Symbol, DoubleColon.
     // Add RefVar, RefLet, Selector, FunctionName, TypeAssertOp.
     | (Expr <<=
-        (Expr | ExprSeq | Tuple | Assign | Lambda | Let | Var | Throw | If |
-         Else | Ref | DontCare | Ellipsis | Dot | wfLiteral | TypeAssert |
-         RefVar | RefLet | Selector | FunctionName | TypeAssertOp)++[1])
+        (Expr | ExprSeq | Unit | Tuple | Assign | Conditional | Lambda | Let |
+         Var | Throw | New | Ref | DontCare | Ellipsis | Dot | wfLiteral |
+         TypeAssert | RefVar | RefLet | Selector | FunctionName |
+         TypeAssertOp)++[1])
     ;
   // clang-format on
 
@@ -207,14 +209,16 @@ namespace verona
       wfPassReference
 
     // Add Call, Args.
-    | (Call <<= (Selector >>= (Selector | FunctionName | TypeAssertOp)) * Args)
+    | (Call <<=
+        (Selector >>= (New | Selector | FunctionName | TypeAssertOp)) * Args)
     | (Args <<= Expr++)
 
     // Remove Dot. Add Call.
     | (Expr <<=
-        (Expr | ExprSeq | Tuple | Assign | Lambda | Let | Var | Throw | If |
-         Else | Ref | DontCare | Ellipsis | wfLiteral | TypeAssert | RefVar |
-         RefLet | Selector | FunctionName | TypeAssertOp | Call)++[1])
+        (Expr | ExprSeq | Unit | Tuple | Assign | Conditional | Lambda | Let |
+         Var | Throw | New | Ref | DontCare | Ellipsis | wfLiteral |
+         TypeAssert | RefVar | RefLet | Selector | FunctionName | TypeAssertOp |
+         Call)++[1])
     ;
   // clang-format on
 
@@ -222,14 +226,15 @@ namespace verona
   inline constexpr auto wfPassApplication =
       wfPassReverseApp
 
-    // Add Conditional.
-    | (Conditional <<= Expr * Lambda * Lambda)
+    // Add TupleFlatten
+    | (Tuple <<= (Expr | TupleFlatten)++[2])
+    | (TupleFlatten <<= Expr)
 
-    // Remove DontCare, Ellipsis. Add Conditional, TupleFlatten.
+    // Remove New, DontCare, Ellipsis.
     | (Expr <<=
-        (Expr | ExprSeq | Tuple | Assign | Lambda | Let | Var | Throw | If |
-         Else | Ref | wfLiteral | TypeAssert | RefVar | RefLet | Selector |
-         FunctionName | TypeAssertOp | Call | Conditional | TupleFlatten)++[1])
+        (Expr | ExprSeq | Unit | Tuple | Assign | Conditional | Lambda | Let |
+         Var | Throw | Ref | wfLiteral | TypeAssert | RefVar | RefLet |
+         Selector | FunctionName | TypeAssertOp | Call)++[1])
     ;
   // clang-format on
 
@@ -241,13 +246,13 @@ namespace verona
     | (RefVarLHS <<= Ident)
     | (TupleLHS <<= Expr++[2])
     | (CallLHS <<=
-        (Selector >>= (Selector | FunctionName | TypeAssertOp)) * Args)
+        (Selector >>= (New | Selector | FunctionName | TypeAssertOp)) * Args)
 
-    // Remove Expr, Ref, If, Else. Add TupleLHS, CallLHS, RefVarLHS.
+    // Remove Expr, Ref. Add TupleLHS, CallLHS, RefVarLHS. No longer a sequence.
     | (Expr <<=
-        ExprSeq | Tuple | Assign | Lambda | Let | Var | Throw | wfLiteral |
-        TypeAssert | RefVar | RefLet | Selector | FunctionName | TypeAssertOp |
-        Call | Conditional | TupleFlatten | TupleLHS | CallLHS | RefVarLHS)
+        ExprSeq | Unit | Tuple | Assign | Conditional | Lambda | Let | Var |
+        Throw | wfLiteral | TypeAssert | RefVar | RefLet | Selector |
+        FunctionName | TypeAssertOp | Call | TupleLHS | CallLHS | RefVarLHS)
     ;
   // clang-format on
 
@@ -257,9 +262,9 @@ namespace verona
 
     // Remove Var, RefVar, RefVarLHS.
     | (Expr <<=
-        ExprSeq | Tuple | Assign | Lambda | Let | Throw | wfLiteral |
-        TypeAssert | RefLet | Selector | FunctionName | TypeAssertOp | Call |
-        Conditional | TupleFlatten | TupleLHS | CallLHS)
+        ExprSeq | Unit | Tuple | Assign | Conditional | Lambda | Let | Throw |
+        wfLiteral | TypeAssert | RefLet | Selector | FunctionName |
+        TypeAssertOp | Call | TupleLHS | CallLHS)
     ;
   // clang-format on
 
@@ -272,27 +277,43 @@ namespace verona
 
     // Remove Assign, Let, TupleLHS. Add Bind.
     | (Expr <<=
-        ExprSeq | Tuple | Lambda | Throw | wfLiteral | TypeAssert | RefLet |
-        Selector | FunctionName | TypeAssertOp | Call | Conditional |
-        TupleFlatten | CallLHS | Bind)
+        ExprSeq | Unit | Tuple | Conditional | Lambda | Throw | wfLiteral |
+        TypeAssert | RefLet | Selector | FunctionName | TypeAssertOp | Call |
+        CallLHS | Bind)
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline constexpr auto wfPassLambda =
+      wfPassAssignment
+
+    // Remove Lambda.
+    | (Expr <<=
+        ExprSeq | Unit | Tuple | Conditional | Throw | wfLiteral | TypeAssert |
+        RefLet | Selector | FunctionName | TypeAssertOp | Call | CallLHS | Bind)
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline constexpr auto wfPassDefaultArgs =
+      wfPassLambda
+    | (Param <<= Ident * Type)[Ident]
     ;
   // clang-format on
 
   // clang-format off
   inline constexpr auto wfPassANF =
-      wfPassAssignment
-    | (FuncBody <<=
-        (Use | Class | TypeAlias | TypeAssert | Bind | RefLet | Throw)++)
-    | (Tuple <<= (RefLet | TupleFlatten)++)
+      wfPassDefaultArgs
+    | (Block <<= (Use | Class | TypeAlias | Bind | RefLet)++)
+    | (Tuple <<= (RefLet | TupleFlatten)++[2])
     | (TupleFlatten <<= RefLet)
     | (Throw <<= RefLet)
     | (Args <<= RefLet++)
-    | (Conditional <<= (If >>= RefLet) * Lambda * Lambda)
-    | (TypeAssert <<= Ident * Type)
+    | (Conditional <<= (If >>= RefLet) * Block * Block)
     | (Bind <<= Ident * Type *
         (Rhs >>=
-          RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
-          FunctionName | wfLiteral))[Ident]
+          RefLet | Unit | Tuple | Call | Conditional | Throw | CallLHS |
+          Selector | FunctionName | wfLiteral))[Ident]
     ;
   // clang-format on
 
@@ -300,47 +321,46 @@ namespace verona
   inline constexpr auto wfPassDrop =
       wfPassANF
 
-    // Add Move, Drop.
+    // Add Copy, Move, Drop. Remove RefLet.
+    | (Copy <<= Ident)
     | (Move <<= Ident)
     | (Drop <<= Ident)
-    | (FuncBody <<=
-        (Use | Class | TypeAlias | TypeAssert | Bind | RefLet | Throw | Move |
-         Drop)++)
-    | (Tuple <<= (RefLet | TupleFlatten | Move)++)
-    | (TupleFlatten <<= RefLet | Move)
-    | (Throw <<= RefLet | Move)
-    | (Args <<= (RefLet | Move)++)
-    | (Conditional <<= (If >>= (RefLet | Move)) * Lambda * Lambda)
+    | (Block <<= (Use | Class | TypeAlias | Bind | Move | Drop)++)
+    | (Tuple <<= (TupleFlatten | Copy | Move)++[2])
+    | (TupleFlatten <<= Copy | Move)
+    | (Throw <<= Copy | Move)
+    | (Args <<= (Copy | Move)++)
+    | (Conditional <<= (If >>= Copy | Move) * Block * Block)
     | (Bind <<= Ident * Type *
         (Rhs >>=
-          RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
-          FunctionName | wfLiteral | Move))[Ident]
+          Unit | Tuple | Call | Conditional | Throw | CallLHS | Selector |
+          FunctionName | wfLiteral | Copy | Move))[Ident]
     ;
+  // clang-format on
 
   // clang-format off
   inline constexpr auto wf =
       (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * (Default >>= Type))
     | (Class <<= Ident * TypeParams * Type * ClassBody)
-    | (FieldLet <<= Ident * Type * Expr)
-    | (FieldVar <<= Ident * Type * Expr)
-    | (Function <<= wfIdSym * TypeParams * Params * (Type >>= wfType) * FuncBody)
-    | (Param <<= Ident * Type * Expr)
+    | (FieldLet <<= Ident * Type * Default)
+    | (FieldVar <<= Ident * Type * Default)
+    | (Function <<= wfIdSym * TypeParams * Params * (Type >>= wfType) * Block)
+    | (Param <<= Ident * Type * Default)
     | (Type <<= wfType)
     | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeFunc <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeThrow <<= (Type >>= wfType))
-    | (TypeTrait <<= ClassBody)
+    | (TypeTrait <<= Ident * ClassBody)
     | (Package <<= (Id >>= String | Escaped))
     | (Var <<= Ident * Type)
     | (Let <<= Ident * Type)
     | (Throw <<= Expr)
-    | (Lambda <<= TypeParams * Params * FuncBody)
-    | (TypeAssert <<= RefLet * Type)
+    | (Lambda <<= TypeParams * Params * Block)
     | (Bind <<= Ident * Type *
         (Rhs >>=
-          RefLet | Tuple | Lambda | Call | Conditional | CallLHS | Selector |
-          FunctionName | wfLiteral))
+          Unit | Tuple | Call | Conditional | Throw | CallLHS | Selector |
+          FunctionName | wfLiteral | Copy | Move))
     ;
   // clang-format on
 }

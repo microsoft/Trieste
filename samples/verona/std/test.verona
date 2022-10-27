@@ -1,6 +1,6 @@
 class I32
 {
-
+  +(self, other: I32): I32 = @llvm "add i32 %self %other"
 }
 
 // class ref[T]

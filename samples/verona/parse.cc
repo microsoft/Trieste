@@ -192,6 +192,7 @@ namespace verona
         "const\\b" >> [](auto& m) { m.add(Const); },
         "if\\b" >> [](auto& m) { m.add(If); },
         "else\\b" >> [](auto& m) { m.add(Else); },
+        "new\\b" >> [](auto& m) { m.add(New); },
 
         // Don't care.
         "_(?![_[:alnum:]])" >> [](auto& m) { m.add(DontCare); },

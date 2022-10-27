@@ -7,4 +7,3 @@
 #else
 #  define CONSTEVAL consteval
 #endif
-

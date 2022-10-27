@@ -47,7 +47,7 @@ namespace verona
 
     bool one(const std::initializer_list<Token>& types) const
     {
-      return (defs.size()) == 1 && defs.front().def->type().in(types);
+      return (defs.size() == 1) && defs.front().def->type().in(types);
     }
   };
 

@@ -31,7 +31,11 @@ namespace trieste
       Parse parser,
       wf::WellformedF wfParser,
       std::initializer_list<PassCheck> passes)
-    : language_name(language_name), app(language_name), parser(parser), wfParser(wfParser), passes(passes)
+    : language_name(language_name),
+      app(language_name),
+      parser(parser),
+      wfParser(wfParser),
+      passes(passes)
     {
       limits.push_back(parse_only);
 
@@ -120,6 +124,7 @@ namespace trieste
 
           if (view.compare(0, pos, language_name) == 0)
           {
+            // We're resuming from a specific pass.
             start_pass = pass_index(pass);
             end_pass = std::max(start_pass, end_pass);
 
@@ -138,6 +143,8 @@ namespace trieste
               return -1;
             }
 
+            // Build the AST, set up the symbol table, check well-formedness,
+            // and move on to the next pass.
             ast = wf.build_ast(source, pos2 + 1, std::cout);
             wf.build_st(ast);
             start_pass++;
@@ -147,6 +154,8 @@ namespace trieste
           }
           else
           {
+            // We're expecting an AST from another tool that fullfills our
+            // parser AST well-formedness definition.
             start_pass = 1;
             end_pass = std::max(start_pass, end_pass);
 
@@ -156,6 +165,7 @@ namespace trieste
               return -1;
             }
 
+            // Build the AST, set up the symbol table, check well-formedness,
             ast = wfParser.build_ast(source, pos2 + 1, std::cout);
             wfParser.build_st(ast);
 
@@ -165,6 +175,7 @@ namespace trieste
         }
         else
         {
+          // Parse the source path.
           ast = parser.parse(path);
 
           if (wfParser)
@@ -179,19 +190,22 @@ namespace trieste
 
         for (auto i = start_pass; i <= end_pass; i++)
         {
+          // Run the pass until it reaches a fixed point.
           auto& [pass_name, pass, wf] = passes.at(i - 1);
           auto [new_ast, count, changes] = pass->run(ast);
           ast = new_ast;
 
           if (diag)
           {
-            std::cout << "Pass " << pass_name << ": " << count << " iterations, "
-                      << changes << " nodes rewritten." << std::endl;
+            std::cout << "Pass " << pass_name << ": " << count
+                      << " iterations, " << changes << " nodes rewritten."
+                      << std::endl;
           }
 
           if (wf)
             wf.build_st(ast);
 
+          // Check well-formedness.
           if (wfcheck && wf && !wf.check(ast, std::cout))
           {
             end_pass = i;
@@ -209,7 +223,10 @@ namespace trieste
 
         if (f)
         {
-          f << language_name << std::endl << limits.at(end_pass) << std::endl << ast;
+          // Write the AST to the output file.
+          f << language_name << std::endl
+            << limits.at(end_pass) << std::endl
+            << ast;
         }
         else
         {
@@ -249,15 +266,15 @@ namespace trieste
 
           std::cout << "Testing pass: " << pass_name << std::endl;
 
-          for (size_t seed = test_seed; seed < test_seed + test_seed_count; seed++)
+          for (size_t seed = test_seed; seed < test_seed + test_seed_count;
+               seed++)
           {
             std::stringstream ss1;
             std::stringstream ss2;
 
             auto ast = prev.gen(seed, test_max_depth);
             ss1 << "============" << std::endl
-                << "Pass: " << pass_name << ", seed: " << seed
-                << std::endl
+                << "Pass: " << pass_name << ", seed: " << seed << std::endl
                 << "------------" << std::endl
                 << ast << "------------" << std::endl;
 
@@ -265,6 +282,7 @@ namespace trieste
               std::cout << ss1.str();
 
             auto [new_ast, count, changes] = pass->run(ast);
+            wf.build_st(new_ast);
             ss2 << new_ast << "------------" << std::endl << std::endl;
 
             if (test_verbose)
@@ -278,8 +296,8 @@ namespace trieste
                 std::cout << ss1.str() << ss2.str();
 
               std::cout << ss3.str() << "============" << std::endl
-                        << "Failed pass: " << pass_name
-                        << ", seed: " << seed << std::endl;
+                        << "Failed pass: " << pass_name << ", seed: " << seed
+                        << std::endl;
               ret = -1;
 
               if (test_failfast)
