@@ -317,6 +317,18 @@ namespace verona
       In(TypeArgs) * T(Paren)[Type] >>
         [](Match& _) { return Type << *_[Type]; },
 
+      // Object literal.
+      In(Expr) * T(New) * T(Brace)[ClassBody] >>
+        [](Match& _) {
+          auto class_id = _.fresh();
+          return Seq << (Lift
+                         << Block
+                         << (Class << (Ident ^ class_id) << TypeParams << Type
+                                   << (ClassBody << *_[ClassBody])))
+                     << (Expr << (Ident ^ class_id) << DoubleColon
+                              << (Ident ^ create) << Unit);
+        },
+
       // Conditionals are right-associative.
       In(Expr) * T(If) * (!T(Brace))++[Expr] * T(Brace)[Lhs] *
           (T(Else) * T(If) * (!T(Brace))++ * T(Brace))++[Op] *
