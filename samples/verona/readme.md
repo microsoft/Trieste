@@ -3,7 +3,6 @@
 - non-local returns
 - mixins
 - lazy[T]
-- object literals
 - match
 - public/private
 - package schemes
