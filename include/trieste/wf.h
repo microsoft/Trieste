@@ -189,10 +189,12 @@ namespace trieste
           types.gen(g, depth, node);
       }
 
-      void build_st(Node node) const
+      bool build_st(Node node, std::ostream&) const
       {
         if (binding == Include)
           node->include();
+
+        return true;
       }
 
       Token find_type(const Location& type) const
@@ -328,25 +330,52 @@ namespace trieste
         }
       }
 
-      void build_st(Node node) const
+      bool build_st(Node node, std::ostream& out) const
       {
         if (binding == Include)
           node->include();
         else if (binding != Invalid)
-          build_st_i<0>(node);
+          return build_st_i<0>(node, out);
+
+        return true;
       }
 
       template<size_t I>
-      void build_st_i(Node node) const
+      bool build_st_i(Node node, std::ostream& out) const
       {
         if constexpr (I < sizeof...(Ts))
         {
           auto& field = std::get<I>(fields);
 
           if (binding == field.name)
-            node->bind(node->at(I)->location());
+          {
+            auto name = node->at(I)->location();
+
+            if (!node->bind(name))
+            {
+              auto defs = node->scope()->look(name);
+              out << node->location().origin_linecol()
+                  << "conflicting definitions of `" << name.view()
+                  << "`:" << std::endl;
+
+              for (auto def : defs)
+                out << def->location().str();
+
+              return false;
+            }
+            return true;
+          }
           else
-            build_st_i<I + 1>(node);
+          {
+            return build_st_i<I + 1>(node, out);
+          }
+        }
+        else
+        {
+          out << node->location().origin_linecol() << "no binding found for "
+              << node->type().str() << std::endl
+              << node->location().str() << node->str() << std::endl;
+          return false;
         }
       }
 
@@ -418,7 +447,7 @@ namespace trieste
     {
       std::function<bool(Node, std::ostream&)> check;
       std::function<Node(Gen::Seed, size_t)> gen;
-      std::function<void(Node)> build_st;
+      std::function<bool(Node, std::ostream&)> build_st;
       std::function<Node(Source, size_t, std::ostream&)> build_ast;
 
       operator bool() const
@@ -539,30 +568,34 @@ namespace trieste
         }
       }
 
-      void build_st(Node node) const
+      bool build_st(Node node, std::ostream& out) const
       {
         if (node->type() == Error)
-          return;
+          return true;
 
         node->clear_symbols();
-        build_st_i(node);
+        auto ok = build_st_i(node, out);
 
         for (auto& child : *node)
-          build_st(child);
+          ok = build_st(child, out) && ok;
+
+        return ok;
       }
 
       template<size_t I = sizeof...(Ts) - 1>
-      void build_st_i(Node node) const
+      bool build_st_i(Node node, std::ostream& out) const
       {
         if constexpr (I < sizeof...(Ts))
         {
           auto& shape = std::get<I>(shapes);
 
           if (shape.type == node->type())
-            shape.shape.build_st(node);
+            return shape.shape.build_st(node, out);
           else
-            build_st_i<I - 1>(node);
+            return build_st_i<I - 1>(node, out);
         }
+
+        return true;
       }
 
       Node build_ast(Source source, size_t pos, std::ostream& out) const
@@ -681,7 +714,7 @@ namespace trieste
           [this](Gen::Seed seed, size_t max_depth) {
             return gen(seed, max_depth);
           },
-          [this](Node node) { build_st(node); },
+          [this](Node node, std::ostream& out) { return build_st(node, out); },
           [this](Source source, size_t pos, std::ostream& out) {
             return build_ast(source, pos, out);
           },

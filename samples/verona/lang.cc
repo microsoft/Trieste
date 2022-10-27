@@ -782,7 +782,7 @@ namespace verona
             if (arg->front()->type() == DontCare)
             {
               auto id = _.fresh();
-              params << (Param << (Ident ^ id) << typevar(_, Type));
+              params << (Param << (Ident ^ id) << typevar(_, Type) << DontCare);
               args << (Expr << (RefLet << (Ident ^ id)));
             }
             else
