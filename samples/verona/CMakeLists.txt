@@ -10,6 +10,7 @@ add_executable(verona
 target_link_libraries(verona
   Threads::Threads
   CLI11::CLI11
+  fmt::fmt
   trieste::trieste
   )
 

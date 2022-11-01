@@ -3,17 +3,15 @@
 #pragma once
 
 #include "ast.h"
+#include "gen.h"
 
 #include <filesystem>
 #include <functional>
 #include <optional>
-#include <regex>
 
 namespace trieste
 {
   class Parse;
-
-  using sv_match = std::match_results<std::string_view::const_iterator>;
 
   namespace detail
   {
@@ -201,9 +199,10 @@ namespace trieste
   class Parse
   {
   public:
-    using PreF = std::function<bool(Parse&, const std::filesystem::path&)>;
+    using PreF =
+      std::function<bool(const Parse&, const std::filesystem::path&)>;
     using PostF =
-      std::function<void(Parse&, const std::filesystem::path&, Node)>;
+      std::function<void(const Parse&, const std::filesystem::path&, Node)>;
 
   private:
     std::filesystem::path exe;
@@ -214,7 +213,8 @@ namespace trieste
     PostF postfile_;
     PostF postdir_;
     PostF postparse_;
-    std::map<const std::string, std::vector<detail::Rule>> rules;
+    std::map<std::string, std::vector<detail::Rule>> rules;
+    std::map<Token, GenLocationF> gens;
 
   public:
     Parse(depth depth_) : depth_(depth_) {}
@@ -226,7 +226,26 @@ namespace trieste
       return *this;
     }
 
-    const std::filesystem::path& executable()
+    Parse& gen(std::initializer_list<std::pair<Token, GenLocationF>> g)
+    {
+      for (auto& [type, f] : g)
+        gens[type] = f;
+
+      return *this;
+    }
+
+    GenNodeLocationF generators() const
+    {
+      return [this](Rand& rnd, Node node) {
+        auto find = gens.find(node->type());
+        if (find == gens.end())
+          return node->fresh();
+
+        return Location(find->second(rnd));
+      };
+    }
+
+    const std::filesystem::path& executable() const
     {
       return exe;
     }
@@ -261,7 +280,7 @@ namespace trieste
       postparse_ = f;
     }
 
-    Node parse(std::filesystem::path path)
+    Node parse(std::filesystem::path path) const
     {
       auto ast = sub_parse(path);
       auto top = NodeDef::create(Top);
@@ -273,7 +292,7 @@ namespace trieste
       return top;
     }
 
-    Node sub_parse(std::filesystem::path& path)
+    Node sub_parse(std::filesystem::path& path) const
     {
       if (!std::filesystem::exists(path))
         return {};
@@ -290,7 +309,7 @@ namespace trieste
     }
 
   private:
-    Node parse_file(const std::filesystem::path& filename)
+    Node parse_file(const std::filesystem::path& filename) const
     {
       if (prefile_ && !prefile_(*this, filename))
         return {};
@@ -358,7 +377,7 @@ namespace trieste
       return ast;
     }
 
-    Node parse_directory(const std::filesystem::path& dir)
+    Node parse_directory(const std::filesystem::path& dir) const
     {
       if (predir_ && !predir_(*this, dir))
         return {};
@@ -398,5 +417,11 @@ namespace trieste
   operator>>(const std::string& r, std::function<void(detail::Make&)> make)
   {
     return {r, make};
+  }
+
+  inline std::pair<Token, GenLocationF>
+  operator>>(const Token& t, GenLocationF f)
+  {
+    return {t, f};
   }
 }
