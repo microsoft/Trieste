@@ -2,10 +2,38 @@
 // SPDX-License-Identifier: MIT
 #include "lang.h"
 
+#include <fmt/core.h>
+#include <random>
+
 namespace verona
 {
   constexpr size_t restart = 0;
   const std::initializer_list<Token> terminators = {Equals, List};
+
+  std::string random_string(Rand& rnd, size_t maxlen)
+  {
+    std::stringstream ss;
+    auto len = (maxlen > 1) ? (rnd() % maxlen) + 1 : maxlen;
+
+    for (size_t i = 0; i < len; i++)
+      ss << static_cast<char>(rnd() % 256);
+
+    return ss.str();
+  }
+
+  double random_double(Rand& rnd)
+  {
+    std::uniform_real_distribution<> dist(
+      std::numeric_limits<double>::min(), std::numeric_limits<double>::max());
+    return dist(rnd);
+  }
+
+  std::string unquote(const std::string& s)
+  {
+    return ((s.size() >= 2) && (s[0] == '"') && (s[s.size() - 1] == '"')) ?
+      s.substr(1, s.size() - 2) :
+      s;
+  }
 
   Parse parser()
   {
@@ -14,8 +42,7 @@ namespace verona
     auto indent = std::make_shared<std::vector<size_t>>();
     indent->push_back(restart);
 
-    p.prefile(
-      [](auto&, auto& path) { return path.extension() == ".verona"; });
+    p.prefile([](auto&, auto& path) { return path.extension() == ".verona"; });
 
     p.predir([](auto&, auto& path) {
       static auto re = std::regex(
@@ -159,13 +186,13 @@ namespace verona
         "[[:digit:]]+\\b" >> [](auto& m) { m.add(Int); },
 
         // Escaped string.
-        "\"(?:\\\"|[^\"])*\"" >> [](auto& m) { m.add(Escaped); },
+        "\"((?:\\\"|[^\"])*)\"" >> [](auto& m) { m.add(Escaped, 1); },
 
         // Unescaped string.
-        "('+)\"[\\s\\S]*?\"\\1" >> [](auto& m) { m.add(String); },
+        "('+)\"([\\s\\S]*)\"\\1" >> [](auto& m) { m.add(String, 1); },
 
         // Character literal.
-        "'[^']*'" >> [](auto& m) { m.add(Char); },
+        "'([^']*)'" >> [](auto& m) { m.add(Char, 1); },
 
         // Line comment.
         "//[^\n]*" >> [](auto&) {},
@@ -228,6 +255,27 @@ namespace verona
               m.mode("start");
           },
       });
+
+    p.gen({
+      Bool >> [](auto& rnd) { return rnd() % 2 ? "true" : "false"; },
+      Int >> [](auto& rnd) { return std::to_string(rnd()); },
+      Hex >> [](auto& rnd) { return fmt::format("{:#x}", rnd()); },
+      Bin >> [](auto& rnd) { return fmt::format("{:#b}", rnd()); },
+      Float >>
+        [](auto& rnd) { return fmt::format("{:g}", random_double(rnd)); },
+      HexFloat >>
+        [](auto& rnd) { return fmt::format("{:a}", random_double(rnd)); },
+      Char >>
+        [](auto& rnd) {
+          return unquote(fmt::format("{:?}", random_string(rnd, 1)));
+        },
+      Escaped >>
+        [](auto& rnd) {
+          return unquote(fmt::format("{:?}", random_string(rnd, 32)));
+        },
+      String >>
+        [](auto& rnd) { return fmt::format("{}", random_string(rnd, 32)); },
+    });
 
     return p;
   }

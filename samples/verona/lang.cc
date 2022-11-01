@@ -330,8 +330,8 @@ namespace verona
         },
 
       // Conditionals are right-associative.
-      In(Expr) * T(If) * (!T(Brace))++[Expr] * T(Brace)[Lhs] *
-          (T(Else) * T(If) * (!T(Brace))++ * T(Brace))++[Op] *
+      In(Expr) * T(If) * (!T(Brace) * (!T(Brace))++)[Expr] * T(Brace)[Lhs] *
+          (T(Else) * T(If) * (!T(Brace) * !T(Brace))++ * T(Brace))++[Op] *
           ~(T(Else) * T(Brace)[Rhs]) >>
         [](Match& _) {
           // Pack all of the branches into a single conditional and unpack them

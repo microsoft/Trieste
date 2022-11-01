@@ -1,5 +1,6 @@
 # Todo
 
+- free variables in object literals
 - non-local returns
 - mixins
 - lazy[T]
@@ -88,6 +89,8 @@ typeof (reflet $0) =
 - dup(node->lookup()->at(wf / Bind / Type)) // dup drops `lin`?
 typeof (move $0) =
 - node->lookup()->at(wf / Bind / Type) // no dup
+
+A `var` field has both a `ref` accessor function and a non-`ref` accessor function. A `let` field has only a non-`ref` accessor field. This means a `var x: T1` field is a subtype of a `let x: T2` field if `T1 <: T2`. However, a `var x: T1` field is only a subtype of a `var x: T2` field if `(T1 <: T2) ∧ (T2 <: T1)`, because the `ref` accessors return `ref[T1]` and `ref[T2]` respectively.
 
 ## Lowering
 

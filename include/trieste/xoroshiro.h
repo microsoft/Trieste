@@ -33,7 +33,7 @@ namespace xoroshiro
         if (x_ == 0 && y_ == 0)
           abort();
 
-        next();
+        (*this)();
       }
 
       void set_state(STATE x_, STATE y_ = 0)
@@ -44,10 +44,20 @@ namespace xoroshiro
 
         x = x_;
         y = y_;
-        next();
+        (*this)();
       }
 
-      RESULT next()
+      RESULT min() const
+      {
+        return std::numeric_limits<RESULT>::min();
+      }
+
+      RESULT max() const
+      {
+        return std::numeric_limits<RESULT>::max();
+      }
+
+      RESULT operator()()
       {
         STATE r = x + y;
         y ^= x;

@@ -3,7 +3,7 @@
 #pragma once
 
 #include "ast.h"
-#include "xoroshiro.h"
+#include "gen.h"
 
 #include <array>
 #include <tuple>
@@ -21,19 +21,23 @@ namespace trieste
   {
     struct Gen
     {
-      using Rand = xoroshiro::p128r32;
-      using Seed = uint64_t;
-      using Result = uint32_t;
-
+      GenNodeLocationF gloc;
       Rand rand;
       size_t max_depth;
       std::set<Token> nonterminals;
 
-      Gen(Seed seed, size_t max_depth) : rand(seed), max_depth(max_depth) {}
+      Gen(GenNodeLocationF gloc, Seed seed, size_t max_depth)
+      : gloc(gloc), rand(seed), max_depth(max_depth)
+      {}
 
       Result next()
       {
-        return rand.next();
+        return rand();
+      }
+
+      Location location(Node n)
+      {
+        return gloc(rand, n);
       }
     };
 
@@ -107,8 +111,11 @@ namespace trieste
             type = filtered.at(g.next() % filtered.size());
         }
 
-        auto child = NodeDef::create(type, node->fresh());
+        // We may need a fresh location, so the child needs to be in the AST by
+        // the time we call g.location().
+        auto child = NodeDef::create(type);
         node->push_back(child);
+        child->set_location(g.location(child));
       }
 
       Token find_type(const Location& type) const
@@ -446,7 +453,7 @@ namespace trieste
     struct WellformedF
     {
       std::function<bool(Node, std::ostream&)> check;
-      std::function<Node(Gen::Seed, size_t)> gen;
+      std::function<Node(GenNodeLocationF, Seed, size_t)> gen;
       std::function<bool(Node, std::ostream&)> build_st;
       std::function<Node(Source, size_t, std::ostream&)> build_ast;
 
@@ -535,9 +542,9 @@ namespace trieste
         }
       }
 
-      Node gen(Gen::Seed seed, size_t max_depth) const
+      Node gen(GenNodeLocationF gloc, Seed seed, size_t max_depth) const
       {
-        auto g = Gen(seed, max_depth);
+        auto g = Gen(gloc, seed, max_depth);
         nonterminals(g.nonterminals);
         auto node = NodeDef::create(Top);
         gen_i(g, 0, node);
@@ -711,8 +718,8 @@ namespace trieste
       {
         return WellformedF{
           [this](Node node, std::ostream& out) { return check(node, out); },
-          [this](Gen::Seed seed, size_t max_depth) {
-            return gen(seed, max_depth);
+          [this](GenNodeLocationF gloc, Seed seed, size_t max_depth) {
+            return gen(gloc, seed, max_depth);
           },
           [this](Node node, std::ostream& out) { return build_st(node, out); },
           [this](Source source, size_t pos, std::ostream& out) {

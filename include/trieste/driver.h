@@ -284,7 +284,7 @@ namespace trieste
             std::stringstream ss1;
             std::stringstream ss2;
 
-            auto ast = prev.gen(seed, test_max_depth);
+            auto ast = prev.gen(parser.generators(), seed, test_max_depth);
             ss1 << "============" << std::endl
                 << "Pass: " << pass_name << ", seed: " << seed << std::endl
                 << "------------" << std::endl
