@@ -6,6 +6,13 @@ This research project is at an early stage and is open sourced to facilitate aca
 
 The project is not ready to be used outside of research.
 
+## Getting Started
+
+If you want to dive right into understanding how to use Trieste, take
+a look at the [`infix` tutorial language](./samples/infix/README.md),
+which will walk you through implementing a simple calculator language
+in Trieste.
+
 ## Using Trieste
 
 Trieste is a header-only C++20 library. To get started, you'll need to define your own `trieste::Driver`, and run it from `main`:
