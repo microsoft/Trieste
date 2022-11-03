@@ -216,25 +216,31 @@ namespace trieste
 
       while (it != node->end())
       {
+        bool advance = true;
         auto lifted = lift(*it);
-        bool removed = false;
 
         if ((*it)->type() == Lift)
         {
-          lifted.push_back(*it);
+          lifted.insert(lifted.begin(), *it);
           it = node->erase(it, it + 1);
-          removed = true;
+          advance = false;
         }
 
         for (auto& lnode : lifted)
         {
           if (lnode->front()->type() == node->type())
+          {
             it = node->insert(it, lnode->begin() + 1, lnode->end());
+            it += lnode->size() - 1;
+            advance = false;
+          }
           else
+          {
             uplift.push_back(lnode);
+          }
         }
 
-        if (!removed)
+        if (advance)
           ++it;
       }
 

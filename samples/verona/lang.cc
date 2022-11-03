@@ -329,48 +329,6 @@ namespace verona
                               << (Ident ^ create) << Unit);
         },
 
-      // Conditionals are right-associative.
-      In(Expr) * T(If) * (!T(Brace) * (!T(Brace))++)[Expr] * T(Brace)[Lhs] *
-          (T(Else) * T(If) * (!T(Brace) * !T(Brace))++ * T(Brace))++[Op] *
-          ~(T(Else) * T(Brace)[Rhs]) >>
-        [](Match& _) {
-          // Pack all of the branches into a single conditional and unpack them
-          // in the follow-on rules.
-          return Conditional << (Expr << _[Expr]) << (Block << *_[Lhs])
-                             << (Block << (Conditional << _[Op] << _[Rhs]));
-        },
-
-      T(Conditional)
-          << ((T(Else) * T(If) * (!T(Brace))++[Expr] * T(Brace)[Lhs]) *
-              Any++[Rhs]) >>
-        [](Match& _) {
-          // Turn an `else if ...` into a `else { if ... }`.
-          return Expr
-            << (Conditional << (Expr << _[Expr]) << (Block << *_[Lhs])
-                            << (Block << (Conditional << _[Rhs])));
-        },
-
-      T(Conditional) << (~T(Brace)[Rhs] * End) >>
-        [](Match& _) {
-          // Handle a trailing `else`, inserting an empty tuple if needed.
-          if (_(Rhs))
-            return Seq << *_[Rhs];
-
-          return Expr << Unit;
-        },
-
-      T(If) >>
-        [](Match& _) {
-          return err(_[If], "`if` must be followed by a condition and braces");
-        },
-
-      T(Else) >>
-        [](Match& _) {
-          return err(
-            _[Else],
-            "`else` must follow an `if` and be followed by an `if` or braces");
-        },
-
       // Lambda: (group typeparams) (list params...) -> Rhs
       In(Expr) * T(Brace)
           << (((T(Group) << T(Square)[TypeParams]) * T(List)[Params]) *
@@ -644,6 +602,109 @@ namespace verona
     };
   }
 
+  auto make_conditional(Match& _)
+  {
+    // Pack all of the branches into a single conditional and unpack them
+    // in the follow-on rules.
+    auto lambda = _(Lhs);
+    auto params = lambda->at(wf / Lambda / Params);
+    Node cond = Expr;
+    Node block = Block;
+    Node args;
+
+    if (params->empty())
+    {
+      // This is a boolean conditional.
+      cond << _[Expr];
+      args = Unit;
+    }
+    else
+    {
+      // This is a TypeTest conditional.
+      auto id = _.fresh();
+      Node lhs;
+      Node type;
+
+      if (params->size() == 1)
+      {
+        // This is a single parameter.
+        auto lhs_id = _.fresh();
+        lhs = Expr << (Let << (Ident ^ lhs_id));
+        type = clone(params->front()->at(wf / Param / Type));
+        args = Ident ^ lhs_id;
+      }
+      else
+      {
+        // This is multiple parameters. We need to build a TypeTuple for the
+        // Cast and a Tuple both for destructuring the cast value and for the
+        // arguments to be passed to the lambda on success.
+        Node typetuple = TypeTuple;
+        args = Tuple;
+        lhs = Tuple;
+        type = Type << typetuple;
+
+        for (auto& param : *params)
+        {
+          auto lhs_id = _.fresh();
+          args << (Expr << (Ident ^ lhs_id));
+          lhs << (Expr << (Let << (Ident ^ lhs_id)));
+          typetuple << clone(param->at(wf / Param / Type)->front());
+        }
+      }
+
+      cond
+        << (TypeTest << (Expr
+                         << (Assign << (Expr << (Let << (Ident ^ id)))
+                                    << (Expr << _[Expr])))
+                     << clone(type));
+
+      block
+        << (Expr
+            << (Assign << (Expr << lhs)
+                       << (Expr << (Cast << (Expr << (Ident ^ id)) << type))));
+    }
+
+    return Conditional << cond << (block << (Expr << lambda << args))
+                       << (Block << (Conditional << _[Rhs]));
+  }
+
+  PassDef conditionals()
+  {
+    return {
+      // Conditionals are right-associative.
+      In(Expr) * T(If) * (!T(Lambda) * (!T(Lambda))++)[Expr] * T(Lambda)[Lhs] *
+          ((T(Else) * T(If) * (!T(Lambda) * !T(Lambda))++ * T(Lambda))++ *
+           ~(T(Else) * T(Lambda)))[Rhs] >>
+        [](Match& _) { return make_conditional(_); },
+
+      T(Conditional)
+          << ((T(Else) * T(If) * (!T(Lambda))++[Expr] * T(Lambda)[Lhs]) *
+              Any++[Rhs]) >>
+        [](Match& _) { return make_conditional(_); },
+
+      T(Conditional) << (~T(Lambda)[Rhs] * End) >>
+        [](Match& _) {
+          // Handle a trailing `else`, inserting a Unit value if needed.
+          if (_(Rhs))
+            return Expr << _(Rhs) << Unit;
+
+          return Expr << Unit;
+        },
+
+      T(If) >>
+        [](Match& _) {
+          return err(_[If], "`if` must be followed by a condition and braces");
+        },
+
+      T(Else) >>
+        [](Match& _) {
+          return err(
+            _[Else],
+            "`else` must follow an `if` and be followed by an `if` or braces");
+        },
+    };
+  }
+
   PassDef reference()
   {
     return {
@@ -736,7 +797,7 @@ namespace verona
 
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
     T(Unit) / T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) / T(Assign) /
-    T(Expr) / T(ExprSeq) / T(DontCare);
+    T(Expr) / T(ExprSeq) / T(DontCare) / T(Conditional) / T(TypeTest) / T(Cast);
   inline const auto Object = Object0 / (T(TypeAssert) << (Object0 * T(Type)));
   inline const auto Operator =
     T(New) / T(FunctionName) / T(Selector) / T(TypeAssertOp);
@@ -957,21 +1018,30 @@ namespace verona
 
           for (auto lhs_child : *_(Lhs))
           {
-            // let $lhs_id = lhs_child
-            auto lhs_id = _.fresh();
-            seq
-              << (Expr
-                  << (Bind << (Ident ^ lhs_id) << typevar(_) << lhs_child));
+            auto lhs_e = lhs_child->front();
 
-            // Build a LHS tuple that will only be used if there's a TypeAssert.
-            if (ty)
-              lhs_tuple << (Expr << (RefLet << (Ident ^ lhs_id)));
+            if (lhs_e->type() == Let)
+            {
+              // lhs_child is already a Let.
+              lhs_tuple
+                << (Expr << (RefLet << clone(lhs_e->at(wf / Let / Ident))));
+            }
+            else
+            {
+              // let $lhs_id = lhs_child
+              auto lhs_id = _.fresh();
+              seq
+                << (Expr
+                    << (Bind << (Ident ^ lhs_id) << typevar(_) << lhs_child));
+              lhs_child = Expr << (RefLet << (Ident ^ lhs_id));
+              lhs_tuple << clone(lhs_child);
+            }
 
             // $lhs_id = $rhs_id._index
             rhs_tuple
               << (Expr
                   << (Assign
-                      << (Expr << (RefLet << (Ident ^ lhs_id)))
+                      << lhs_child
                       << (Expr
                           << (Call
                               << (Selector
@@ -1267,8 +1337,8 @@ namespace verona
   }
 
   inline const auto Liftable = T(Unit) / T(Tuple) / T(Lambda) / T(Call) /
-    T(CallLHS) / T(Conditional) / T(Selector) / T(FunctionName) / Literal /
-    T(Throw);
+    T(CallLHS) / T(Conditional) / T(TypeTest) / T(Cast) / T(Selector) /
+    T(FunctionName) / Literal / T(Throw);
 
   PassDef anf()
   {
@@ -1304,8 +1374,7 @@ namespace verona
       T(ExprSeq) << (Any[Lhs] * End) >> [](Match& _) { return _(Lhs); },
 
       // Discard leading RefLets in ExprSeq.
-      In(ExprSeq) * (T(RefLet) * Any[Lhs] * Any++[Rhs]) >>
-        [](Match& _) { return Seq << _(Lhs) << _[Rhs]; },
+      In(ExprSeq) * T(RefLet) * Any[Lhs] >> [](Match& _) { return _(Lhs); },
     };
   }
 
@@ -1481,6 +1550,7 @@ namespace verona
         {"typealg", typealg(), wfPassTypeAlg()},
         {"typeflat", typeflat(), wfPassTypeFlat()},
         {"typednf", typednf(), wfPassTypeDNF()},
+        {"conditionals", conditionals(), wfPassConditionals()},
         {"reference", reference(), wfPassReference()},
         {"reverseapp", reverseapp(), wfPassReverseApp()},
         {"application", application(), wfPassApplication()},
