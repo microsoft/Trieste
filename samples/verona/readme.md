@@ -16,8 +16,6 @@ early exit
 - breaks things, the other branch doesn't join with us
 - need all moves/drops in any continuation
 
-type test conditionals
-
 ## Key Words
 
 get rid of the `package` keyword
@@ -28,11 +26,6 @@ get rid of capabilities as keywords
 get rid of `throw` as a keyword
 - it's a type, like return, break, continue
 add `try`
-
-could allow `->` as a user defined symbol
-- allow as a function name
-- consume only the first `->` in a lambda definition
-- after `typefunc`, convert it to a symbol
 
 ## `ref` Functions
 

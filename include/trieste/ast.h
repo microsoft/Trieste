@@ -5,6 +5,7 @@
 #include "token.h"
 
 #include <limits>
+#include <iostream>
 #include <map>
 #include <set>
 #include <sstream>
@@ -572,5 +573,10 @@ namespace trieste
     for (auto it = range.first; it != range.second; ++it)
       os << (*it)->str();
     return os;
+  }
+
+  inline void print(const Node& node)
+  {
+    std::cout << node;
   }
 }

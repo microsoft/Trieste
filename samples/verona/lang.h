@@ -71,6 +71,8 @@ namespace verona
     TokenDef("param", flag::lookup | flag::shadowing);
   inline constexpr auto Block =
     TokenDef("block", flag::symtab | flag::defbeforeuse);
+  inline constexpr auto TypeTest = TokenDef("typetest");
+  inline constexpr auto Cast = TokenDef("cast");
 
   // Type structure.
   inline constexpr auto Type = TokenDef("type");

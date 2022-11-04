@@ -45,6 +45,9 @@ namespace trieste
 
     int run(int argc, char** argv)
     {
+      // This is only present to allow running `print` in the debugger.
+      print({});
+
       parser.executable(argv[0]);
 
       app.set_help_all_flag("--help-all", "Expand all help");
