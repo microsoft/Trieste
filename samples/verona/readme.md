@@ -1,20 +1,14 @@
 # Todo
 
-- free variables in object literals
 - non-local returns
+- free variables in object literals
 - mixins
-- lazy[T]
 - match
+- lazy[T]
 - public/private
 - package schemes
 - type assertions are accidentally allowed as types
 - list inside TypeParams or TypeArgs along with groups or other lists
-
-## Conditionals
-
-early exit
-- breaks things, the other branch doesn't join with us
-- need all moves/drops in any continuation
 
 ## Key Words
 
@@ -41,7 +35,6 @@ selectors and functionnames as values
 - can we wrap them in a lambda?
   - `f` ~> `{ $0, $1, $2 -> f($0, $1, $2) }`
   - need to know the arity of the function
-- makes all types `T1...->T2` sugar for `{ apply(Self, T1...): T2 }`
 
 type of the lambda:
 - no captures, or all captures are `const` = `const`, `self: const`
