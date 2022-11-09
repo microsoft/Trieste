@@ -28,7 +28,7 @@ namespace verona
         (wfLiteral | Brace | Paren | Square | List | Equals | Arrow | Use |
          Class | TypeAlias | Var | Let | Ref | Throw | Lin | In_ | Out | Const |
          If | Else | New | DontCare | Ident | Ellipsis | Dot | DoubleColon |
-         Symbol | Colon | Package)++)
+         Symbol | Colon)++)
     ;
   // clang-format on
 
@@ -36,7 +36,7 @@ namespace verona
   inline constexpr auto wfModulesTokens = wfLiteral | Brace | Paren | Square |
     List | Equals | Arrow | Use | Class | TypeAlias | Var | Let | Ref | Throw |
     Lin | In_ | Out | Const | If | Else | New | DontCare | Ident | Ellipsis |
-    Dot | DoubleColon | Symbol | Package | Type;
+    Dot | DoubleColon | Symbol | Type;
 
   // clang-format off
   inline constexpr auto wfPassModules =
@@ -46,7 +46,6 @@ namespace verona
     | (Square <<= (Group | List | Equals)++)
     | (List <<= (Group | Equals)++)
     | (Equals <<= Group++)
-    | (Package <<= String | Escaped)
     | (Type <<= wfModulesTokens++)
     | (Group <<= wfModulesTokens++)
     ;
@@ -80,6 +79,7 @@ namespace verona
     | (Var <<= Ident)[Ident]
     | (Throw <<= Expr)
     | (TypeAssert <<= Expr * Type)
+    | (Package <<= String | Escaped)
     | (Type <<=
         (Type | TypeTuple | TypeVar | TypeArgs | Package | Lin | In_ | Out |
          Const | DontCare | Ellipsis | Ident | Symbol | Dot | Arrow | Throw |

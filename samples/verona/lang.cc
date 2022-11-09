@@ -41,15 +41,6 @@ namespace verona
                        << (Brace << *_[File]);
         },
 
-      // Packages.
-      T(Package) * (T(String) / T(Escaped))[String] >>
-        [](Match& _) { return Package << _[String]; },
-
-      T(Package)[Package] << End >>
-        [](Match& _) {
-          return err(_[Package], "`package` must have a descriptor string");
-        },
-
       // Type assertion. Treat an empty assertion as DontCare. The type is
       // finished at the end of the group, or at a brace. Put a typetrait in
       // parentheses to include it in a type assertion.
@@ -266,6 +257,10 @@ namespace verona
       // Allow `ref` to be used as a type name.
       TypeStruct * T(Ref) >> [](Match&) { return Ident ^ ref; },
 
+      // Strings in types are package descriptors.
+      TypeStruct * (T(String) / T(Escaped))[Package] >>
+        [](Match& _) { return Package << _(Package); },
+
       TypeStruct *
           (T(Use) / T(Let) / T(Var) / T(Equals) / T(Class) / T(TypeAlias) /
            T(Ref) / Literal)[Type] >>
@@ -418,8 +413,7 @@ namespace verona
           return Expr << (TypeAssert << (Expr << _[Expr]) << _(Type));
         },
 
-      In(Expr) *
-          (T(Package) / T(Lin) / T(In_) / T(Out) / T(Const) / T(Arrow))[Expr] >>
+      In(Expr) * (T(Lin) / T(In_) / T(Out) / T(Const) / T(Arrow))[Expr] >>
         [](Match& _) {
           return err(_[Expr], "can't put this in an expression");
         },
@@ -1072,12 +1066,9 @@ namespace verona
       T(Expr)[Expr] << T(Let)[Let] >>
         [](Match& _) { return err(_[Expr], "must assign to a `let` binding"); },
 
+      // Well-formedness allows this but it can't occur on written code.
       T(Expr)[Expr] << T(TupleLHS)[TupleLHS] >>
-        [](Match& _) {
-          return err(
-            _[Expr],
-            "well-formedness allows this but it can't occur on written code");
-        },
+        [](Match& _) { return Expr << (Tuple << *_[TupleLHS]); },
     };
   }
 
@@ -1590,11 +1581,10 @@ namespace verona
     PassDef drop = {
       dir::topdown | dir::once,
       {
-        (T(Param) / T(Bind)) << T(Ident)[Id] >>
-          ([drop_map](Match& _) -> Node {
-            drop_map->back().gen(_(Id)->location());
-            return NoChange;
-          }),
+        (T(Param) / T(Bind)) << T(Ident)[Id] >> ([drop_map](Match& _) -> Node {
+          drop_map->back().gen(_(Id)->location());
+          return NoChange;
+        }),
 
         T(RefLet)[RefLet] << T(Ident)[Id] >> ([drop_map](Match& _) -> Node {
           drop_map->back().ref(_(Id)->location(), _(RefLet));
