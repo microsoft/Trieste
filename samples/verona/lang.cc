@@ -1063,14 +1063,13 @@ namespace verona
       T(Assign) << ((T(Expr) << Any[Lhs]) * End) >>
         [](Match& _) { return _(Lhs); },
 
-      T(Expr)[Expr] << T(Let)[Let] >>
+      !In(Assign) * (T(Expr)[Expr] << T(Let)[Let]) >>
         [](Match& _) { return err(_[Expr], "must assign to a `let` binding"); },
 
       T(Expr)[Expr] << T(TupleLHS)[TupleLHS] >>
         [](Match& _) {
-          return err(
-            _[Expr],
-            "well-formedness allows this but it can't occur on written code");
+          // Well-formedness allows this but it can't occur on written code.
+          return Expr << (Tuple << *_[TupleLHS]);
         },
     };
   }
