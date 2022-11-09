@@ -205,7 +205,6 @@ namespace verona
           },
 
         // Keywords.
-        "package\\b" >> [](auto& m) { m.add(Package); },
         "use\\b" >> [](auto& m) { m.add(Use); },
         "type\\b" >> [](auto& m) { m.add(TypeAlias); },
         "class\\b" >> [](auto& m) { m.add(Class); },

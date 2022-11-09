@@ -12,8 +12,6 @@
 
 ## Key Words
 
-get rid of the `package` keyword
-- accept a string as a type, indicating a package
 get rid of capabilities as keywords
 - make them types in `std`?
 - or just handle those `typename` nodes specially in the typechecker?
