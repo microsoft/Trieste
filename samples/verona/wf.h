@@ -70,7 +70,7 @@ namespace verona
     | (Params <<= Param++)
     | (Param <<= Ident * Type * wfDefault)[Ident]
     | (TypeTuple <<= Type++)
-    | (Block <<= (Use | Class | TypeAlias | Expr)++)
+    | (Block <<= (Use | Class | TypeAlias | Expr)++[1])
     | (ExprSeq <<= Expr++[2])
     | (Tuple <<= Expr++[2])
     | (Assign <<= Expr++[2])
@@ -332,7 +332,7 @@ namespace verona
   // clang-format off
   inline constexpr auto wfPassANF =
       wfPassDefaultArgs
-    | (Block <<= (Use | Class | TypeAlias | Bind | RefLet)++)
+    | (Block <<= (Use | Class | TypeAlias | Bind | RefLet)++[1])
     | (Tuple <<= (RefLet | TupleFlatten)++[2])
     | (TupleFlatten <<= RefLet)
     | (Throw <<= RefLet)
@@ -355,7 +355,7 @@ namespace verona
     | (Copy <<= Ident)
     | (Move <<= Ident)
     | (Drop <<= Ident)
-    | (Block <<= (Use | Class | TypeAlias | Bind | Move | Drop)++)
+    | (Block <<= (Use | Class | TypeAlias | Bind | Move | Drop)++[1])
     | (Tuple <<= (TupleFlatten | Copy | Move)++[2])
     | (TupleFlatten <<= Copy | Move)
     | (Throw <<= Copy | Move)
@@ -387,6 +387,7 @@ namespace verona
     | (Package <<= (Id >>= String | Escaped))
     | (Var <<= Ident * Type)
     | (Let <<= Ident * Type)
+    | (RefLet <<= Ident)
     | (Throw <<= Expr)
     | (Lambda <<= TypeParams * Params * Block)
     | (Bind <<= Ident * Type *

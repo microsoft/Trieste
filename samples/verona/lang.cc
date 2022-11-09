@@ -682,7 +682,7 @@ namespace verona
               Any++[Rhs]) >>
         [](Match& _) { return make_conditional(_); },
 
-      T(Conditional) << (~T(Lambda)[Rhs] * End) >>
+      T(Conditional) << (~(T(Else) * T(Lambda)[Rhs]) * End) >>
         [](Match& _) {
           // Handle a trailing `else`, inserting a Unit value if needed.
           if (_(Rhs))
@@ -1196,7 +1196,7 @@ namespace verona
                  auto type_id = _.fresh();
                  class_body
                    << (FieldLet << (Ident ^ fv_id)
-                                << (Type << (TypeVar ^ type_id)) << DontCare);
+                                << (Type << (TypeVar ^ type_id)));
 
                  // Add a parameter to the create function to capture the free
                  // variable as a field.
@@ -1405,134 +1405,225 @@ namespace verona
 
   PassDef drop()
   {
-    auto drop_map = std::make_shared<std::vector<std::map<Location, Nodes>>>();
+    struct track
+    {
+      Nodes blocks;
+      Nodes stack;
+      std::map<Location, bool> params;
+      NodeMap<std::map<Location, bool>> lets;
+      std::map<Location, std::vector<std::pair<Node, Node>>> refs;
+      NodeMap<Node> parents;
+      NodeMap<Nodes> children;
+      NodeMap<Nodes> successors;
+
+      void gen(const Location& loc)
+      {
+        if (stack.empty())
+          params[loc] = true;
+        else
+          lets[stack.back()][loc] = true;
+      }
+
+      void ref(const Location& loc, Node node)
+      {
+        refs[loc].push_back({stack.back(), node});
+      }
+
+      bool is_successor(Node of, Node block)
+      {
+        // A successor block is a block that could execute after this one. This
+        // is one of the following:
+        // * A parent (any distance) block, or
+        // * A child (any distance) block, or
+        // * A child (any distance) block of a conditional in a parent block,
+        // where the conditional follows this block.
+
+        // Check if it's the same block or a child.
+        if ((of == block) || is_child(of, block))
+          return true;
+
+        // Only check parents and successors if this isn't an early return.
+        return (block->back()->type() != Return) &&
+          (is_parent(of, block) || is_successor_or_child(of, block));
+      }
+
+      bool is_parent(Node of, Node block)
+      {
+        if (of->parent()->type() == Function)
+          return false;
+
+        auto& parent = parents.at(of);
+        return (parent == block) || is_successor_or_child(parent, block) ||
+          is_parent(parent, block);
+      }
+
+      bool is_child(Node of, Node block)
+      {
+        return std::any_of(
+          children[of].begin(), children[of].end(), [&](auto& c) {
+            return (c == block) || is_child(c, block);
+          });
+      }
+
+      bool is_successor_or_child(Node of, Node block)
+      {
+        return std::any_of(
+          successors[of].begin(), successors[of].end(), [&](auto& c) {
+            return (c == block) || is_child(c, block);
+          });
+      }
+
+      void pre_block(Node block)
+      {
+        if (stack.empty())
+        {
+          lets[block] = params;
+        }
+        else
+        {
+          auto parent = stack.back();
+
+          for (auto& child : children[parent])
+          {
+            // The new child is a successor of the old children unless it's a
+            // sibling block in a conditional.
+            if (child->parent() != block->parent())
+              successors[child].push_back(block);
+          }
+
+          children[parent].push_back(block);
+          parents[block] = parent;
+          lets[block] = lets[parent];
+        }
+
+        stack.push_back(block);
+        blocks.push_back(block);
+      }
+
+      void post_block()
+      {
+        stack.pop_back();
+      }
+
+      size_t post_function()
+      {
+        size_t changes = 0;
+
+        for (auto& kv : refs)
+        {
+          auto list = kv.second;
+
+          for (auto it = list.begin(); it != list.end(); ++it)
+          {
+            auto ref = it->second;
+            auto id = ref->at(wf / RefLet / Ident);
+            auto parent = ref->parent()->shared_from_this();
+            bool immediate = parent->type() == Block;
+            bool discharging = true;
+
+            // We're the last use if there is no following use in this or any
+            // successor block.
+            for (auto next = it + 1; next != list.end(); ++next)
+            {
+              if (is_successor(it->first, next->first))
+              {
+                discharging = false;
+                break;
+              }
+            }
+
+            if (discharging && immediate && (parent->back() == ref))
+              parent->replace(ref, Move << id);
+            else if (discharging && immediate)
+              parent->replace(ref, Drop << id);
+            else if (discharging)
+              parent->replace(ref, Move << id);
+            else if (immediate)
+              parent->replace(ref);
+            else
+              parent->replace(ref, Copy << id);
+
+            // If this is a discharging use, mark the variable as discharged in
+            // all predecessor and successor blocks.
+            if (discharging)
+            {
+              bool forward = true;
+
+              for (auto& block : blocks)
+              {
+                if (block == it->first)
+                  forward = false;
+
+                if (
+                  forward ? is_successor(block, it->first) :
+                            is_successor(it->first, block))
+                {
+                  lets[block][id->location()] = false;
+                }
+              }
+            }
+
+            changes++;
+          }
+        }
+
+        for (auto& block : blocks)
+        {
+          auto& let = lets[block];
+
+          for (auto& it : let)
+          {
+            if (it.second)
+            {
+              block->insert(block->begin(), Drop << (Ident ^ it.first));
+              changes++;
+            }
+          }
+        }
+
+        return changes;
+      }
+    };
+
+    auto drop_map = std::make_shared<std::vector<track>>();
 
     PassDef drop = {
-      dir::bottomup | dir::once,
+      dir::topdown | dir::once,
       {
+        (T(Param) / T(Bind)) << T(Ident)[Id] >>
+          ([drop_map](Match& _) -> Node {
+            drop_map->back().gen(_(Id)->location());
+            return NoChange;
+          }),
+
         T(RefLet)[RefLet] << T(Ident)[Id] >> ([drop_map](Match& _) -> Node {
-          drop_map->back()[_(Id)->location()].push_back(_(RefLet));
-          return NoChange;
-        }),
-
-        T(Function) >> ([drop_map](Match&) -> Node {
-          auto& last_map = drop_map->back();
-
-          std::for_each(last_map.begin(), last_map.end(), [](auto& p) {
-            auto& refs = p.second;
-            std::for_each(refs.begin(), refs.end(), [&refs](auto& ref) {
-              auto id = ref->front();
-              auto parent = ref->parent();
-              bool immediate = parent->type() == Block;
-              bool last = ref == refs.back();
-
-              if (immediate && last && (parent->back() == ref))
-                parent->replace(ref, Move << id);
-              else if (immediate && last)
-                parent->replace(ref, Drop << id);
-              else if (immediate)
-                parent->replace(ref);
-              else if (last)
-                parent->replace(ref, Move << id);
-              else
-                parent->replace(ref, Copy << id);
-            });
-          });
-
-          drop_map->pop_back();
+          drop_map->back().ref(_(Id)->location(), _(RefLet));
           return NoChange;
         }),
       }};
+
+    drop.pre(Block, [drop_map](Node node) {
+      drop_map->back().pre_block(node);
+      return 0;
+    });
+
+    drop.post(Block, [drop_map](Node) {
+      drop_map->back().post_block();
+      return 0;
+    });
 
     drop.pre(Function, [drop_map](Node) {
       drop_map->push_back({});
       return 0;
     });
 
+    drop.post(Function, [drop_map](Node) {
+      auto changes = drop_map->back().post_function();
+      drop_map->pop_back();
+      return changes;
+    });
+
     return drop;
-  }
-
-  PassDef conddrop()
-  {
-    auto conddrop_map =
-      std::make_shared<std::vector<std::vector<std::set<Location>>>>();
-
-    PassDef conddrop = {
-      dir::bottomup | dir::once,
-      {
-        (T(Move) / T(Drop))[Drop] << T(Ident)[Id] >>
-          ([conddrop_map](Match& _) -> Node {
-            if (!conddrop_map->empty() && !conddrop_map->back().empty())
-            {
-              // If we don't have a definition within our block, then track.
-              auto id = _(Id);
-
-              if (id->parent(Block)->look(id->location()).empty())
-                conddrop_map->back().back().insert(_(Id)->location());
-            }
-
-            return NoChange;
-          }),
-
-        T(Conditional) << (Any[If] * T(Block)[Lhs] * T(Block)[Rhs]) >>
-          [conddrop_map](Match& _) {
-            // Drop all moves and drops that appear in other blocks but not in
-            // this one.
-            auto diff = [](auto& a, auto& b) {
-              Node block = Block;
-              std::vector<Location> v;
-              std::set_difference(
-                a.begin(), a.end(), b.begin(), b.end(), std::back_inserter(v));
-
-              for (auto& loc : v)
-                block << (Drop << (Ident ^ loc));
-
-              return block;
-            };
-
-            auto& map = conddrop_map->back();
-            auto& lhs_map = map.at(0);
-            auto& rhs_map = map.at(1);
-            auto lhs = diff(rhs_map, lhs_map);
-            auto rhs = diff(lhs_map, rhs_map);
-
-            if (conddrop_map->size() > 1)
-            {
-              // If we don't have a definition within our parent block, then
-              // track these drops there.
-              auto parent_block = _(If)->parent(Block);
-              auto& parent_map =
-                conddrop_map->at(conddrop_map->size() - 2).back();
-              lhs_map.merge(rhs_map);
-
-              std::copy_if(
-                lhs_map.begin(),
-                lhs_map.end(),
-                std::inserter(parent_map, parent_map.end()),
-                [&parent_block](auto& loc) {
-                  return parent_block->look(loc).empty();
-                });
-            }
-
-            conddrop_map->pop_back();
-            return Conditional << _(If) << (lhs << *_[Lhs]) << (rhs << *_[Rhs]);
-          },
-      }};
-
-    conddrop.pre(Conditional, [conddrop_map](Node) {
-      // Start tracking drops in this conditional.
-      conddrop_map->push_back({});
-      return 0;
-    });
-
-    conddrop.pre(Block, [conddrop_map](Node) {
-      // A function Block is not in a conditional, so we may not be tracking.
-      if (!conddrop_map->empty())
-        conddrop_map->back().push_back({});
-      return 0;
-    });
-
-    return conddrop;
   }
 
   Driver& driver()
@@ -1563,7 +1654,6 @@ namespace verona
         {"anf", anf(), wfPassANF()},
         {"refparams", refparams(), wfPassANF()},
         {"drop", drop(), wfPassDrop()},
-        {"conddrop", conddrop(), wfPassDrop()},
       });
 
     return d;

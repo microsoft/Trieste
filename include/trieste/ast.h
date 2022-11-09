@@ -179,6 +179,11 @@ namespace trieste
       return children.rend();
     }
 
+    auto find(Node node)
+    {
+      return std::find(children.begin(), children.end(), node);
+    }
+
     bool empty()
     {
       return children.empty();
@@ -385,7 +390,7 @@ namespace trieste
           return n->type() & flag::shadowing;
         }))
       {
-        auto presult = st->lookup(loc);
+        auto presult = st->lookup(loc, until);
         result.insert(result.end(), presult.begin(), presult.end());
       }
 

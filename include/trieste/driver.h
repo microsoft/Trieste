@@ -181,7 +181,11 @@ namespace trieste
         else
         {
           // Parse the source path.
-          ast = parser.parse(path);
+          if (std::filesystem::exists(path))
+            ast = parser.parse(path);
+          else
+            std::cout << "File not found: " << path << std::endl;
+
           bool ok = bool(ast);
 
           if (ok && wfParser)
