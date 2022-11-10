@@ -26,12 +26,6 @@ CallLHS
 
 ## Lambdas
 
-selectors and functionnames as values
-- an unbound selector must be a valid functionname
-- can we wrap them in a lambda?
-  - `f` ~> `{ $0, $1, $2 -> f($0, $1, $2) }`
-  - need to know the arity of the function
-
 type of the lambda:
 - no captures, or all captures are `const` = `const`, `self: const`
 - any `lin` captures = `lin`, `self: lin`

@@ -690,12 +690,11 @@ namespace verona
       In(Expr) * T(DoubleColon) >>
         [](Match& _) { return err(_[DoubleColon], "expected a scoped name"); },
 
-      // Create sugar.
+      // Create sugar, with no arguments.
       In(Expr) * T(TypeName)[Lhs] * ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {
-          return Expr << (FunctionName << _[Lhs] << (Ident ^ create)
-                                       << (_[TypeArgs] | TypeArgs))
-                      << Unit;
+          return FunctionName << _[Lhs] << (Ident ^ create)
+                              << (_[TypeArgs] | TypeArgs);
         },
 
       // Lone TypeArgs are typeargs on apply.
@@ -779,6 +778,9 @@ namespace verona
           End >>
         [](Match& _) { return Seq << call(_(Op), _(Lhs)) << _[Rhs]; },
 
+      // Zero argument call.
+      In(Expr) * Operator[Op] * End >> [](Match& _) { return call(_(Op)); },
+
       // Tuple flattening.
       In(Tuple) * T(Expr) << (Object[Lhs] * T(Ellipsis) * End) >>
         [](Match& _) { return TupleFlatten << (Expr << _(Lhs)); },
@@ -820,8 +822,6 @@ namespace verona
           // Remaining DontCare are discarded bindings.
           return Let << (Ident ^ _.fresh());
         },
-
-      In(Expr) * T(New)[New] >> [](Match& _) { return call(_(New)); },
 
       T(Ellipsis) >>
         [](Match& _) {

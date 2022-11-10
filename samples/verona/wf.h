@@ -231,11 +231,11 @@ namespace verona
     | (Tuple <<= (Expr | TupleFlatten)++[2])
     | (TupleFlatten <<= Expr)
 
-    // Remove New, DontCare, Ellipsis.
+    // Remove New, DontCare, Ellipsis, Selector, FunctionName.
     | (Expr <<=
         (Expr | ExprSeq | Unit | Tuple | Assign | Lambda | Let | Var | Ref |
          wfLiteral | TypeAssert | Conditional | TypeTest | Cast | RefVar |
-         RefLet | Selector | FunctionName | TypeAssertOp | Call)++[1])
+         RefLet | TypeAssertOp | Call)++[1])
     ;
   // clang-format on
 
@@ -253,8 +253,7 @@ namespace verona
     | (Expr <<=
         ExprSeq | Unit | Tuple | Assign | Lambda | Let | Var | wfLiteral |
         TypeAssert | Conditional | TypeTest | Cast | RefVar | RefLet |
-        Selector | FunctionName | TypeAssertOp | Call | TupleLHS | CallLHS |
-        RefVarLHS)
+        TypeAssertOp | Call | TupleLHS | CallLHS | RefVarLHS)
     ;
   // clang-format on
 
@@ -265,8 +264,8 @@ namespace verona
     // Remove Var, RefVar, RefVarLHS.
     | (Expr <<=
         ExprSeq | Unit | Tuple | Assign | Lambda | Let | wfLiteral |
-        TypeAssert | Conditional | TypeTest | Cast | RefLet | Selector |
-        FunctionName | TypeAssertOp | Call | TupleLHS | CallLHS)
+        TypeAssert | Conditional | TypeTest | Cast | RefLet | TypeAssertOp |
+        Call | TupleLHS | CallLHS)
     ;
   // clang-format on
 
@@ -280,8 +279,7 @@ namespace verona
     // Remove Assign, Let, TupleLHS. Add Bind.
     | (Expr <<=
         ExprSeq | Unit | Tuple | Lambda | wfLiteral | TypeAssert | Conditional |
-        TypeTest | Cast | RefLet | Selector | FunctionName | TypeAssertOp |
-        Call | CallLHS | Bind)
+        TypeTest | Cast | RefLet | TypeAssertOp | Call | CallLHS | Bind)
     ;
   // clang-format on
 
@@ -300,8 +298,7 @@ namespace verona
     // Remove Lambda.
     | (Expr <<=
         ExprSeq | Unit | Tuple | wfLiteral | TypeAssert | Conditional |
-        TypeTest | Cast | RefLet | Selector | FunctionName | TypeAssertOp |
-        Call | CallLHS | Bind)
+        TypeTest | Cast | RefLet | TypeAssertOp | Call | CallLHS | Bind)
     ;
   // clang-format on
 
@@ -325,7 +322,7 @@ namespace verona
     | (Bind <<= Ident * Type *
         (Rhs >>=
           RefLet | Unit | Tuple | Call | Conditional | TypeTest | Cast |
-          CallLHS | Selector | FunctionName | wfLiteral))[Ident]
+          CallLHS | wfLiteral))[Ident]
     ;
   // clang-format on
 
@@ -347,7 +344,7 @@ namespace verona
     | (Bind <<= Ident * Type *
         (Rhs >>=
           Unit | Tuple | Call | Conditional | TypeTest | Cast | CallLHS |
-          Selector | FunctionName | wfLiteral | Copy | Move))[Ident]
+          wfLiteral | Copy | Move))[Ident]
     ;
   // clang-format on
 
@@ -371,8 +368,8 @@ namespace verona
     | (Lambda <<= TypeParams * Params * Block)
     | (Bind <<= Ident * Type *
         (Rhs >>=
-          Unit | Tuple | Call | Conditional | CallLHS | Selector |
-          FunctionName | wfLiteral | Copy | Move))
+          Unit | Tuple | Call | Conditional | TypeTest | Cast | CallLHS |
+          wfLiteral | Copy | Move))
     ;
   // clang-format on
 }
