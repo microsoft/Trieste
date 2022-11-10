@@ -15,8 +15,6 @@
 get rid of capabilities as keywords
 - make them types in `std`?
 - or just handle those `typename` nodes specially in the typechecker?
-get rid of `throw` as a keyword
-- it's a type, like return, break, continue
 add `try`
 
 ## `ref` Functions

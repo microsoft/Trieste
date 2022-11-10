@@ -211,7 +211,6 @@ namespace verona
         "var\\b" >> [](auto& m) { m.add(Var); },
         "let\\b" >> [](auto& m) { m.add(Let); },
         "ref\\b" >> [](auto& m) { m.add(Ref); },
-        "throw\\b" >> [](auto& m) { m.add(Throw); },
         "lin\\b" >> [](auto& m) { m.add(Lin); },
         "in\\b" >> [](auto& m) { m.add(In_); },
         "out\\b" >> [](auto& m) { m.add(Out); },

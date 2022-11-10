@@ -45,7 +45,6 @@ namespace verona
   inline constexpr auto Var = TokenDef("var", flag::lookup | flag::shadowing);
   inline constexpr auto Let = TokenDef("let", flag::lookup | flag::shadowing);
   inline constexpr auto Ref = TokenDef("ref");
-  inline constexpr auto Throw = TokenDef("throw");
   inline constexpr auto Lin = TokenDef("lin");
   inline constexpr auto In_ = TokenDef("in");
   inline constexpr auto Out = TokenDef("out");
@@ -83,7 +82,6 @@ namespace verona
   inline constexpr auto TypeTuple = TokenDef("typetuple");
   inline constexpr auto TypeView = TokenDef("typeview");
   inline constexpr auto TypeFunc = TokenDef("typefunc");
-  inline constexpr auto TypeThrow = TokenDef("typethrow");
   inline constexpr auto TypeIsect = TokenDef("typeisect");
   inline constexpr auto TypeUnion = TokenDef("typeunion");
   inline constexpr auto TypeVar = TokenDef("typevar", flag::print);
