@@ -1,5 +1,7 @@
 # Todo
 
+check reflet is after bind/param in drop pass?
+
 - non-local returns
 - free variables in object literals
 - mixins
@@ -73,7 +75,6 @@ A `var` field has both a `ref` accessor function and a non-`ref` accessor functi
 - mangled names for all types and functions
 - struct for every concrete type
 - static and virtual dispatch
-- conditionals
 - heap to stack with escape analysis
 
 ## Ellipsis
