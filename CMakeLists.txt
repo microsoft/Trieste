@@ -19,6 +19,8 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(fmt)
 
+set_target_properties(fmt PROPERTIES EXCLUDE_FROM_ALL ON)
+
 ##############################################
 # Options
 
