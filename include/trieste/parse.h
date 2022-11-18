@@ -45,9 +45,11 @@ namespace trieste
       std::optional<std::string> mode_;
 
     public:
-      Make(const std::string& loc)
+      Make(const std::string& loc) : Make(File, loc) {}
+
+      Make(const trieste::Token& token, const std::string& loc)
       {
-        node = NodeDef::create(File, {loc});
+        node = NodeDef::create(token, {loc});
         top = node;
       }
 
@@ -308,6 +310,12 @@ namespace trieste
       return {};
     }
 
+    Node sub_parse(
+      const std::string name, const Token& token, const Source& source) const
+    {
+      return parse_source(name, token, source);
+    }
+
   private:
     Node parse_file(const std::filesystem::path& filename) const
     {
@@ -315,11 +323,21 @@ namespace trieste
         return {};
 
       auto source = SourceDef::load(filename);
+      auto ast = parse_source(filename.stem().string(), File, source);
 
+      if (postfile_ && ast)
+        postfile_(*this, filename, ast);
+
+      return ast;
+    }
+
+    Node parse_source(
+      const std::string name, const Token& token, const Source& source) const
+    {
       if (!source)
         return {};
 
-      auto make = detail::Make(filename.stem().string());
+      auto make = detail::Make(token, name);
       auto it = source->view().cbegin();
       auto st = it;
       auto end = source->view().cend();
@@ -369,12 +387,7 @@ namespace trieste
         }
       }
 
-      auto ast = make.done();
-
-      if (postfile_ && ast)
-        postfile_(*this, filename, ast);
-
-      return ast;
+      return make.done();
     }
 
     Node parse_directory(const std::filesystem::path& dir) const
