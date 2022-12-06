@@ -132,11 +132,16 @@ namespace trieste
 
     Node parent(const Token& type)
     {
+      return parent({type});
+    }
+
+    Node parent(const std::initializer_list<Token>& list)
+    {
       auto p = parent_;
 
       while (p)
       {
-        if (p->type_ == type)
+        if (p->type_.in(list))
           return p->shared_from_this();
 
         p = p->parent_;

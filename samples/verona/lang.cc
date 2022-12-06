@@ -72,7 +72,9 @@ namespace verona
                T(Group)++[Rhs])) >>
         [](Match& _) {
           return FieldLet << _(Id) << typevar(_, Type)
-                          << (Block << (Expr << (Default << _[Rhs])));
+                          << (Lambda
+                              << TypeParams << Params
+                              << (Block << (Expr << (Default << _[Rhs]))));
         },
 
       // (group let ident type)
@@ -90,7 +92,9 @@ namespace verona
                T(Group)++[Rhs])) >>
         [](Match& _) {
           return FieldVar << _(Id) << typevar(_, Type)
-                          << (Block << (Expr << (Default << _[Rhs])));
+                          << (Lambda
+                              << TypeParams << Params
+                              << (Block << (Expr << (Default << _[Rhs]))));
         },
 
       // (group var ident type)
@@ -166,7 +170,8 @@ namespace verona
         [](Match& _) {
           auto id = (_(Id)->type() == DontCare) ? (Ident ^ _.fresh()) : _(Id);
           return Param << id << typevar(_, Type)
-                       << (Block << (Expr << (Default << _[Expr])));
+                       << (Lambda << TypeParams << Params
+                                  << (Block << (Expr << (Default << _[Expr]))));
         },
 
       In(Params) * (!T(Param))[Param] >>
@@ -230,7 +235,7 @@ namespace verona
         },
 
       // Default initializers. These were taken off the end of an Equals.
-      // Depending on how many they are, either repack them in an equals or
+      // Depending on how many there are, either repack them in an equals or
       // insert them directly into the parent node.
       (T(Default) << End) >> ([](Match&) -> Node { return DontCare; }),
       (T(Default) << (T(Group)[Rhs] * End)) >>
@@ -262,8 +267,8 @@ namespace verona
         [](Match& _) { return Package << _(Package); },
 
       TypeStruct *
-          (T(Use) / T(Let) / T(Var) / T(Equals) / T(Class) / T(TypeAlias) /
-           T(Ref) / Literal)[Type] >>
+          (T(Equals) / T(Use) / T(Class) / T(TypeAlias) / T(Var) / T(Let) /
+           T(Ref) / T(If) / T(Else) / T(New) / T(Try) / Literal)[Type] >>
         [](Match& _) { return err(_[Type], "can't put this in a type"); },
 
       // A group can be in a Block, Expr, ExprSeq, Tuple, or Assign.
@@ -728,12 +733,13 @@ namespace verona
 
   auto call(Node op, Node lhs = {}, Node rhs = {})
   {
-    return Call << op << arg(arg(Args, lhs), rhs);
+    return NLRCheck << (Call << op << arg(arg(Args, lhs), rhs));
   }
 
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
-    T(Unit) / T(Tuple) / T(Lambda) / T(Call) / T(CallLHS) / T(Assign) /
-    T(Expr) / T(ExprSeq) / T(DontCare) / T(Conditional) / T(TypeTest) / T(Cast);
+    T(Unit) / T(Tuple) / T(Lambda) / T(Call) / T(NLRCheck) / T(CallLHS) /
+    T(Assign) / T(Expr) / T(ExprSeq) / T(DontCare) / T(Conditional) /
+    T(TypeTest) / T(Cast);
   inline const auto Object = Object0 / (T(TypeAssert) << (Object0 * T(Type)));
   inline const auto Operator =
     T(New) / T(FunctionName) / T(Selector) / T(TypeAssertOp);
@@ -761,6 +767,22 @@ namespace verona
     // These rules allow expressions such as `-3 * -4` or `not a and not b` to
     // have the expected meaning.
     return {
+      // Ref expressions.
+      T(Ref) * T(RefVar)[RefVar] >>
+        [](Match& _) { return RefVarLHS << *_[RefVar]; },
+
+      T(Ref) * (T(NLRCheck) << T(Call)[Call]) >>
+        [](Match& _) { return NLRCheck << (CallLHS << *_[Call]); },
+
+      // Try expressions.
+      T(Try) * (T(NLRCheck) << (T(Call) / T(CallLHS))[Call]) >>
+        [](Match& _) { return _(Call); },
+
+      T(Try) * T(Lambda)[Lambda] >>
+        [](Match& _) {
+          return Call << clone(Apply) << (Args << (Expr << _(Lambda)));
+        },
+
       // Adjacency: application.
       In(Expr) * Object[Lhs] * Object[Rhs] >>
         [](Match& _) { return call(clone(Apply), _(Lhs), _(Rhs)); },
@@ -773,13 +795,9 @@ namespace verona
       In(Expr) * Object[Lhs] * Operator[Op] * Object[Rhs] >>
         [](Match& _) { return call(_(Op), _(Lhs), _(Rhs)); },
 
-      // Postfix. This doesn't rewrite unless only postfix operators remain.
-      In(Expr) * (Object / Operator)[Lhs] * Operator[Op] * Operator++[Rhs] *
-          End >>
-        [](Match& _) { return Seq << call(_(Op), _(Lhs)) << _[Rhs]; },
-
       // Zero argument call.
-      In(Expr) * Operator[Op] * End >> [](Match& _) { return call(_(Op)); },
+      In(Expr) * Operator[Op] * --(Object / Operator) >>
+        [](Match& _) { return call(_(Op)); },
 
       // Tuple flattening.
       In(Tuple) * T(Expr) << (Object[Lhs] * T(Ellipsis) * End) >>
@@ -792,7 +810,7 @@ namespace verona
                << ((T(Expr) << !T(DontCare))++ *
                    (T(Expr)
                     << (T(DontCare) /
-                        (T(TypeAssert) << (T(DontCare) * T(Type)[Type])))) *
+                        (T(TypeAssert) << (T(DontCare) * T(Type))))) *
                    T(Expr)++))[Args]) >>
         [](Match& _) {
           Node params = Params;
@@ -802,10 +820,20 @@ namespace verona
 
           for (auto& arg : *_(Args))
           {
-            if (arg->front()->type() == DontCare)
+            auto expr = arg->front();
+
+            if (expr->type() == DontCare)
             {
               auto id = _.fresh();
-              params << (Param << (Ident ^ id) << typevar(_, Type) << DontCare);
+              params << (Param << (Ident ^ id) << typevar(_) << DontCare);
+              args << (Expr << (RefLet << (Ident ^ id)));
+            }
+            else if (expr->type() == TypeAssert)
+            {
+              auto id = _.fresh();
+              params
+                << (Param << (Ident ^ id) << expr->at(wf / TypeAssert / Type)
+                          << DontCare);
               args << (Expr << (RefLet << (Ident ^ id)));
             }
             else
@@ -816,6 +844,10 @@ namespace verona
 
           return lambda;
         },
+
+      // Remove the NLRCheck from a partial application.
+      T(NLRCheck) << (T(Lambda)[Lambda] * End) >>
+        [](Match& _) { return _(Lambda); },
 
       In(Expr) * T(DontCare) >>
         [](Match& _) {
@@ -843,11 +875,6 @@ namespace verona
   PassDef assignlhs()
   {
     return {
-      // Ref expressions.
-      T(Ref) * T(RefVar)[RefVar] >>
-        [](Match& _) { return RefVarLHS << *_[RefVar]; },
-      T(Ref) * T(Call)[Call] >> [](Match& _) { return CallLHS << *_[Call]; },
-
       // Turn a Tuple on the LHS of an assignment into a TupleLHS.
       on_lhs(T(Expr) << T(Tuple)[Lhs]) >>
         [](Match& _) { return Expr << (TupleLHS << *_[Lhs]); },
@@ -875,9 +902,14 @@ namespace verona
           return Expr << (TypeAssert << (RefVarLHS << *_[Lhs]) << _(Type));
         },
 
-      T(Ref) >>
+      T(Ref)[Ref] >>
         [](Match& _) {
           return err(_[Ref], "must use `ref` in front of a variable or call");
+        },
+
+      T(Try)[Try] >>
+        [](Match& _) {
+          return err(_[Try], "must use `try` in front of a call or lambda");
         },
 
       T(Expr)[Expr] << (Any * Any * Any++) >>
@@ -905,13 +937,17 @@ namespace verona
   PassDef localvar()
   {
     return {
-      T(Var)[Var] << T(Ident)[Id] >>
+      T(Var) << T(Ident)[Id] >>
         [](Match& _) {
-          return Assign << (Expr << (Let << _(Id))) << (Expr << CallCellCreate);
+          return Assign << (Expr << (Let << _(Id)))
+                        << (Expr << clone(CallCellCreate));
         },
 
       T(RefVar)[RefVar] >>
-        [](Match& _) { return call(clone(Load), RefLet << *_[RefVar]); },
+        [](Match& _) {
+          return Call << clone(Load)
+                      << (Args << (Expr << (RefLet << *_[RefVar])));
+        },
 
       T(RefVarLHS)[RefVarLHS] >>
         [](Match& _) { return RefLet << *_[RefVarLHS]; },
@@ -1015,62 +1051,42 @@ namespace verona
     };
   }
 
-  PassDef autocreate()
+  // This needs TypeArgs in order to be well-formed.
+  inline const auto NonLocal = TypeName << Std << (Ident ^ nonlocal);
+
+  Node nlrexpand(Match& _, Node call, bool unwrap)
+  {
+    // Check the call result to see if it's a non-local return. If it is,
+    // optionally unwrap it and return. Otherwise, continue execution.
+    auto id = _.fresh();
+    auto nlr = Type
+      << (clone(NonLocal) << (TypeArgs << (Type << (TypeVar ^ _.fresh()))));
+    Node ret = Expr << (Cast << (Expr << (RefLet << (Ident ^ id))) << nlr);
+
+    if (unwrap)
+      ret = Expr << (Call << clone(Load) << (Args << ret));
+
+    return ExprSeq
+      << (Expr << (Bind << (Ident ^ id) << typevar(_) << (Expr << call)))
+      << (Expr
+          << (Conditional << (Expr
+                              << (TypeTest << (Expr << (RefLet << (Ident ^ id)))
+                                           << nlr))
+                          << (Block << (Return << ret))
+                          << (Block << (Expr << (RefLet << (Ident ^ id))))));
+  }
+
+  PassDef nlrcheck()
   {
     return {
       dir::topdown | dir::once,
       {
-        In(Class) * T(ClassBody)[ClassBody] >> ([](Match& _) -> Node {
-          // If we already have a create function, do nothing.
-          auto class_body = _(ClassBody);
-
-          if (!class_body->parent()->look(create).empty())
-            return NoChange;
-
-          // Create the create function.
-          Node create_params = Params;
-          Node new_args = Args;
-          auto create_func = Function
-            << (Ident ^ create) << TypeParams << create_params << typevar(_)
-            << (Block << (Expr << (Call << New << new_args)));
-
-          Nodes no_def;
-          Nodes def;
-
-          for (auto& node : *class_body)
-          {
-            if (node->type().in({FieldLet, FieldVar}))
-            {
-              auto id = node->at(wf / FieldLet / Ident, wf / FieldVar / Ident);
-              auto ty = node->at(wf / FieldLet / Type, wf / FieldVar / Type);
-              auto def_arg =
-                node->at(wf / FieldLet / Default, wf / FieldVar / Default);
-
-              // Add each field in order to the call to `new`.
-              new_args << (Expr << (RefLet << clone(id)));
-
-              // Order the parameters to the create function.
-              auto param = Param << clone(id) << clone(ty) << def_arg;
-
-              if (def_arg->type() == DontCare)
-                no_def.push_back(param);
-              else
-                def.push_back(param);
-            }
-          }
-
-          // Add the parameters to the create function, sorting parameters
-          // without a default value first.
-          create_params << no_def << def;
-          return ClassBody << *_[ClassBody] << create_func;
-        }),
-
-        // Strip the default field values.
-        T(FieldLet) << (T(Ident)[Id] * T(Type)[Type] * Any) >>
-          [](Match& _) { return FieldLet << _(Id) << _(Type); },
-
-        T(FieldVar) << (T(Ident)[Id] * T(Type)[Type] * Any) >>
-          [](Match& _) { return FieldVar << _(Id) << _(Type); },
+        T(NLRCheck) << ((T(Call) / T(CallLHS))[Call]) >>
+          [](Match& _) {
+            auto call = _(Call);
+            return nlrexpand(
+              _, call, call->parent({Lambda, Function})->type() == Function);
+          },
       }};
   }
 
@@ -1171,7 +1187,8 @@ namespace verona
             class_body << create_func << apply_func;
 
             freevars->pop_back();
-            return Seq << (Lift << Block << classdef) << create_call;
+
+            return Seq << (Lift << ClassBody << classdef) << create_call;
           },
       }};
 
@@ -1183,6 +1200,65 @@ namespace verona
     return lambda;
   }
 
+  PassDef autocreate()
+  {
+    return {
+      dir::topdown | dir::once,
+      {
+        In(Class) * T(ClassBody)[ClassBody] >> ([](Match& _) -> Node {
+          // If we already have a create function, do nothing.
+          auto class_body = _(ClassBody);
+
+          if (!class_body->parent()->look(create).empty())
+            return NoChange;
+
+          // Create the create function.
+          Node create_params = Params;
+          Node new_args = Args;
+          auto create_func = Function
+            << (Ident ^ create) << TypeParams << create_params << typevar(_)
+            << (Block << (Expr << (Call << New << new_args)));
+
+          Nodes no_def;
+          Nodes def;
+
+          for (auto& node : *class_body)
+          {
+            if (node->type().in({FieldLet, FieldVar}))
+            {
+              auto id = node->at(wf / FieldLet / Ident, wf / FieldVar / Ident);
+              auto ty = node->at(wf / FieldLet / Type, wf / FieldVar / Type);
+              auto def_arg =
+                node->at(wf / FieldLet / Default, wf / FieldVar / Default);
+
+              // Add each field in order to the call to `new`.
+              new_args << (Expr << (RefLet << clone(id)));
+
+              // Order the parameters to the create function.
+              auto param = Param << clone(id) << clone(ty) << def_arg;
+
+              if (def_arg->type() == DontCare)
+                no_def.push_back(param);
+              else
+                def.push_back(param);
+            }
+          }
+
+          // Add the parameters to the create function, sorting parameters
+          // without a default value first.
+          create_params << no_def << def;
+          return ClassBody << *_[ClassBody] << create_func;
+        }),
+
+        // Strip the default field values.
+        T(FieldLet) << (T(Ident)[Id] * T(Type)[Type] * Any) >>
+          [](Match& _) { return FieldLet << _(Id) << _(Type); },
+
+        T(FieldVar) << (T(Ident)[Id] * T(Type)[Type] * Any) >>
+          [](Match& _) { return FieldVar << _(Id) << _(Type); },
+      }};
+  }
+
   PassDef defaultargs()
   {
     return {
@@ -1192,7 +1268,7 @@ namespace verona
             << (Name[Id] * T(TypeParams)[TypeParams] *
                 (T(Params)
                  << ((T(Param) << (T(Ident) * T(Type) * T(DontCare)))++[Lhs] *
-                     (T(Param) << (T(Ident) * T(Type) * T(Block)))++[Rhs] *
+                     (T(Param) << (T(Ident) * T(Type) * T(Call)))++[Rhs] *
                      End)) *
                 T(Type)[Type] * T(Block)[Block]) >>
           [](Match& _) {
@@ -1211,8 +1287,11 @@ namespace verona
                            << clone(id) << TypeArgs)
                        << args);
 
-            // Strip off the default value for parameters that don't have one.
-            for (auto it = _[Lhs].first; it != _[Lhs].second; ++it)
+            auto lhs = _[Lhs];
+            auto rhs = _[Rhs];
+
+            // Start with parameters that have no default value.
+            for (auto it = lhs.first; it != lhs.second; ++it)
             {
               auto param_id = (*it)->at(wf / Param / Ident);
               params
@@ -1220,46 +1299,34 @@ namespace verona
               args << (Expr << (RefLet << clone(param_id)));
             }
 
-            for (auto it = _[Rhs].first; it != _[Rhs].second; ++it)
+            for (auto it = rhs.first; it != rhs.second; ++it)
             {
-              // Call the arity+1 function with the default argument.
-              auto def_block = (*it)->at(wf / Param / Default);
+              // At this point, the default argument is a create call on the
+              // anonymous class derived from the lambda. Apply the created
+              // lambda to get the default argument, checking for nonlocal.
+              auto def_arg = Call
+                << clone(Apply)
+                << (Args << (Expr << (*it)->at(wf / Param / Default)));
+              def_arg = nlrexpand(_, def_arg, true);
 
-              // Get the last expression in the block.
-              auto def_it = std::find_if(
-                def_block->rbegin(), def_block->rend(), [&](auto& n) {
-                  return n->type() == Expr;
-                });
+              // Add the default argument to the forwarding call.
+              args << (Expr << def_arg);
+              auto block = Block << clone(fwd);
+              args->pop_back();
 
-              if (def_it != def_block->rend())
-              {
-                // Add the default argument to the forwarding call.
-                auto arg = *def_it;
-                def_block->replace(arg);
-                args << arg;
-                def_block << clone(fwd);
-                args->pop_back();
-              }
-              else
-              {
-                def_block = Block
-                  << err(def_block, "default argument is not an expression");
-              }
-
+              // Add a new function that calls the arity+1 function.
               seq
                 << (Function << clone(id) << clone(tp) << clone(params)
-                             << clone(ty) << def_block);
+                             << clone(ty) << block);
 
-              // Add a parameter.
+              // Add a parameter and an argument.
               auto param_id = (*it)->at(wf / Param / Ident);
               params
                 << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
-
-              // Add an argument.
               args << (Expr << (RefLet << clone(param_id)));
             }
 
-            // The original function.
+            // The original function, with no default arguments.
             return seq << (Function << id << tp << params << ty << _(Block));
           },
 
@@ -1288,8 +1355,8 @@ namespace verona
                      << (RefLet << (Ident ^ _(Id)));
         },
 
-      // Lift RefLet by one step everywhere.
-      T(Expr) << T(RefLet)[RefLet] >> [](Match& _) { return _(RefLet); },
+      // Lift RefLet and Return.
+      T(Expr) << (T(RefLet) / T(Return))[Op] >> [](Match& _) { return _(Op); },
 
       // Create a new binding for this liftable expr.
       T(Expr)
@@ -1597,8 +1664,9 @@ namespace verona
         {"assignlhs", assignlhs(), wfPassAssignLHS()},
         {"localvar", localvar(), wfPassLocalVar()},
         {"assignment", assignment(), wfPassAssignment()},
-        {"autocreate", autocreate(), wfPassAutoCreate()},
+        {"nlrcheck", nlrcheck(), wfPassNLRCheck()},
         {"lambda", lambda(), wfPassLambda()},
+        {"autocreate", autocreate(), wfPassAutoCreate()},
         {"defaultargs", defaultargs(), wfPassDefaultArgs()},
         {"anf", anf(), wfPassANF()},
         {"refparams", refparams(), wfPassANF()},

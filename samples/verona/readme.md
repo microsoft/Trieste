@@ -1,8 +1,7 @@
 # Todo
 
-check reflet is after bind/param in drop pass?
+autocreate ignores field initializers if there's already a `create` method. this seems wrong.
 
-- non-local returns
 - free variables in object literals
 - mixins
 - match
