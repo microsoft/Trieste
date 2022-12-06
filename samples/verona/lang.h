@@ -45,7 +45,6 @@ namespace verona
   inline constexpr auto Var = TokenDef("var", flag::lookup | flag::shadowing);
   inline constexpr auto Let = TokenDef("let", flag::lookup | flag::shadowing);
   inline constexpr auto Ref = TokenDef("ref");
-  inline constexpr auto Throw = TokenDef("throw");
   inline constexpr auto Lin = TokenDef("lin");
   inline constexpr auto In_ = TokenDef("in");
   inline constexpr auto Out = TokenDef("out");
@@ -53,6 +52,7 @@ namespace verona
   inline constexpr auto If = TokenDef("if");
   inline constexpr auto Else = TokenDef("else");
   inline constexpr auto New = TokenDef("new");
+  inline constexpr auto Try = TokenDef("try");
 
   // Semantic structure.
   inline constexpr auto TypeTrait =
@@ -74,6 +74,7 @@ namespace verona
   inline constexpr auto TypeTest = TokenDef("typetest");
   inline constexpr auto Cast = TokenDef("cast");
   inline constexpr auto Return = TokenDef("return");
+  inline constexpr auto NLRCheck = TokenDef("nlrcheck");
 
   // Type structure.
   inline constexpr auto Type = TokenDef("type");
@@ -83,7 +84,6 @@ namespace verona
   inline constexpr auto TypeTuple = TokenDef("typetuple");
   inline constexpr auto TypeView = TokenDef("typeview");
   inline constexpr auto TypeFunc = TokenDef("typefunc");
-  inline constexpr auto TypeThrow = TokenDef("typethrow");
   inline constexpr auto TypeIsect = TokenDef("typeisect");
   inline constexpr auto TypeUnion = TokenDef("typeunion");
   inline constexpr auto TypeVar = TokenDef("typevar", flag::print);
@@ -125,8 +125,6 @@ namespace verona
   inline constexpr auto Lhs = TokenDef("Lhs");
   inline constexpr auto Rhs = TokenDef("Rhs");
   inline constexpr auto Op = TokenDef("Op");
-  inline constexpr auto LType = TokenDef("LType");
-  inline constexpr auto RType = TokenDef("RType");
 
   // Sythetic locations.
   inline const auto standard = Location("std");
@@ -136,7 +134,7 @@ namespace verona
   inline const auto apply = Location("apply");
   inline const auto load = Location("load");
   inline const auto store = Location("store");
-  inline const auto self = Location("self");
+  inline const auto nonlocal = Location("nonlocal");
 
   Parse parser();
   Driver& driver();

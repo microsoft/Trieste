@@ -1,6 +1,7 @@
 # Todo
 
-- non-local returns
+autocreate ignores field initializers if there's already a `create` method. this seems wrong.
+
 - free variables in object literals
 - mixins
 - match
@@ -15,9 +16,6 @@
 get rid of capabilities as keywords
 - make them types in `std`?
 - or just handle those `typename` nodes specially in the typechecker?
-get rid of `throw` as a keyword
-- it's a type, like return, break, continue
-add `try`
 
 ## `ref` Functions
 
@@ -27,12 +25,6 @@ CallLHS
 - if a `ref` function has no non-ref implementation, autogenerate one that calls the `ref` function and does `load` on the result
 
 ## Lambdas
-
-selectors and functionnames as values
-- an unbound selector must be a valid functionname
-- can we wrap them in a lambda?
-  - `f` ~> `{ $0, $1, $2 -> f($0, $1, $2) }`
-  - need to know the arity of the function
 
 type of the lambda:
 - no captures, or all captures are `const` = `const`, `self: const`
@@ -81,7 +73,6 @@ A `var` field has both a `ref` accessor function and a non-`ref` accessor functi
 - mangled names for all types and functions
 - struct for every concrete type
 - static and virtual dispatch
-- conditionals
 - heap to stack with escape analysis
 
 ## Ellipsis

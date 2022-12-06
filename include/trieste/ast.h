@@ -4,8 +4,8 @@
 
 #include "token.h"
 
-#include <limits>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <set>
 #include <sstream>
@@ -132,11 +132,16 @@ namespace trieste
 
     Node parent(const Token& type)
     {
+      return parent({type});
+    }
+
+    Node parent(const std::initializer_list<Token>& list)
+    {
       auto p = parent_;
 
       while (p)
       {
-        if (p->type_ == type)
+        if (p->type_.in(list))
           return p->shared_from_this();
 
         p = p->parent_;
@@ -313,12 +318,10 @@ namespace trieste
     }
 
     template<typename F>
-    Nodes get_symbols(F&& f)
+    Nodes& get_symbols(Nodes& result, F&& f)
     {
       if (!symtab_)
-        return {};
-
-      Nodes result;
+        return result;
 
       for (auto& [loc, nodes] : symtab_->symbols)
         std::copy_if(nodes.begin(), nodes.end(), std::back_inserter(result), f);
@@ -327,16 +330,15 @@ namespace trieste
     }
 
     template<typename F>
-    Nodes get_symbols(const Location& loc, F&& f)
+    Nodes& get_symbols(const Location& loc, Nodes& result, F&& f)
     {
       if (!symtab_)
-        return {};
+        return result;
 
       auto it = symtab_->symbols.find(loc);
       if (it == symtab_->symbols.end())
-        return {};
+        return result;
 
-      Nodes result;
       std::copy_if(
         it->second.begin(), it->second.end(), std::back_inserter(result), f);
 
@@ -351,47 +353,34 @@ namespace trieste
 
     Nodes lookup(Node until = {})
     {
-      return lookup(location_, until);
-    }
-
-    Nodes lookup(const Location& loc, Node until = {})
-    {
+      Nodes result;
       auto st = scope();
-      if (!st)
-        return {};
 
-      // If the type of the symbol table is flag::defbeforeuse, then the
-      // definition has to appear earlier in the same file.
-      auto result = st->get_symbols(loc, [&](auto& n) {
-        return (n->type() & flag::lookup) &&
-          (!(st->type() & flag::defbeforeuse) || n->location_.before(loc));
-      });
-
-      // Includes are always returned, regardless of what's being looked up.
-      result.insert(
-        result.end(),
-        st->symtab_->includes.begin(),
-        st->symtab_->includes.end());
-
-      // Sort the results by definition location, with the latest position in
-      // the file coming first.
-      if (st->type() & flag::defbeforeuse)
+      while (st)
       {
-        std::sort(result.begin(), result.end(), [](auto& a, auto& b) {
-          return b->location_.before(a->location_);
+        // If the type of the symbol table is flag::defbeforeuse, then the
+        // definition has to appear earlier in the same file.
+        st->get_symbols(location_, result, [&](auto& n) {
+          return (n->type() & flag::lookup) &&
+            (!(st->type() & flag::defbeforeuse) || n->precedes(this));
         });
-      }
 
-      // If we haven't reached the scope limit and there are no shadowing
-      // definitions, append any parent lookup results.
-      if (
-        (st != until) &&
-        !std::any_of(result.begin(), result.end(), [](auto& n) {
-          return n->type() & flag::shadowing;
-        }))
-      {
-        auto presult = st->lookup(loc, until);
-        result.insert(result.end(), presult.begin(), presult.end());
+        // Includes are always returned, regardless of what's being looked up.
+        result.insert(
+          result.end(),
+          st->symtab_->includes.begin(),
+          st->symtab_->includes.end());
+
+        // If we've reached the scope limit or there are no shadowing
+        // definitions, don't continue to the next scope.
+        if (
+          (st == until) ||
+          std::any_of(result.begin(), result.end(), [](auto& n) {
+            return n->type() & flag::shadowing;
+          }))
+          break;
+
+        st = st->scope();
       }
 
       return result;
@@ -401,15 +390,17 @@ namespace trieste
     {
       // This is used for scoped resolution, where we're looking in this symbol
       // table specifically. Don't use includes, as those are for lookup only.
+      Nodes result;
       return get_symbols(
-        loc, [](auto& n) { return n->type() & flag::lookdown; });
+        loc, result, [](auto& n) { return n->type() & flag::lookdown; });
     }
 
     Nodes look(const Location& loc)
     {
       // This is used for immediate resolution in the parent scope, ignoring
       // flag::lookup and flag::lookdown.
-      return get_symbols(loc, [](auto&) { return true; });
+      Nodes result;
+      return get_symbols(loc, result, [](auto&) { return true; });
     }
 
     bool bind(const Location& loc)
@@ -482,6 +473,47 @@ namespace trieste
       {
         children.erase(it);
       }
+    }
+
+    bool precedes(Node node)
+    {
+      return precedes(node.get());
+    }
+
+    bool precedes(NodeDef* node)
+    {
+      auto p = this;
+      auto q = node;
+
+      // Node A precedes node B iff A is to the left of B and A does not
+      // dominate B and B does not dominate A.
+      int d1 = 0, d2 = 0;
+
+      for (auto t = p; t; t = t->parent_)
+        ++d1;
+      for (auto t = q; t; t = t->parent_)
+        ++d2;
+
+      for (int i = 0; i < (d1 - d2); ++i)
+        p = p->parent_;
+      for (int i = 0; i < (d2 - d1); ++i)
+        q = q->parent_;
+
+      // If p and q are the same, then either A dominates B or B dominates A.
+      if (p == q)
+        return false;
+
+      // Find the common parent.
+      while (p->parent_ != q->parent_)
+      {
+        p = p->parent_;
+        q = q->parent_;
+      }
+
+      // Check that p is to the left of q.
+      auto parent = p->parent_;
+      return parent->find(p->shared_from_this()) <
+        parent->find(q->shared_from_this());
     }
 
     std::string str(size_t level = 0)
