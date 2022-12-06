@@ -16,7 +16,6 @@ autocreate ignores field initializers if there's already a `create` method. this
 get rid of capabilities as keywords
 - make them types in `std`?
 - or just handle those `typename` nodes specially in the typechecker?
-add `try`
 
 ## `ref` Functions
 
