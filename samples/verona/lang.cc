@@ -1145,8 +1145,8 @@ namespace verona
               // Add a field for the free variable to the anonymous type.
               auto type_id = _.fresh();
               class_body
-                << (FieldLet << (Ident ^ fv_id)
-                             << (Type << (TypeVar ^ type_id)));
+                << (FieldLet << (Ident ^ fv_id) << (Type << (TypeVar ^ type_id))
+                             << DontCare);
 
               // Add a parameter to the create function to capture the free
               // variable as a field.
