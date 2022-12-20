@@ -5,6 +5,7 @@
 #include "ast.h"
 #include "xoroshiro.h"
 
+#include <functional>
 #include <regex>
 
 namespace trieste

@@ -47,12 +47,12 @@ namespace xoroshiro
         (*this)();
       }
 
-      RESULT min() const
+      constexpr static RESULT min()
       {
         return std::numeric_limits<RESULT>::min();
       }
 
-      RESULT max() const
+      constexpr static RESULT max()
       {
         return std::numeric_limits<RESULT>::max();
       }

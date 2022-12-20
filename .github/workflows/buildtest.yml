@@ -10,7 +10,7 @@ jobs:
   build-test:
     strategy:
       matrix:
-        platform: [ "ubuntu-latest" ]
+        platform: [ "ubuntu-latest", "macos-latest", "windows-latest" ]
         build-type: [ "Release", "Debug" ]
         
         include:
