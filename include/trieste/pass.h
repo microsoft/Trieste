@@ -120,7 +120,7 @@ namespace trieste
         if (flag(dir::bottomup))
           changes += apply(*it);
 
-        ssize_t replaced = -1;
+        ptrdiff_t replaced = -1;
 
         for (auto& rule : rules_)
         {
@@ -174,9 +174,9 @@ namespace trieste
           if (flag(dir::topdown) && (replaced != 0))
           {
             // Move down the tree.
-            auto to = std::max(replaced, ssize_t(1));
+            auto to = std::max(replaced, ptrdiff_t(1));
 
-            for (ssize_t i = 0; i < to; ++i)
+            for (ptrdiff_t i = 0; i < to; ++i)
               changes += apply(*(it + i));
           }
 
