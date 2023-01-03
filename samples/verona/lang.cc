@@ -413,6 +413,13 @@ namespace verona
           return err(_[Expr], "can't put this in an expression");
         },
 
+      // A Block that doesn't end with an Expr gets an implicit Unit.
+      In(Block) * (!T(Expr))[Lhs] * End >>
+        [](Match& _) { return Seq << _(Lhs) << (Expr << Unit); },
+
+      // An empty Block gets an implicit Unit.
+      T(Block) << End >> [](Match&) { return Block << (Expr << Unit); },
+
       // Remove empty and malformed groups.
       T(Group) << End >> ([](Match&) -> Node { return {}; }),
       T(Group)[Group] >> [](Match& _) { return err(_[Group], "syntax error"); },

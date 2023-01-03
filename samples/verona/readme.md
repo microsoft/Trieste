@@ -1,9 +1,5 @@
 # Todo
 
-"empty" blocks
-- in `structure`, add a `None` if the last entry in a block isn't an expr?
-- in wf, blocks should be non-empty
-
 autocreate ignores field initializers if there's already a `create` method. this seems wrong.
 
 dispatch
