@@ -397,7 +397,7 @@ namespace trieste
 
     Nodes look(const Location& loc)
     {
-      // This is used for immediate resolution in the parent scope, ignoring
+      // This is used for immediate resolution in this symtab, ignoring
       // flag::lookup and flag::lookdown.
       Nodes result;
       return get_symbols(loc, result, [](auto&) { return true; });

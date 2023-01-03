@@ -650,7 +650,7 @@ namespace verona
   PassDef reference()
   {
     return {
-      // Dot notation. Don't interpret `Id` as a local variable.
+      // Dot notation. Use `Id` as a selector, even if it's in scope.
       In(Expr) * T(Dot) * Name[Id] * ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {
           return Seq << Dot << (Selector << _[Id] << (_[TypeArgs] | TypeArgs));
@@ -1337,6 +1337,152 @@ namespace verona
       }};
   }
 
+  PassDef partialapp()
+  {
+    // This should happen after `lambda` (so that anonymous types get partial
+    // application), after `autocreate` (so that constructors get partial
+    // application), and after `defaultargs` (so that default arguments don't
+    // get partial application).
+
+    // This means that partial application can't be written in terms of lambdas,
+    // but instead has to be anonymous classes. There's no need to check for
+    // non-local returns.
+    return {
+      dir::bottomup | dir::once,
+      {T(Function)[Function]
+         << (Name[Id] * T(TypeParams)[TypeParams] * T(Params)[Params]) >>
+       [](Match& _) {
+         auto f = _(Function);
+         auto id = _(Id);
+         auto tp = _(TypeParams);
+         auto params = _(Params);
+         size_t start_arity = 0;
+         auto end_arity = params->size();
+         auto parent = f->parent()->parent();
+         auto defs = parent->look(id->location());
+         auto tn = parent->at(wf / Class / Ident, wf / TypeTrait / Ident);
+
+         for (auto def : defs)
+         {
+           if ((def == f) || (def->type() != Function))
+             continue;
+
+           auto arity = def->at(wf / Function / Params)->size();
+
+           if ((arity >= start_arity) && (arity < end_arity))
+             start_arity = arity + 1;
+         }
+
+         Nodes names;
+
+         // Create a unique anonymous class name for each arity.
+         for (auto arity = start_arity; arity < end_arity; ++arity)
+           names.push_back(Ident ^ _.fresh());
+
+         Node ret = Seq;
+
+         for (auto arity = start_arity; arity < end_arity; ++arity)
+         {
+           // Create an anonymous class for each arity.
+           auto idx = arity - start_arity;
+           Node classbody = ClassBody;
+           auto classdef = Class << names[idx] << TypeParams
+                                 << (Type << TypeUnit) << classbody;
+
+           // The anonymous class has fields for each supplied argument and a
+           // create function that captures the supplied arguments.
+           Node create_params = Params;
+           Node new_args = Args;
+           classbody
+             << (Function << (Ident ^ create) << TypeParams << create_params
+                          << typevar(_)
+                          << (Block << (Expr << (Call << New << new_args))));
+
+           // Create a function that returns the anonymous class for each arity.
+           Node func_params = Params;
+           Node func_args = Args;
+           auto func =
+             Function << id << TypeParams << func_params << typevar(_)
+                      << (Block
+                          << (Expr
+                              << (Call
+                                  << (FunctionName
+                                      << (TypeName << TypeUnit << names[idx]
+                                                   << TypeArgs)
+                                      << (Ident ^ create) << TypeArgs)
+                                  << func_args)));
+
+           for (size_t i = 0; i < arity; ++i)
+           {
+             auto param = params->at(i);
+             auto param_id = param->at(wf / Param / Ident);
+             auto param_type = param->at(wf / Param / Type);
+             classbody << (FieldLet << clone(param_id) << clone(param_type));
+             create_params << clone(param);
+             new_args << (Expr << (RefLet << clone(param_id)));
+             func_params << clone(param);
+             func_args << (Expr << (RefLet << clone(param_id)));
+           }
+
+           // The anonymous class has a function for each intermediate arity and
+           // for the final arity.
+           for (auto i = arity + 1; i <= end_arity; ++i)
+           {
+             auto self_id = Ident ^ _.fresh();
+             Node apply_params = Params << (Param << self_id << typevar(_));
+             Node fwd_args = Args;
+
+             for (size_t j = 0; j < arity; ++j)
+             {
+               // Include our captured arguments.
+               fwd_args
+                 << (Expr
+                     << (Call
+                         << (Selector
+                             << clone(params->at(j)->at(wf / Param / Ident))
+                             << TypeArgs)
+                         << (Args << (Expr << (RefLet << clone(self_id))))));
+             }
+
+             for (auto j = arity; j < i; ++j)
+             {
+               // Add the additional arguments passed to this apply function.
+               auto param = params->at(j);
+               apply_params << clone(param);
+               fwd_args
+                 << (Expr << (RefLet << clone(param->at(wf / Param / Ident))));
+             }
+
+             Node fwd;
+
+             if (i == end_arity)
+             {
+               // The final arity calls the original function.
+               fwd = FunctionName << (TypeName << TypeUnit << tn << TypeArgs)
+                                  << id << TypeArgs;
+             }
+             else
+             {
+               // Intermediate arities call the next arity.
+               fwd = FunctionName
+                 << (TypeName << TypeUnit << names[i - start_arity] << TypeArgs)
+                 << (Ident ^ create) << TypeArgs;
+             }
+
+             classbody
+               << (Function << (Ident ^ apply) << TypeParams << apply_params
+                            << typevar(_)
+                            << (Block << (Expr << (Call << fwd << fwd_args))));
+           }
+
+           ret << classdef << func;
+         }
+
+         return ret << f;
+       }},
+    };
+  }
+
   inline const auto Liftable = T(Unit) / T(Tuple) / T(Lambda) / T(Call) /
     T(CallLHS) / T(Conditional) / T(TypeTest) / T(Cast) / T(Selector) /
     T(FunctionName) / Literal;
@@ -1668,6 +1814,7 @@ namespace verona
         {"lambda", lambda(), wfPassLambda()},
         {"autocreate", autocreate(), wfPassAutoCreate()},
         {"defaultargs", defaultargs(), wfPassDefaultArgs()},
+        {"partialapp", partialapp(), wfPassDefaultArgs()},
         {"anf", anf(), wfPassANF()},
         {"refparams", refparams(), wfPassANF()},
         {"defbeforeuse", defbeforeuse(), wfPassANF()},

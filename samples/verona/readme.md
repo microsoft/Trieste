@@ -1,7 +1,18 @@
 # Todo
 
+"empty" blocks
+- in `structure`, add a `None` if the last entry in a block isn't an expr?
+- in wf, blocks should be non-empty
+
 autocreate ignores field initializers if there's already a `create` method. this seems wrong.
 
+dispatch
+- static vs dynamic
+- arity
+- no static type based overloading
+- `::name` as a scoped name, meaning lookup only, no lookdown phase
+
+- implementing `ref` functions
 - free variables in object literals
 - mixins
 - match
