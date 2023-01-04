@@ -4,7 +4,6 @@ autocreate ignores field initializers if there's already a `create` method. this
 
 dispatch
 - static vs dynamic
-- arity
 - no static type based overloading
 - `::name` as a scoped name, meaning lookup only, no lookdown phase
 
@@ -23,8 +22,7 @@ dispatch
 
 - autogenerate field accessors if they don't exist
   - as `ref` functions, before autogenerating rhs from lhs
-- if a `ref` function has no non-ref implementation, autogenerate one that calls the `ref` function and does `load` on the result
-  - autogenerate rhs functions from lhs functions before defaultargs and partialapp
+  - need to check for conflicting field names
 
 ## Key Words
 

@@ -1210,6 +1210,69 @@ namespace verona
     return lambda;
   }
 
+  PassDef autorhs()
+  {
+    return {
+      dir::topdown | dir::once,
+      {
+        T(Function)[Function]
+            << (T(Ref) * Name[Id] * T(TypeParams)[TypeParams] *
+                T(Params)[Params] * T(Type)[Type] * T(Block)) >>
+          ([](Match& _) -> Node {
+            auto f = _(Function);
+            auto id = _(Id);
+            auto params = _(Params);
+            auto parent = f->parent()->parent();
+            auto tn = parent->at(wf / Class / Ident, wf / TypeTrait / Ident);
+            auto defs = parent->lookdown(id->location());
+            auto found = false;
+
+            // Check if there's an RHS function with the same name and arity.
+            for (auto def : defs)
+            {
+              if (
+                (def != f) && (def->type() == Function) &&
+                (def->at(wf / Function / Ref)->type() != Ref) &&
+                (def->at(wf / Function / Ident)->location() ==
+                 id->location()) &&
+                (def->at(wf / Function / Params)->size() == params->size()))
+              {
+                found = true;
+                break;
+              }
+            }
+
+            if (found)
+              return NoChange;
+
+            // If not, create an RHS function with the same name and arity.
+            Node args = Args;
+
+            for (auto param : *params)
+              args << (Expr << (RefLet << param->at(wf / Param / Ident)));
+
+            auto rhs_f =
+              Function << DontCare << clone(id) << clone(_(TypeParams))
+                       << clone(params) << clone(_(Type))
+                       << (Block
+                           << (Expr
+                               << (Call
+                                   << clone(Load)
+                                   << (Args
+                                       << (Expr
+                                           << (CallLHS
+                                               << (FunctionName
+                                                   << (TypeName << TypeUnit
+                                                                << clone(tn)
+                                                                << TypeArgs)
+                                                   << clone(id) << TypeArgs)
+                                               << args))))));
+
+            return Seq << f << rhs_f;
+          }),
+      }};
+  }
+
   PassDef autocreate()
   {
     return {
@@ -1219,7 +1282,7 @@ namespace verona
           // If we already have a create function, do nothing.
           auto class_body = _(ClassBody);
 
-          if (!class_body->parent()->look(create).empty())
+          if (!class_body->parent()->lookdown(create).empty())
             return NoChange;
 
           // Create the create function.
@@ -1376,7 +1439,7 @@ namespace verona
          size_t start_arity = 0;
          auto end_arity = params->size();
          auto parent = f->parent()->parent();
-         auto defs = parent->look(id->location());
+         auto defs = parent->lookdown(id->location());
          auto tn = parent->at(wf / Class / Ident, wf / TypeTrait / Ident);
          Node call = (ref->type() == Ref) ? CallLHS : Call;
 
@@ -1835,6 +1898,7 @@ namespace verona
         {"assignment", assignment(), wfPassAssignment()},
         {"nlrcheck", nlrcheck(), wfPassNLRCheck()},
         {"lambda", lambda(), wfPassLambda()},
+        {"autorhs", autorhs(), wfPassLambda()},
         {"autocreate", autocreate(), wfPassAutoCreate()},
         {"defaultargs", defaultargs(), wfPassDefaultArgs()},
         {"partialapp", partialapp(), wfPassDefaultArgs()},
