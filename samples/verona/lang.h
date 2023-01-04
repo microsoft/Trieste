@@ -110,6 +110,7 @@ namespace verona
   inline constexpr auto RefVarLHS = TokenDef("refvar-lhs");
   inline constexpr auto TupleFlatten = TokenDef("tupleflatten");
   inline constexpr auto Conditional = TokenDef("conditional");
+  inline constexpr auto FieldRef = TokenDef("fieldref");
   inline constexpr auto Bind = TokenDef("bind", flag::lookup | flag::shadowing);
   inline constexpr auto Move = TokenDef("move");
   inline constexpr auto Copy = TokenDef("copy");

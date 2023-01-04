@@ -9,6 +9,7 @@ dispatch
 
 - remove arity ambiguity by including arity `/N` in function names
 - remove CallLHS by including `$ref` in function names
+- check for conflicting field names
 - free variables in object literals
 - mixins
 - match
@@ -17,12 +18,6 @@ dispatch
 - package schemes
 - type assertions are accidentally allowed as types
 - list inside TypeParams or TypeArgs along with groups or other lists
-
-## `ref` Functions
-
-- autogenerate field accessors if they don't exist
-  - as `ref` functions, before autogenerating rhs from lhs
-  - need to check for conflicting field names
 
 ## Key Words
 

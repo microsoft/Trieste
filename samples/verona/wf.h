@@ -315,8 +315,20 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassAutoCreate =
+  inline constexpr auto wfPassAutoFields =
       wfPassLambda
+
+    // Add FieldRef.
+    | (FieldRef <<= (Lhs >>= Ident) * (Rhs >>= Ident))
+    | (Expr <<=
+        ExprSeq | Unit | Tuple | wfLiteral | TypeAssert | Conditional |
+        TypeTest | Cast | RefLet | Call | CallLHS | Bind | FieldRef)
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline constexpr auto wfPassAutoCreate =
+      wfPassAutoFields
     | (FieldLet <<= Ident * Type)[Ident]
     | (FieldVar <<= Ident * Type)[Ident]
     ;
@@ -343,7 +355,7 @@ namespace verona
     | (Bind <<= Ident * Type *
         (Rhs >>=
           RefLet | Unit | Tuple | Call | Conditional | TypeTest | Cast |
-          CallLHS | wfLiteral))[Ident]
+          CallLHS | FieldRef | wfLiteral))[Ident]
     ;
   // clang-format on
 
@@ -366,7 +378,7 @@ namespace verona
     | (Bind <<= Ident * Type *
         (Rhs >>=
           Unit | Tuple | Call | Conditional | TypeTest | Cast | CallLHS |
-          wfLiteral | Copy | Move))[Ident]
+          FieldRef | wfLiteral | Copy | Move))[Ident]
     ;
   // clang-format on
 
@@ -391,7 +403,7 @@ namespace verona
     | (Bind <<= Ident * Type *
         (Rhs >>=
           Unit | Tuple | Call | Conditional | TypeTest | Cast | CallLHS |
-          wfLiteral | Copy | Move))
+          FieldRef | wfLiteral | Copy | Move))
     ;
   // clang-format on
 }

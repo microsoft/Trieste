@@ -1210,6 +1210,59 @@ namespace verona
     return lambda;
   }
 
+  PassDef autofields()
+  {
+    return {
+      dir::topdown | dir::once,
+      {
+        (T(FieldVar) / T(FieldLet))[FieldVar]
+            << (T(Ident)[Id] * T(Type)[Type]) >>
+          ([](Match& _) -> Node {
+            auto field = _(FieldVar);
+            auto id = _(Id);
+            auto type = _(Type);
+            auto parent = field->parent()->parent();
+            auto defs = parent->lookdown(id->location());
+            Token ref = (field->type() == FieldVar) ? Ref : DontCare;
+            auto found = false;
+
+            // Check if there's an LHS/RHS function with the same name and
+            // arity 1, depending on whether this is a FieldVar or a FieldLet.
+            for (auto def : defs)
+            {
+              if (
+                (def->type() == Function) &&
+                (def->at(wf / Function / Ref)->type() == ref) &&
+                (def->at(wf / Function / Params)->size() == 1))
+              {
+                found = true;
+                break;
+              }
+            }
+
+            if (found)
+              return NoChange;
+
+            // If it's a FieldLet, generate only an RHS function. If it's a
+            // FieldVar, generate an LHS function, which will autogenerate an
+            // RHS function.
+            auto self_id = _.fresh();
+            auto expr = Expr << (FieldRef << (Ident ^ self_id) << clone(id));
+
+            if (ref == DontCare)
+              expr = Expr << (Call << clone(Load) << (Args << expr));
+
+            auto f = Function << ref << clone(id) << TypeParams
+                              << (Params
+                                  << (Param << (Ident ^ self_id) << typevar(_)
+                                            << DontCare))
+                              << clone(type) << (Block << expr);
+
+            return Seq << field << f;
+          }),
+      }};
+  }
+
   PassDef autorhs()
   {
     return {
@@ -1569,8 +1622,8 @@ namespace verona
   }
 
   inline const auto Liftable = T(Unit) / T(Tuple) / T(Lambda) / T(Call) /
-    T(CallLHS) / T(Conditional) / T(TypeTest) / T(Cast) / T(Selector) /
-    T(FunctionName) / Literal;
+    T(CallLHS) / T(Conditional) / T(FieldRef) / T(TypeTest) / T(Cast) /
+    T(Selector) / T(FunctionName) / Literal;
 
   PassDef anf()
   {
@@ -1898,7 +1951,8 @@ namespace verona
         {"assignment", assignment(), wfPassAssignment()},
         {"nlrcheck", nlrcheck(), wfPassNLRCheck()},
         {"lambda", lambda(), wfPassLambda()},
-        {"autorhs", autorhs(), wfPassLambda()},
+        {"autofields", autofields(), wfPassAutoFields()},
+        {"autorhs", autorhs(), wfPassAutoFields()},
         {"autocreate", autocreate(), wfPassAutoCreate()},
         {"defaultargs", defaultargs(), wfPassDefaultArgs()},
         {"partialapp", partialapp(), wfPassDefaultArgs()},
