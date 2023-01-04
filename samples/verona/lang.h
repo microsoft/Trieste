@@ -116,7 +116,6 @@ namespace verona
   inline constexpr auto Drop = TokenDef("drop");
 
   // Indexing names.
-  inline constexpr auto IdSym = TokenDef("idsym");
   inline constexpr auto Bound = TokenDef("bound");
   inline constexpr auto Default = TokenDef("default");
 

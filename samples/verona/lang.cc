@@ -108,23 +108,26 @@ namespace verona
       In(ClassBody) *
           (T(Equals)
            << ((T(Group)
-                << (~Name[Id] * ~T(Square)[TypeParams] * T(Paren)[Params] *
-                    ~T(Type)[Type])) *
+                << (~T(Ref)[Ref] * ~Name[Id] * ~T(Square)[TypeParams] *
+                    T(Paren)[Params] * ~T(Type)[Type])) *
                T(Group)++[Rhs])) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
-          return Function << _(Id) << (TypeParams << *_[TypeParams])
+          return Function << (_[Ref] | DontCare) << _(Id)
+                          << (TypeParams << *_[TypeParams])
                           << (Params << *_[Params]) << typevar(_, Type)
                           << (Block << (Expr << (Default << _[Rhs])));
         },
 
       // Function: (group name square parens type brace)
       In(ClassBody) * T(Group)
-          << (~Name[Id] * ~T(Square)[TypeParams] * T(Paren)[Params] *
-              ~T(Type)[Type] * ~T(Brace)[Block] * (Any++)[Rhs]) >>
+          << (~T(Ref)[Ref] * ~Name[Id] * ~T(Square)[TypeParams] *
+              T(Paren)[Params] * ~T(Type)[Type] * ~T(Brace)[Block] *
+              (Any++)[Rhs]) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
-          return Seq << (Function << _(Id) << (TypeParams << *_[TypeParams])
+          return Seq << (Function << (_[Ref] | DontCare) << _(Id)
+                                  << (TypeParams << *_[TypeParams])
                                   << (Params << *_[Params]) << typevar(_, Type)
                                   << (Block << *_[Block]))
                      << (Group << _[Rhs]);
@@ -909,12 +912,12 @@ namespace verona
           return Expr << (TypeAssert << (RefVarLHS << *_[Lhs]) << _(Type));
         },
 
-      T(Ref)[Ref] >>
+      In(Expr) * T(Ref)[Ref] >>
         [](Match& _) {
           return err(_[Ref], "must use `ref` in front of a variable or call");
         },
 
-      T(Try)[Try] >>
+      In(Expr) * T(Try)[Try] >>
         [](Match& _) {
           return err(_[Try], "must use `try` in front of a call or lambda");
         },
@@ -1132,7 +1135,7 @@ namespace verona
             Node create_params = Params;
             Node new_args = Args;
             auto create_func = Function
-              << (Ident ^ create) << TypeParams << create_params
+              << DontCare << (Ident ^ create) << TypeParams << create_params
               << (Type << (TypeVar ^ _.fresh()))
               << (Block << (Expr << (Call << New << new_args)));
 
@@ -1183,7 +1186,7 @@ namespace verona
             // The apply function is the original lambda. Prepend a `self`-like
             // parameter with a fresh name to the lambda parameters.
             auto apply_func = Function
-              << (Ident ^ apply) << _(TypeParams)
+              << DontCare << (Ident ^ apply) << _(TypeParams)
               << (Params << (Param << (Ident ^ self_id)
                                    << (Type << (TypeVar ^ _.fresh()))
                                    << DontCare)
@@ -1223,8 +1226,8 @@ namespace verona
           Node create_params = Params;
           Node new_args = Args;
           auto create_func = Function
-            << (Ident ^ create) << TypeParams << create_params << typevar(_)
-            << (Block << (Expr << (Call << New << new_args)));
+            << DontCare << (Ident ^ create) << TypeParams << create_params
+            << typevar(_) << (Block << (Expr << (Call << New << new_args)));
 
           Nodes no_def;
           Nodes def;
@@ -1272,7 +1275,8 @@ namespace verona
       dir::bottomup | dir::once,
       {
         T(Function)[Function]
-            << (Name[Id] * T(TypeParams)[TypeParams] *
+            << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
+                T(TypeParams)[TypeParams] *
                 (T(Params)
                  << ((T(Param) << (T(Ident) * T(Type) * T(DontCare)))++[Lhs] *
                      (T(Param) << (T(Ident) * T(Type) * T(Call)))++[Rhs] *
@@ -1280,19 +1284,22 @@ namespace verona
                 T(Type)[Type] * T(Block)[Block]) >>
           [](Match& _) {
             Node seq = Seq;
+            auto ref = _(Ref);
             auto id = _(Id);
             auto tp = _(TypeParams);
             auto ty = _(Type);
             Node params = Params;
+            Node call = (ref->type() == Ref) ? CallLHS : Call;
 
             auto tn = _(Function)->parent()->parent()->at(
               wf / Class / Ident, wf / TypeTrait / Ident);
             Node args = Args;
             auto fwd = Expr
-              << (Call << (FunctionName
-                           << (TypeName << TypeUnit << clone(tn) << TypeArgs)
-                           << clone(id) << TypeArgs)
-                       << args);
+              << (clone(call)
+                  << (FunctionName
+                      << (TypeName << TypeUnit << clone(tn) << TypeArgs)
+                      << clone(id) << TypeArgs)
+                  << args);
 
             auto lhs = _[Lhs];
             auto rhs = _[Rhs];
@@ -1323,8 +1330,8 @@ namespace verona
 
               // Add a new function that calls the arity+1 function.
               seq
-                << (Function << clone(id) << clone(tp) << clone(params)
-                             << clone(ty) << block);
+                << (Function << clone(ref) << clone(id) << clone(tp)
+                             << clone(params) << clone(ty) << block);
 
               // Add a parameter and an argument.
               auto param_id = (*it)->at(wf / Param / Ident);
@@ -1334,7 +1341,8 @@ namespace verona
             }
 
             // The original function, with no default arguments.
-            return seq << (Function << id << tp << params << ty << _(Block));
+            return seq
+              << (Function << ref << id << tp << params << ty << _(Block));
           },
 
         T(Function)[Function] >>
@@ -1357,9 +1365,11 @@ namespace verona
     return {
       dir::bottomup | dir::once,
       {T(Function)[Function]
-         << (Name[Id] * T(TypeParams)[TypeParams] * T(Params)[Params]) >>
+         << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
+             T(TypeParams)[TypeParams] * T(Params)[Params]) >>
        [](Match& _) {
          auto f = _(Function);
+         auto ref = _(Ref);
          auto id = _(Id);
          auto tp = _(TypeParams);
          auto params = _(Params);
@@ -1368,6 +1378,7 @@ namespace verona
          auto parent = f->parent()->parent();
          auto defs = parent->look(id->location());
          auto tn = parent->at(wf / Class / Ident, wf / TypeTrait / Ident);
+         Node call = (ref->type() == Ref) ? CallLHS : Call;
 
          for (auto def : defs)
          {
@@ -1393,7 +1404,7 @@ namespace verona
            // Create an anonymous class for each arity.
            auto idx = arity - start_arity;
            Node classbody = ClassBody;
-           auto classdef = Class << names[idx] << TypeParams
+           auto classdef = Class << clone(names[idx]) << TypeParams
                                  << (Type << TypeUnit) << classbody;
 
            // The anonymous class has fields for each supplied argument and a
@@ -1401,23 +1412,24 @@ namespace verona
            Node create_params = Params;
            Node new_args = Args;
            classbody
-             << (Function << (Ident ^ create) << TypeParams << create_params
-                          << typevar(_)
+             << (Function << DontCare << (Ident ^ create) << TypeParams
+                          << create_params << typevar(_)
                           << (Block << (Expr << (Call << New << new_args))));
 
            // Create a function that returns the anonymous class for each arity.
            Node func_params = Params;
            Node func_args = Args;
            auto func =
-             Function << id << TypeParams << func_params << typevar(_)
+             Function << clone(ref) << clone(id) << TypeParams << func_params
+                      << typevar(_)
                       << (Block
                           << (Expr
-                              << (Call
-                                  << (FunctionName
-                                      << (TypeName << TypeUnit << names[idx]
-                                                   << TypeArgs)
-                                      << (Ident ^ create) << TypeArgs)
-                                  << func_args)));
+                              << (Call << (FunctionName
+                                           << (TypeName << TypeUnit
+                                                        << clone(names[idx])
+                                                        << TypeArgs)
+                                           << (Ident ^ create) << TypeArgs)
+                                       << func_args)));
 
            for (size_t i = 0; i < arity; ++i)
            {
@@ -1465,21 +1477,24 @@ namespace verona
              if (i == end_arity)
              {
                // The final arity calls the original function.
-               fwd = FunctionName << (TypeName << TypeUnit << tn << TypeArgs)
-                                  << id << TypeArgs;
+               fwd = FunctionName
+                 << (TypeName << TypeUnit << clone(tn) << TypeArgs) << clone(id)
+                 << TypeArgs;
              }
              else
              {
                // Intermediate arities call the next arity.
                fwd = FunctionName
-                 << (TypeName << TypeUnit << names[i - start_arity] << TypeArgs)
+                 << (TypeName << TypeUnit << clone(names[i - start_arity])
+                              << TypeArgs)
                  << (Ident ^ create) << TypeArgs;
              }
 
              classbody
-               << (Function << (Ident ^ apply) << TypeParams << apply_params
-                            << typevar(_)
-                            << (Block << (Expr << (Call << fwd << fwd_args))));
+               << (Function
+                   << clone(ref) << (Ident ^ apply) << TypeParams
+                   << apply_params << typevar(_)
+                   << (Block << (Expr << (clone(call) << fwd << fwd_args))));
            }
 
            ret << classdef << func;
@@ -1538,8 +1553,9 @@ namespace verona
       dir::topdown | dir::once,
       {
         T(Function)
-            << (Name[Id] * T(TypeParams)[TypeParams] * T(Params)[Params] *
-                T(Type)[Type] * T(Block)[Block]) >>
+            << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
+                T(TypeParams)[TypeParams] * T(Params)[Params] * T(Type)[Type] *
+                T(Block)[Block]) >>
           [](Match& _) {
             // Reference every parameter at the beginning of the function.
             // This ensures that otherwise unused parameters are correctly
@@ -1551,8 +1567,8 @@ namespace verona
                 << (RefLet << (Ident ^ p->at(wf / Param / Ident)->location()));
             }
 
-            return Function << _(Id) << _(TypeParams) << _(Params) << _(Type)
-                            << (block << *_[Block]);
+            return Function << _(Ref) << _(Id) << _(TypeParams) << _(Params)
+                            << _(Type) << (block << *_[Block]);
           },
       }};
   }

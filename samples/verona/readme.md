@@ -8,7 +8,8 @@ dispatch
 - no static type based overloading
 - `::name` as a scoped name, meaning lookup only, no lookdown phase
 
-- implementing `ref` functions
+- remove arity ambiguity by including arity `/N` in function names
+- remove CallLHS by including `$ref` in function names
 - free variables in object literals
 - mixins
 - match
@@ -18,18 +19,18 @@ dispatch
 - type assertions are accidentally allowed as types
 - list inside TypeParams or TypeArgs along with groups or other lists
 
+## `ref` Functions
+
+- autogenerate field accessors if they don't exist
+  - as `ref` functions, before autogenerating rhs from lhs
+- if a `ref` function has no non-ref implementation, autogenerate one that calls the `ref` function and does `load` on the result
+  - autogenerate rhs functions from lhs functions before defaultargs and partialapp
+
 ## Key Words
 
 get rid of capabilities as keywords
 - make them types in `std`?
 - or just handle those `typename` nodes specially in the typechecker?
-
-## `ref` Functions
-
-CallLHS
-- separate implementation
-- `f()` vs `ref f()`
-- if a `ref` function has no non-ref implementation, autogenerate one that calls the `ref` function and does `load` on the result
 
 ## Lambdas
 

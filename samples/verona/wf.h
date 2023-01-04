@@ -8,7 +8,8 @@ namespace verona
 {
   using namespace wf::ops;
 
-  inline constexpr auto wfIdSym = IdSym >>= Ident | Symbol;
+  inline constexpr auto wfRef = Ref >>= Ref | DontCare;
+  inline constexpr auto wfName = Ident >>= Ident | Symbol;
   inline constexpr auto wfDefault = Default >>= Lambda | DontCare;
 
   inline constexpr auto wfLiteral =
@@ -63,7 +64,7 @@ namespace verona
     | (TypeTrait <<= Ident * ClassBody)[Ident]
     | (FieldLet <<= Ident * Type * wfDefault)[Ident]
     | (FieldVar <<= Ident * Type * wfDefault)[Ident]
-    | (Function <<= wfIdSym * TypeParams * Params * Type * Block)[IdSym]
+    | (Function <<= wfRef * wfName * TypeParams * Params * Type * Block)[Ident]
     | (TypeParams <<= TypeParam++)
     | (TypeParam <<= Ident * (Bound >>= Type) * Type)[Ident]
     | (Params <<= Param++)
@@ -189,9 +190,9 @@ namespace verona
     // Add RefLet, RefVar, Selector, FunctionName, TypeAssertOp.
     | (RefLet <<= Ident)
     | (RefVar <<= Ident)
-    | (Selector <<= wfIdSym * TypeArgs)
+    | (Selector <<= wfName * TypeArgs)
     | (FunctionName <<=
-        (TypeName >>= (TypeName | TypeUnit)) * wfIdSym * TypeArgs)
+        (TypeName >>= (TypeName | TypeUnit)) * wfName * TypeArgs)
     | (TypeAssertOp <<= (Op >>= Selector | FunctionName) * Type)
 
     // Remove TypeArgs, Ident, Symbol, DoubleColon.
@@ -375,7 +376,7 @@ namespace verona
     | (Class <<= Ident * TypeParams * Type * ClassBody)
     | (FieldLet <<= Ident * Type * Default)
     | (FieldVar <<= Ident * Type * Default)
-    | (Function <<= wfIdSym * TypeParams * Params * (Type >>= wfType) * Block)
+    | (Function <<= wfRef * wfName * TypeParams * Params * Type * Block)
     | (Param <<= Ident * Type * Default)
     | (Type <<= wfType)
     | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
