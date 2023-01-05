@@ -1226,15 +1226,14 @@ namespace verona
     return {
       dir::topdown | dir::once,
       {
-        (T(FieldVar) / T(FieldLet))[FieldVar]
-            << (T(Ident)[Id] * T(Type)[Type]) >>
+        (T(FieldVar) / T(FieldLet))[Op] << (T(Ident)[Id] * T(Type)[Type]) >>
           ([](Match& _) -> Node {
-            auto field = _(FieldVar);
+            auto field = _(Op);
             auto id = _(Id);
             auto type = _(Type);
             auto parent = field->parent()->parent();
             auto defs = parent->lookdown(id->location());
-            Token ref = (field->type() == FieldVar) ? Ref : DontCare;
+            Token is_ref = (field->type() == FieldVar) ? Ref : DontCare;
             auto found = false;
 
             // Check if there's an LHS/RHS function with the same name and
@@ -1243,7 +1242,7 @@ namespace verona
             {
               if (
                 (def->type() == Function) &&
-                (def->at(wf / Function / Ref)->type() == ref) &&
+                (def->at(wf / Function / Ref)->type() == is_ref) &&
                 (def->at(wf / Function / Params)->size() == 1))
               {
                 found = true;
@@ -1260,10 +1259,10 @@ namespace verona
             auto self_id = _.fresh();
             auto expr = Expr << (FieldRef << (Ident ^ self_id) << clone(id));
 
-            if (ref == DontCare)
+            if (is_ref == DontCare)
               expr = Expr << (Call << clone(Load) << (Args << expr));
 
-            auto f = Function << ref << clone(id) << TypeParams
+            auto f = Function << is_ref << clone(id) << TypeParams
                               << (Params
                                   << (Param << (Ident ^ self_id) << typevar(_)
                                             << DontCare))
@@ -1507,6 +1506,10 @@ namespace verona
          auto tn = parent->at(wf / Class / Ident, wf / TypeTrait / Ident);
          Node call = (ref->type() == Ref) ? CallLHS : Call;
 
+         // Find the lowest arity that is not already defined. If an arity 5 and
+         // an arity 3 function `f` are provided, an arity 4 partial application
+         // will be generated that calls the arity 5 function, and arity 0-2
+         // functions will be generated that call the arity 3 function.
          for (auto def : defs)
          {
            if ((def == f) || (def->type() != Function))
@@ -1514,8 +1517,8 @@ namespace verona
 
            auto arity = def->at(wf / Function / Params)->size();
 
-           if ((arity >= start_arity) && (arity < end_arity))
-             start_arity = arity + 1;
+           if (arity < end_arity)
+             start_arity = std::max(start_arity, arity + 1);
          }
 
          Nodes names;
@@ -1529,9 +1532,9 @@ namespace verona
          for (auto arity = start_arity; arity < end_arity; ++arity)
          {
            // Create an anonymous class for each arity.
-           auto idx = arity - start_arity;
+           auto name = names[arity - start_arity];
            Node classbody = ClassBody;
-           auto classdef = Class << clone(names[idx]) << TypeParams
+           auto classdef = Class << clone(name) << TypeParams
                                  << (Type << TypeUnit) << classbody;
 
            // The anonymous class has fields for each supplied argument and a
@@ -1551,12 +1554,12 @@ namespace verona
                       << typevar(_)
                       << (Block
                           << (Expr
-                              << (Call << (FunctionName
-                                           << (TypeName << TypeUnit
-                                                        << clone(names[idx])
-                                                        << TypeArgs)
-                                           << (Ident ^ create) << TypeArgs)
-                                       << func_args)));
+                              << (Call
+                                  << (FunctionName
+                                      << (TypeName << TypeUnit << clone(name)
+                                                   << TypeArgs)
+                                      << (Ident ^ create) << TypeArgs)
+                                  << func_args)));
 
            for (size_t i = 0; i < arity; ++i)
            {
