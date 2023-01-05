@@ -927,6 +927,13 @@ namespace verona
           return err(_[Expr], "adjacency on this expression isn't meaningful");
         },
 
+      In(TupleLHS) * T(TupleFlatten) >>
+        [](Match& _) {
+          return err(
+            _[TupleFlatten],
+            "can't flatten a tuple on the left-hand side of an assignment");
+        },
+
       In(Expr) * T(Expr)[Expr] >>
         [](Match& _) {
           return err(
@@ -1051,6 +1058,10 @@ namespace verona
       // Compact assigns after they're reduced.
       T(Assign) << ((T(Expr) << Any[Lhs]) * End) >>
         [](Match& _) { return _(Lhs); },
+
+      // An assign with an error can't be compacted, so it's an error.
+      T(Assign)[Assign] << (T(Expr)++ * T(Error)) >>
+        [](Match& _) { return err(_[Assign], "error inside an assignment"); },
 
       T(Expr)[Expr] << T(Let)[Let] >>
         [](Match& _) { return err(_[Expr], "must assign to a `let` binding"); },

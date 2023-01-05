@@ -289,6 +289,8 @@ namespace verona
   // clang-format off
   inline constexpr auto wfPassNLRCheck =
       wfPassAssignment
+
+    // Add Return.
     | (Block <<= (Use | Class | TypeAlias | Expr | Return)++[1])
     | (Return <<= Expr)
 
@@ -307,7 +309,6 @@ namespace verona
     | (FieldLet <<= Ident * Type * (Default >>= (Call | DontCare)))[Ident]
     | (FieldVar <<= Ident * Type * (Default >>= (Call | DontCare)))[Ident]
     | (Param <<= Ident * Type * (Default >>= (Call | DontCare)))[Ident]
-
     | (Expr <<=
         ExprSeq | Unit | Tuple | wfLiteral | TypeAssert | Conditional |
         TypeTest | Cast | RefLet | Call | CallLHS | Bind)
@@ -390,6 +391,7 @@ namespace verona
     | (FieldVar <<= Ident * Type * Default)
     | (Function <<= wfRef * wfName * TypeParams * Params * Type * Block)
     | (Param <<= Ident * Type * Default)
+    | (TypeAssert <<= Expr * Type)
     | (Type <<= wfType)
     | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))

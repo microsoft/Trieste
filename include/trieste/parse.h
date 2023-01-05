@@ -357,7 +357,7 @@ namespace trieste
         {
           matched = std::regex_search(it, end, make.match_, rule.regex);
 
-          if (matched)
+          if (matched && (make.match_.length() > 0))
           {
             pos += make.match_.position();
             size_t len = make.match_.length();
