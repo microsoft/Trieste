@@ -71,10 +71,6 @@ namespace verona
     TokenDef("param", flag::lookup | flag::shadowing);
   inline constexpr auto Block =
     TokenDef("block", flag::symtab | flag::defbeforeuse);
-  inline constexpr auto TypeTest = TokenDef("typetest");
-  inline constexpr auto Cast = TokenDef("cast");
-  inline constexpr auto Return = TokenDef("return");
-  inline constexpr auto NLRCheck = TokenDef("nlrcheck");
 
   // Type structure.
   inline constexpr auto Type = TokenDef("type");
@@ -110,13 +106,17 @@ namespace verona
   inline constexpr auto RefVarLHS = TokenDef("refvar-lhs");
   inline constexpr auto TupleFlatten = TokenDef("tupleflatten");
   inline constexpr auto Conditional = TokenDef("conditional");
+  inline constexpr auto FieldRef = TokenDef("fieldref");
   inline constexpr auto Bind = TokenDef("bind", flag::lookup | flag::shadowing);
   inline constexpr auto Move = TokenDef("move");
   inline constexpr auto Copy = TokenDef("copy");
   inline constexpr auto Drop = TokenDef("drop");
+  inline constexpr auto TypeTest = TokenDef("typetest");
+  inline constexpr auto Cast = TokenDef("cast");
+  inline constexpr auto Return = TokenDef("return");
+  inline constexpr auto NLRCheck = TokenDef("nlrcheck");
 
   // Indexing names.
-  inline constexpr auto IdSym = TokenDef("idsym");
   inline constexpr auto Bound = TokenDef("bound");
   inline constexpr auto Default = TokenDef("default");
 

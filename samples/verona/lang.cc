@@ -108,23 +108,26 @@ namespace verona
       In(ClassBody) *
           (T(Equals)
            << ((T(Group)
-                << (~Name[Id] * ~T(Square)[TypeParams] * T(Paren)[Params] *
-                    ~T(Type)[Type])) *
+                << (~T(Ref)[Ref] * ~Name[Id] * ~T(Square)[TypeParams] *
+                    T(Paren)[Params] * ~T(Type)[Type])) *
                T(Group)++[Rhs])) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
-          return Function << _(Id) << (TypeParams << *_[TypeParams])
+          return Function << (_[Ref] | DontCare) << _(Id)
+                          << (TypeParams << *_[TypeParams])
                           << (Params << *_[Params]) << typevar(_, Type)
                           << (Block << (Expr << (Default << _[Rhs])));
         },
 
       // Function: (group name square parens type brace)
       In(ClassBody) * T(Group)
-          << (~Name[Id] * ~T(Square)[TypeParams] * T(Paren)[Params] *
-              ~T(Type)[Type] * ~T(Brace)[Block] * (Any++)[Rhs]) >>
+          << (~T(Ref)[Ref] * ~Name[Id] * ~T(Square)[TypeParams] *
+              T(Paren)[Params] * ~T(Type)[Type] * ~T(Brace)[Block] *
+              (Any++)[Rhs]) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
-          return Seq << (Function << _(Id) << (TypeParams << *_[TypeParams])
+          return Seq << (Function << (_[Ref] | DontCare) << _(Id)
+                                  << (TypeParams << *_[TypeParams])
                                   << (Params << *_[Params]) << typevar(_, Type)
                                   << (Block << *_[Block]))
                      << (Group << _[Rhs]);
@@ -413,6 +416,13 @@ namespace verona
           return err(_[Expr], "can't put this in an expression");
         },
 
+      // A Block that doesn't end with an Expr gets an implicit Unit.
+      In(Block) * (!T(Expr))[Lhs] * End >>
+        [](Match& _) { return Seq << _(Lhs) << (Expr << Unit); },
+
+      // An empty Block gets an implicit Unit.
+      T(Block) << End >> [](Match&) { return Block << (Expr << Unit); },
+
       // Remove empty and malformed groups.
       T(Group) << End >> ([](Match&) -> Node { return {}; }),
       T(Group)[Group] >> [](Match& _) { return err(_[Group], "syntax error"); },
@@ -650,7 +660,7 @@ namespace verona
   PassDef reference()
   {
     return {
-      // Dot notation. Don't interpret `Id` as a local variable.
+      // Dot notation. Use `Id` as a selector, even if it's in scope.
       In(Expr) * T(Dot) * Name[Id] * ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {
           return Seq << Dot << (Selector << _[Id] << (_[TypeArgs] | TypeArgs));
@@ -902,12 +912,12 @@ namespace verona
           return Expr << (TypeAssert << (RefVarLHS << *_[Lhs]) << _(Type));
         },
 
-      T(Ref)[Ref] >>
+      In(Expr) * T(Ref)[Ref] >>
         [](Match& _) {
           return err(_[Ref], "must use `ref` in front of a variable or call");
         },
 
-      T(Try)[Try] >>
+      In(Expr) * T(Try)[Try] >>
         [](Match& _) {
           return err(_[Try], "must use `try` in front of a call or lambda");
         },
@@ -915,6 +925,13 @@ namespace verona
       T(Expr)[Expr] << (Any * Any * Any++) >>
         [](Match& _) {
           return err(_[Expr], "adjacency on this expression isn't meaningful");
+        },
+
+      In(TupleLHS) * T(TupleFlatten) >>
+        [](Match& _) {
+          return err(
+            _[TupleFlatten],
+            "can't flatten a tuple on the left-hand side of an assignment");
         },
 
       In(Expr) * T(Expr)[Expr] >>
@@ -1042,6 +1059,10 @@ namespace verona
       T(Assign) << ((T(Expr) << Any[Lhs]) * End) >>
         [](Match& _) { return _(Lhs); },
 
+      // An assign with an error can't be compacted, so it's an error.
+      T(Assign)[Assign] << (T(Expr)++ * T(Error)) >>
+        [](Match& _) { return err(_[Assign], "error inside an assignment"); },
+
       T(Expr)[Expr] << T(Let)[Let] >>
         [](Match& _) { return err(_[Expr], "must assign to a `let` binding"); },
 
@@ -1125,7 +1146,7 @@ namespace verona
             Node create_params = Params;
             Node new_args = Args;
             auto create_func = Function
-              << (Ident ^ create) << TypeParams << create_params
+              << DontCare << (Ident ^ create) << TypeParams << create_params
               << (Type << (TypeVar ^ _.fresh()))
               << (Block << (Expr << (Call << New << new_args)));
 
@@ -1176,7 +1197,7 @@ namespace verona
             // The apply function is the original lambda. Prepend a `self`-like
             // parameter with a fresh name to the lambda parameters.
             auto apply_func = Function
-              << (Ident ^ apply) << _(TypeParams)
+              << DontCare << (Ident ^ apply) << _(TypeParams)
               << (Params << (Param << (Ident ^ self_id)
                                    << (Type << (TypeVar ^ _.fresh()))
                                    << DontCare)
@@ -1200,6 +1221,121 @@ namespace verona
     return lambda;
   }
 
+  PassDef autofields()
+  {
+    return {
+      dir::topdown | dir::once,
+      {
+        (T(FieldVar) / T(FieldLet))[Op] << (T(Ident)[Id] * T(Type)[Type]) >>
+          ([](Match& _) -> Node {
+            auto field = _(Op);
+            auto id = _(Id);
+            auto type = _(Type);
+            auto parent = field->parent()->parent();
+            auto defs = parent->lookdown(id->location());
+            Token is_ref = (field->type() == FieldVar) ? Ref : DontCare;
+            auto found = false;
+
+            // Check if there's an LHS/RHS function with the same name and
+            // arity 1, depending on whether this is a FieldVar or a FieldLet.
+            for (auto def : defs)
+            {
+              if (
+                (def->type() == Function) &&
+                (def->at(wf / Function / Ref)->type() == is_ref) &&
+                (def->at(wf / Function / Params)->size() == 1))
+              {
+                found = true;
+                break;
+              }
+            }
+
+            if (found)
+              return NoChange;
+
+            // If it's a FieldLet, generate only an RHS function. If it's a
+            // FieldVar, generate an LHS function, which will autogenerate an
+            // RHS function.
+            auto self_id = _.fresh();
+            auto expr = Expr << (FieldRef << (Ident ^ self_id) << clone(id));
+
+            if (is_ref == DontCare)
+              expr = Expr << (Call << clone(Load) << (Args << expr));
+
+            auto f = Function << is_ref << clone(id) << TypeParams
+                              << (Params
+                                  << (Param << (Ident ^ self_id) << typevar(_)
+                                            << DontCare))
+                              << clone(type) << (Block << expr);
+
+            return Seq << field << f;
+          }),
+      }};
+  }
+
+  PassDef autorhs()
+  {
+    return {
+      dir::topdown | dir::once,
+      {
+        T(Function)[Function]
+            << (T(Ref) * Name[Id] * T(TypeParams)[TypeParams] *
+                T(Params)[Params] * T(Type)[Type] * T(Block)) >>
+          ([](Match& _) -> Node {
+            auto f = _(Function);
+            auto id = _(Id);
+            auto params = _(Params);
+            auto parent = f->parent()->parent();
+            auto tn = parent->at(wf / Class / Ident, wf / TypeTrait / Ident);
+            auto defs = parent->lookdown(id->location());
+            auto found = false;
+
+            // Check if there's an RHS function with the same name and arity.
+            for (auto def : defs)
+            {
+              if (
+                (def != f) && (def->type() == Function) &&
+                (def->at(wf / Function / Ref)->type() != Ref) &&
+                (def->at(wf / Function / Ident)->location() ==
+                 id->location()) &&
+                (def->at(wf / Function / Params)->size() == params->size()))
+              {
+                found = true;
+                break;
+              }
+            }
+
+            if (found)
+              return NoChange;
+
+            // If not, create an RHS function with the same name and arity.
+            Node args = Args;
+
+            for (auto param : *params)
+              args << (Expr << (RefLet << param->at(wf / Param / Ident)));
+
+            auto rhs_f =
+              Function << DontCare << clone(id) << clone(_(TypeParams))
+                       << clone(params) << clone(_(Type))
+                       << (Block
+                           << (Expr
+                               << (Call
+                                   << clone(Load)
+                                   << (Args
+                                       << (Expr
+                                           << (CallLHS
+                                               << (FunctionName
+                                                   << (TypeName << TypeUnit
+                                                                << clone(tn)
+                                                                << TypeArgs)
+                                                   << clone(id) << TypeArgs)
+                                               << args))))));
+
+            return Seq << f << rhs_f;
+          }),
+      }};
+  }
+
   PassDef autocreate()
   {
     return {
@@ -1209,15 +1345,15 @@ namespace verona
           // If we already have a create function, do nothing.
           auto class_body = _(ClassBody);
 
-          if (!class_body->parent()->look(create).empty())
+          if (!class_body->parent()->lookdown(create).empty())
             return NoChange;
 
           // Create the create function.
           Node create_params = Params;
           Node new_args = Args;
           auto create_func = Function
-            << (Ident ^ create) << TypeParams << create_params << typevar(_)
-            << (Block << (Expr << (Call << New << new_args)));
+            << DontCare << (Ident ^ create) << TypeParams << create_params
+            << typevar(_) << (Block << (Expr << (Call << New << new_args)));
 
           Nodes no_def;
           Nodes def;
@@ -1265,7 +1401,8 @@ namespace verona
       dir::bottomup | dir::once,
       {
         T(Function)[Function]
-            << (Name[Id] * T(TypeParams)[TypeParams] *
+            << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
+                T(TypeParams)[TypeParams] *
                 (T(Params)
                  << ((T(Param) << (T(Ident) * T(Type) * T(DontCare)))++[Lhs] *
                      (T(Param) << (T(Ident) * T(Type) * T(Call)))++[Rhs] *
@@ -1273,19 +1410,22 @@ namespace verona
                 T(Type)[Type] * T(Block)[Block]) >>
           [](Match& _) {
             Node seq = Seq;
+            auto ref = _(Ref);
             auto id = _(Id);
             auto tp = _(TypeParams);
             auto ty = _(Type);
             Node params = Params;
+            Node call = (ref->type() == Ref) ? CallLHS : Call;
 
             auto tn = _(Function)->parent()->parent()->at(
               wf / Class / Ident, wf / TypeTrait / Ident);
             Node args = Args;
             auto fwd = Expr
-              << (Call << (FunctionName
-                           << (TypeName << TypeUnit << clone(tn) << TypeArgs)
-                           << clone(id) << TypeArgs)
-                       << args);
+              << (clone(call)
+                  << (FunctionName
+                      << (TypeName << TypeUnit << clone(tn) << TypeArgs)
+                      << clone(id) << TypeArgs)
+                  << args);
 
             auto lhs = _[Lhs];
             auto rhs = _[Rhs];
@@ -1316,8 +1456,8 @@ namespace verona
 
               // Add a new function that calls the arity+1 function.
               seq
-                << (Function << clone(id) << clone(tp) << clone(params)
-                             << clone(ty) << block);
+                << (Function << clone(ref) << clone(id) << clone(tp)
+                             << clone(params) << clone(ty) << block);
 
               // Add a parameter and an argument.
               auto param_id = (*it)->at(wf / Param / Ident);
@@ -1327,7 +1467,8 @@ namespace verona
             }
 
             // The original function, with no default arguments.
-            return seq << (Function << id << tp << params << ty << _(Block));
+            return seq
+              << (Function << ref << id << tp << params << ty << _(Block));
           },
 
         T(Function)[Function] >>
@@ -1337,9 +1478,166 @@ namespace verona
       }};
   }
 
+  PassDef partialapp()
+  {
+    // This should happen after `lambda` (so that anonymous types get partial
+    // application), after `autocreate` (so that constructors get partial
+    // application), and after `defaultargs` (so that default arguments don't
+    // get partial application).
+
+    // This means that partial application can't be written in terms of lambdas,
+    // but instead has to be anonymous classes. There's no need to check for
+    // non-local returns.
+    return {
+      dir::bottomup | dir::once,
+      {T(Function)[Function]
+         << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
+             T(TypeParams)[TypeParams] * T(Params)[Params]) >>
+       [](Match& _) {
+         auto f = _(Function);
+         auto ref = _(Ref);
+         auto id = _(Id);
+         auto tp = _(TypeParams);
+         auto params = _(Params);
+         size_t start_arity = 0;
+         auto end_arity = params->size();
+         auto parent = f->parent()->parent();
+         auto defs = parent->lookdown(id->location());
+         auto tn = parent->at(wf / Class / Ident, wf / TypeTrait / Ident);
+         Node call = (ref->type() == Ref) ? CallLHS : Call;
+
+         // Find the lowest arity that is not already defined. If an arity 5 and
+         // an arity 3 function `f` are provided, an arity 4 partial application
+         // will be generated that calls the arity 5 function, and arity 0-2
+         // functions will be generated that call the arity 3 function.
+         for (auto def : defs)
+         {
+           if ((def == f) || (def->type() != Function))
+             continue;
+
+           auto arity = def->at(wf / Function / Params)->size();
+
+           if (arity < end_arity)
+             start_arity = std::max(start_arity, arity + 1);
+         }
+
+         Nodes names;
+
+         // Create a unique anonymous class name for each arity.
+         for (auto arity = start_arity; arity < end_arity; ++arity)
+           names.push_back(Ident ^ _.fresh());
+
+         Node ret = Seq;
+
+         for (auto arity = start_arity; arity < end_arity; ++arity)
+         {
+           // Create an anonymous class for each arity.
+           auto name = names[arity - start_arity];
+           Node classbody = ClassBody;
+           auto classdef = Class << clone(name) << TypeParams
+                                 << (Type << TypeUnit) << classbody;
+
+           // The anonymous class has fields for each supplied argument and a
+           // create function that captures the supplied arguments.
+           Node create_params = Params;
+           Node new_args = Args;
+           classbody
+             << (Function << DontCare << (Ident ^ create) << TypeParams
+                          << create_params << typevar(_)
+                          << (Block << (Expr << (Call << New << new_args))));
+
+           // Create a function that returns the anonymous class for each arity.
+           Node func_params = Params;
+           Node func_args = Args;
+           auto func =
+             Function << clone(ref) << clone(id) << TypeParams << func_params
+                      << typevar(_)
+                      << (Block
+                          << (Expr
+                              << (Call
+                                  << (FunctionName
+                                      << (TypeName << TypeUnit << clone(name)
+                                                   << TypeArgs)
+                                      << (Ident ^ create) << TypeArgs)
+                                  << func_args)));
+
+           for (size_t i = 0; i < arity; ++i)
+           {
+             auto param = params->at(i);
+             auto param_id = param->at(wf / Param / Ident);
+             auto param_type = param->at(wf / Param / Type);
+             classbody << (FieldLet << clone(param_id) << clone(param_type));
+             create_params << clone(param);
+             new_args << (Expr << (RefLet << clone(param_id)));
+             func_params << clone(param);
+             func_args << (Expr << (RefLet << clone(param_id)));
+           }
+
+           // The anonymous class has a function for each intermediate arity and
+           // for the final arity.
+           for (auto i = arity + 1; i <= end_arity; ++i)
+           {
+             auto self_id = Ident ^ _.fresh();
+             Node apply_params = Params << (Param << self_id << typevar(_));
+             Node fwd_args = Args;
+
+             for (size_t j = 0; j < arity; ++j)
+             {
+               // Include our captured arguments.
+               fwd_args
+                 << (Expr
+                     << (Call
+                         << (Selector
+                             << clone(params->at(j)->at(wf / Param / Ident))
+                             << TypeArgs)
+                         << (Args << (Expr << (RefLet << clone(self_id))))));
+             }
+
+             for (auto j = arity; j < i; ++j)
+             {
+               // Add the additional arguments passed to this apply function.
+               auto param = params->at(j);
+               apply_params << clone(param);
+               fwd_args
+                 << (Expr << (RefLet << clone(param->at(wf / Param / Ident))));
+             }
+
+             Node fwd;
+
+             if (i == end_arity)
+             {
+               // The final arity calls the original function.
+               fwd = FunctionName
+                 << (TypeName << TypeUnit << clone(tn) << TypeArgs) << clone(id)
+                 << TypeArgs;
+             }
+             else
+             {
+               // Intermediate arities call the next arity.
+               fwd = FunctionName
+                 << (TypeName << TypeUnit << clone(names[i - start_arity])
+                              << TypeArgs)
+                 << (Ident ^ create) << TypeArgs;
+             }
+
+             classbody
+               << (Function
+                   << clone(ref) << (Ident ^ apply) << TypeParams
+                   << apply_params << typevar(_)
+                   << (Block << (Expr << (clone(call) << fwd << fwd_args))));
+           }
+
+           ret << classdef << func;
+         }
+
+         return ret << f;
+       }},
+    };
+  }
+
   inline const auto Liftable = T(Unit) / T(Tuple) / T(Lambda) / T(Call) /
-    T(CallLHS) / T(Conditional) / T(TypeTest) / T(Cast) / T(Selector) /
-    T(FunctionName) / Literal;
+    T(CallLHS) / T(Conditional) / T(FieldRef) / T(TypeTest) / T(Cast) /
+    T(Selector) / T(FunctionName) / Literal;
 
   PassDef anf()
   {
@@ -1385,8 +1683,9 @@ namespace verona
       dir::topdown | dir::once,
       {
         T(Function)
-            << (Name[Id] * T(TypeParams)[TypeParams] * T(Params)[Params] *
-                T(Type)[Type] * T(Block)[Block]) >>
+            << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
+                T(TypeParams)[TypeParams] * T(Params)[Params] * T(Type)[Type] *
+                T(Block)[Block]) >>
           [](Match& _) {
             // Reference every parameter at the beginning of the function.
             // This ensures that otherwise unused parameters are correctly
@@ -1398,8 +1697,8 @@ namespace verona
                 << (RefLet << (Ident ^ p->at(wf / Param / Ident)->location()));
             }
 
-            return Function << _(Id) << _(TypeParams) << _(Params) << _(Type)
-                            << (block << *_[Block]);
+            return Function << _(Ref) << _(Id) << _(TypeParams) << _(Params)
+                            << _(Type) << (block << *_[Block]);
           },
       }};
   }
@@ -1666,8 +1965,11 @@ namespace verona
         {"assignment", assignment(), wfPassAssignment()},
         {"nlrcheck", nlrcheck(), wfPassNLRCheck()},
         {"lambda", lambda(), wfPassLambda()},
+        {"autofields", autofields(), wfPassAutoFields()},
+        {"autorhs", autorhs(), wfPassAutoFields()},
         {"autocreate", autocreate(), wfPassAutoCreate()},
         {"defaultargs", defaultargs(), wfPassDefaultArgs()},
+        {"partialapp", partialapp(), wfPassDefaultArgs()},
         {"anf", anf(), wfPassANF()},
         {"refparams", refparams(), wfPassANF()},
         {"defbeforeuse", defbeforeuse(), wfPassANF()},
