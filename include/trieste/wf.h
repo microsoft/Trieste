@@ -509,7 +509,23 @@ namespace trieste
         bool ok = check_i(node, out);
 
         for (auto& child : *node)
+        {
+          if (child->parent() != node.get())
+          {
+            out << child->location().origin_linecol()
+                << "this node appears in the AST multiple times:" << std::endl
+                << child->location().str() << child->str() << std::endl
+                << node->location().origin_linecol()
+                << "here:" << std::endl
+                << node->str() << std::endl
+                << child->parent()->location().origin_linecol()
+                << "and here:" << std::endl
+                << child->parent()->str() << std::endl;
+            ok = false;
+          }
+
           ok = check(child, out) && ok;
+        }
 
         return ok;
       }
