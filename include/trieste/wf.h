@@ -520,7 +520,8 @@ namespace trieste
                 << node->str() << std::endl
                 << child->parent()->location().origin_linecol()
                 << "and here:" << std::endl
-                << child->parent()->str() << std::endl;
+                << child->parent()->str() << std::endl
+                << "Implementation needs to explicitly clone nodes if they are duplicated.";
             ok = false;
           }
 
