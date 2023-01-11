@@ -1092,7 +1092,7 @@ namespace verona
       << (Expr
           << (Conditional << (Expr
                               << (TypeTest << (Expr << (RefLet << (Ident ^ id)))
-                                           << nlr))
+                                           << clone(nlr)))
                           << (Block << (Return << ret))
                           << (Block << (Expr << (RefLet << (Ident ^ id))))));
   }
@@ -1312,7 +1312,8 @@ namespace verona
             Node args = Args;
 
             for (auto param : *params)
-              args << (Expr << (RefLet << param->at(wf / Param / Ident)));
+              args
+                << (Expr << (RefLet << clone(param->at(wf / Param / Ident))));
 
             auto rhs_f =
               Function << DontCare << clone(id) << clone(_(TypeParams))
