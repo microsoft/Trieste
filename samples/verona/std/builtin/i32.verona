@@ -1,0 +1,163 @@
+class I32
+{
+  +(self: I32, other: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[add i32 %a, %b]
+    nan_box(c)
+  }
+
+  -(self: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = :[sub i32 0, %a]
+    nan_box(b)
+  }
+
+  -(self: I32, other: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[sub i32 %a, %b]
+    nan_box(c)
+  }
+
+  *(self: I32, other: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[mul i32 %a, %b]
+    nan_box(c)
+  }
+
+  /(self: I32, other: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[sdiv i32 %a, %b]
+    nan_box(c)
+  }
+
+  %(self: I32, other: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[srem i32 %a, %b]
+    nan_box(c)
+  }
+
+  &(self: I32, other: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[and i32 %a, %b]
+    nan_box(c)
+  }
+
+  |(self: I32, other: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[or i32 %a, %b]
+    nan_box(c)
+  }
+
+  ^(self: I32, other: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[xor i32 %a, %b]
+    nan_box(c)
+  }
+
+  <<(self: I32, other: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[shl i32 %a, %b]
+    nan_box(c)
+  }
+
+  >>(self: I32, other: I32): I32
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[ashr i32 %a, %b]
+    nan_box(c)
+  }
+
+  ==(self: I32, other: I32): Bool
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[icmp eq i32 %a, %b]
+    Bool::nan_box(c)
+  }
+
+  !=(self: I32, other: I32): Bool
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[icmp ne i32 %a, %b]
+    Bool::nan_box(c)
+  }
+
+  <(self: I32, other: I32): Bool
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[icmp slt i32 %a, %b]
+    Bool::nan_box(c)
+  }
+
+  <=(self: I32, other: I32): Bool
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[icmp sle i32 %a, %b]
+    Bool::nan_box(c)
+  }
+
+  >(self: I32, other: I32): Bool
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[icmp sgt i32 %a, %b]
+    Bool::nan_box(c)
+  }
+
+  >=(self: I32, other: I32): Bool
+  {
+    let a = nan_unbox(self)
+    let b = nan_unbox(other)
+    let c = :[icmp sge i32 %a, %b]
+    Bool::nan_box(c)
+  }
+
+  nan_type()
+  {
+    :[ret i64 0x0004000000000000]
+  }
+
+  nan_check(x: Any): Bool //::: (i64)->i1
+  {
+    let a = nan_type()
+    let b = :[and i64 %x, 0xFFFFF00000000000]
+    let c = :[icmp ne i64 %a, %b]
+    Bool::nan_box(c)
+  }
+
+  nan_box(x: I32): Any //::: (i32)->i64
+  {
+    let a = :[zext i32 %x to i64]
+    let b = nan_type()
+    :[or i64 %a, %b]
+  }
+
+  nan_unbox(x: Any): I32 //::: (i64)->i32
+  {
+    if (!nan_check(x)) { :[call void @llvm.trap()] }
+    :[trunc i64 %x to i32]
+  }
+}

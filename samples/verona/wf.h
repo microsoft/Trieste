@@ -13,7 +13,7 @@ namespace verona
   inline constexpr auto wfDefault = Default >>= Lambda | DontCare;
 
   inline constexpr auto wfLiteral =
-    Bool | Int | Hex | Bin | Float | HexFloat | Char | Escaped | String;
+    Bool | Int | Hex | Bin | Float | HexFloat | Char | Escaped | String | LLVM;
 
   // clang-format off
   inline constexpr auto wfParser =

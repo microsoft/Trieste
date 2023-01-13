@@ -217,6 +217,12 @@ namespace trieste
                       << std::endl;
           }
 
+          if (ast->errors(std::cout))
+          {
+            end_pass = i;
+            ret = -1;
+          }
+
           if (wf)
           {
             auto ok = wf.build_st(ast, std::cout);
@@ -231,9 +237,6 @@ namespace trieste
             }
           }
         }
-
-        if (ast->errors(std::cout))
-          ret = -1;
 
         if (output.empty())
           output = path.stem().replace_extension(".trieste");
