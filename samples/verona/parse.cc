@@ -189,7 +189,7 @@ namespace verona
         "\"((?:\\\"|[^\"])*)\"" >> [](auto& m) { m.add(Escaped, 1); },
 
         // Unescaped string.
-        "('+)\"([\\s\\S]]*?)\"\\1" >> [](auto& m) { m.add(String, 1); },
+        "('+)\"([\\s\\S]*?)\"\\1" >> [](auto& m) { m.add(String, 2); },
 
         // Character literal.
         "'((?:\\'|[^'])*)'" >> [](auto& m) { m.add(Char, 1); },
