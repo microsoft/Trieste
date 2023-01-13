@@ -16,6 +16,7 @@ namespace trieste
   namespace detail
   {
     class Make;
+    using ParseEffect = std::function<void(Make&)>;
 
     class Rule
     {
@@ -23,11 +24,10 @@ namespace trieste
 
     private:
       std::regex regex;
-      std::function<void(Make&)> effect;
+      ParseEffect effect;
 
     public:
-      Rule(const std::string& r, std::function<void(Make&)> effect)
-      : effect(effect)
+      Rule(const std::string& r, ParseEffect effect) : effect(effect)
       {
         regex = std::regex("^" + r, std::regex_constants::optimize);
       }
@@ -42,7 +42,7 @@ namespace trieste
       Node node;
       Location location;
       sv_match match_;
-      std::optional<std::string> mode_;
+      std::string mode_;
 
     public:
       Make(const std::string& loc) : Make(File, loc) {}
@@ -61,6 +61,11 @@ namespace trieste
       const auto& match() const
       {
         return match_;
+      }
+
+      const std::string& mode()
+      {
+        return mode_;
       }
 
       void mode(const std::string& next)
@@ -82,6 +87,17 @@ namespace trieste
         return n && (n->type() == type);
       }
 
+      void error(const std::string& msg, size_t index = 0)
+      {
+        if (!in(Group))
+          push(Group);
+
+        auto loc = location;
+        loc.pos += match_.position(index);
+        loc.len = match_.length(index);
+        node->push_back(make_error(loc, msg));
+      }
+
       void add(const Token& type, size_t index = 0)
       {
         if ((type != Group) && !in(Group))
@@ -90,36 +106,30 @@ namespace trieste
         auto loc = location;
         loc.pos += match_.position(index);
         loc.len = match_.length(index);
-
-        auto n = NodeDef::create(type, loc);
-        node->push_back(n);
+        node->push_back(NodeDef::create(type, loc));
       }
 
       void seq(const Token& type, std::initializer_list<Token> skip = {})
       {
-        if (in(Group))
+        if (!in(Group))
+          push(Group);
+
+        while (node->parent()->type().in(skip))
+          node = node->parent()->shared_from_this();
+
+        auto p = node->parent();
+
+        if (p->type() == type)
         {
-          while (node->parent()->type().in(skip))
-            node = node->parent()->shared_from_this();
-
-          auto p = node->parent();
-
-          if (p->type() == type)
-          {
-            node = p->shared_from_this();
-          }
-          else
-          {
-            auto seq = NodeDef::create(type, location);
-            auto group = p->pop_back();
-            p->push_back(seq);
-            seq->push_back(group);
-            node = seq;
-          }
+          node = p->shared_from_this();
         }
         else
         {
-          invalid();
+          auto seq = NodeDef::create(type, location);
+          auto group = p->pop_back();
+          p->push_back(seq);
+          seq->push_back(group);
+          node = seq;
         }
       }
 
@@ -171,13 +181,21 @@ namespace trieste
         return false;
       }
 
+      Node make_error(Location loc, const std::string& msg)
+      {
+        auto n = NodeDef::create(Error, loc);
+        n->push_back(NodeDef::create(ErrorMsg, msg));
+        n->push_back(NodeDef::create(ErrorAst, loc));
+        return n;
+      }
+
       Node done()
       {
         term();
 
         while (node->parent())
         {
-          add(Unclosed);
+          node->push_back(make_error(node->location(), "this is unclosed"));
           term();
           node = node->parent()->shared_from_this();
           term();
@@ -215,6 +233,7 @@ namespace trieste
     PostF postfile_;
     PostF postdir_;
     PostF postparse_;
+    detail::ParseEffect done_;
     std::map<std::string, std::vector<detail::Rule>> rules;
     std::map<Token, GenLocationF> gens;
 
@@ -282,6 +301,11 @@ namespace trieste
       postparse_ = f;
     }
 
+    void done(detail::ParseEffect f)
+    {
+      done_ = f;
+    }
+
     Node parse(std::filesystem::path path) const
     {
       auto ast = sub_parse(path);
@@ -347,6 +371,7 @@ namespace trieste
       if (find == rules.end())
         throw std::runtime_error("unknown mode: start");
 
+      auto mode = make.mode_ = find->first;
       size_t pos = 0;
 
       while (it != end)
@@ -367,13 +392,13 @@ namespace trieste
             pos += len;
             it = st + pos;
 
-            if (make.mode_)
+            if (make.mode_ != mode)
             {
-              find = rules.find(*make.mode_);
+              find = rules.find(make.mode_);
               if (find == rules.end())
-                throw std::runtime_error("unknown mode: " + *make.mode_);
+                throw std::runtime_error("unknown mode: " + make.mode_);
 
-              make.mode_ = std::nullopt;
+              mode = find->first;
             }
             break;
           }
@@ -387,6 +412,9 @@ namespace trieste
         }
       }
 
+      if (done_)
+        done_(make);
+
       return make.done();
     }
 
@@ -399,18 +427,17 @@ namespace trieste
 
       for (const auto& entry : std::filesystem::directory_iterator(dir))
       {
-        auto filename = dir / entry.path();
         Node ast;
 
         if (std::filesystem::is_regular_file(entry.status()))
         {
-          ast = parse_file(filename);
+          ast = parse_file(entry.path());
         }
         else if (
           (depth_ == depth::subdirectories) &&
           std::filesystem::is_directory(entry.status()))
         {
-          ast = parse_directory(filename);
+          ast = parse_directory(entry.path());
         }
 
         top->push_back(ast);

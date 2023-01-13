@@ -25,21 +25,15 @@ namespace verona
   PassDef modules()
   {
     return {
-      // Module.
-      T(Directory)[Directory] << (T(File)++)[File] >>
+      // Files at the top level and directories are modules.
+      ((In(Top) * T(File)[Class]) / T(Directory)[Class]) >>
         [](Match& _) {
-          auto dir_id = _(Directory)->location();
-          return Group << (Class ^ _(Directory)) << (Ident ^ dir_id)
-                       << (Brace << *_[File]);
+          return Group << (Class ^ _(Class)) << (Ident ^ _(Class)->location())
+                       << (Brace << *_[Class]);
         },
 
-      // File on its own (no module).
-      In(Top) * T(File)[File] >>
-        [](Match& _) {
-          auto file_id = _(File)->location();
-          return Group << (Class ^ _(File)) << (Ident ^ file_id)
-                       << (Brace << *_[File]);
-        },
+      // Files in a directory aren't semantically meaningful.
+      In(Brace) * T(File)[File] >> [](Match& _) { return Seq << *_[File]; },
 
       // Type assertion. Treat an empty assertion as DontCare. The type is
       // finished at the end of the group, or at a brace. Put a typetrait in
@@ -53,7 +47,7 @@ namespace verona
     In(TypeView) / In(TypeFunc) / In(TypeUnion) / In(TypeIsect);
   inline const auto Name = T(Ident) / T(Symbol);
   inline const auto Literal = T(String) / T(Escaped) / T(Char) / T(Bool) /
-    T(Hex) / T(Bin) / T(Int) / T(Float) / T(HexFloat);
+    T(Hex) / T(Bin) / T(Int) / T(Float) / T(HexFloat) / T(LLVM);
 
   auto typevar(auto& _, const Token& t = Invalid)
   {
@@ -292,6 +286,9 @@ namespace verona
 
       // Empty parens are Unit.
       In(Expr) * (T(Paren) << End) >> ([](Match&) -> Node { return Unit; }),
+
+      // Empty expr is Unit.
+      T(Expr) << End >> [](Match&) { return Expr << Unit; },
 
       // A tuple of arity 1 is a scalar.
       In(Expr) * (T(Tuple) << (T(Expr)[Expr] * End)) >>

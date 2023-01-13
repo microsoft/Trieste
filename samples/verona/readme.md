@@ -1,5 +1,7 @@
 # Todo
 
+> `drop` doesn't know about references inside an LLVM literal
+
 autocreate ignores field initializers if there's already a `create` method. this seems wrong.
 
 dispatch
@@ -18,6 +20,13 @@ dispatch
 - package schemes
 - type assertions are accidentally allowed as types
 - list inside TypeParams or TypeArgs along with groups or other lists
+
+## Future Passes
+
+- type checking
+- reachability
+- selector coloring
+- monomorphization
 
 ## Key Words
 

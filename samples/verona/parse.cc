@@ -46,8 +46,8 @@ namespace verona
 
     p.predir([](auto&, auto& path) {
       static auto re = std::regex(
-        ".*/[_[:alpha:]][_[:alnum:]]*$", std::regex_constants::optimize);
-      return std::regex_match(path.string(), re);
+        "^[_[:alpha:]][_[:alnum:]]*$", std::regex_constants::optimize);
+      return std::regex_match(path.filename().string(), re);
     });
 
     p.postparse([](auto& p, auto& path, auto ast) {
@@ -118,7 +118,7 @@ namespace verona
           },
 
         // Equals.
-        "=" >> [](auto& m) { m.seq(Equals); },
+        "=(?![!#$%&*+-/<=>?@\\^`|~])" >> [](auto& m) { m.seq(Equals); },
 
         // List.
         "," >> [](auto& m) { m.seq(List, {Equals}); },
@@ -189,10 +189,13 @@ namespace verona
         "\"((?:\\\"|[^\"])*)\"" >> [](auto& m) { m.add(Escaped, 1); },
 
         // Unescaped string.
-        "('+)\"([\\s\\S]*)\"\\1" >> [](auto& m) { m.add(String, 1); },
+        "('+)\"([\\s\\S]]*?)\"\\1" >> [](auto& m) { m.add(String, 1); },
 
         // Character literal.
-        "'([^']*)'" >> [](auto& m) { m.add(Char, 1); },
+        "'((?:\\'|[^'])*)'" >> [](auto& m) { m.add(Char, 1); },
+
+        // LLVM IR literal.
+        ":\\[([^\\]]*)\\]" >> [](auto& m) { m.add(LLVM, 1); },
 
         // Line comment.
         "//[^\n]*" >> [](auto&) {},
@@ -224,7 +227,11 @@ namespace verona
         "_(?![_[:alnum:]])" >> [](auto& m) { m.add(DontCare); },
 
         // Reserve a sequence of underscores.
-        "_(?:_)+(?![[:alnum:]])" >> [](auto& m) { m.add(Invalid); },
+        "_(?:_)+(?![[:alnum:]])" >>
+          [](auto& m) {
+            m.error(
+              "a sequence of two or more underscores is a reserved identifier");
+          },
 
         // Identifier.
         "[_[:alpha:]][_[:alnum:]]*\\b" >> [](auto& m) { m.add(Ident); },
@@ -254,6 +261,13 @@ namespace verona
               m.mode("start");
           },
       });
+
+    p.done([](auto& m) {
+      if (m.mode() != "start")
+        m.error("unterminated comment at end of file");
+
+      m.term(terminators);
+    });
 
     p.gen({
       Bool >> [](auto& rnd) { return rnd() % 2 ? "true" : "false"; },

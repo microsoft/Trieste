@@ -33,6 +33,7 @@ namespace verona
   inline constexpr auto String = TokenDef("string", flag::print);
   inline constexpr auto Symbol = TokenDef("symbol", flag::print);
   inline constexpr auto Ident = TokenDef("ident", flag::print);
+  inline constexpr auto LLVM = TokenDef("llvm", flag::print);
 
   // Parsing keywords.
   inline constexpr auto Class = TokenDef(

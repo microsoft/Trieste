@@ -162,12 +162,16 @@ namespace trieste
 
       bool check(Node node, std::ostream& out) const
       {
+        auto has_err = false;
         auto ok = true;
 
         for (auto& child : *node)
+        {
+          has_err = has_err || (child->type() == Error);
           ok = types.check(child, out) && ok;
+        }
 
-        if (node->size() < minlen)
+        if (!has_err && (node->size() < minlen))
         {
           out << node->location().origin_linecol() << "expected at least "
               << minlen << " children, found " << node->size() << std::endl
@@ -284,6 +288,11 @@ namespace trieste
             return ok;
           }
         }
+
+        // A node that contains an Error node stops checking well-formedness
+        // from that point.
+        if ((*child)->type() == Error)
+          return ok;
 
         if constexpr (I >= sizeof...(Ts))
         {
