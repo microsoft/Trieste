@@ -195,7 +195,7 @@ namespace verona
         "'((?:\\'|[^'])*)'" >> [](auto& m) { m.add(Char, 1); },
 
         // LLVM IR literal.
-        ":\\[([^\\]]*)\\]" >> [](auto& m) { m.add(LLVM, 1); },
+        ":\\[((?:[^\\]]|\\][^:])*)\\]:" >> [](auto& m) { m.add(LLVM, 1); },
 
         // Line comment.
         "//[^\n]*" >> [](auto&) {},

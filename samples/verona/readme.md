@@ -1,6 +1,17 @@
 # Todo
 
-> `drop` doesn't know about references inside an LLVM literal
+LLVM literals
+- allow llvm signatures
+- turn off refcounting in all functions with llvm signatures
+- handle llvm literal application
+
+LLVM lowering
+- `new`
+- `copy` and `drop` on `Ptr` and `Ref[T]`
+- function lookup
+  - Ptr, Ref[T], primitive types
+- `Weak[T]`?
+- region types, cowns, `when`
 
 autocreate ignores field initializers if there's already a `create` method. this seems wrong.
 
