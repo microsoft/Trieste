@@ -355,7 +355,7 @@ namespace verona
   // clang-format off
   inline constexpr auto wfPassANF =
       wfPassDefaultArgs
-    | (Block <<= (Use | Class | TypeAlias | Bind | RefLet | Return)++[1])
+    | (Block <<= (Use | Class | TypeAlias | Bind | RefLet | Return | LLVM)++[1])
     | (Return <<= RefLet)
     | (Tuple <<= (RefLet | TupleFlatten)++[2])
     | (TupleFlatten <<= RefLet)
@@ -378,7 +378,8 @@ namespace verona
     | (Copy <<= Ident)
     | (Move <<= Ident)
     | (Drop <<= Ident)
-    | (Block <<= (Use | Class | TypeAlias | Bind | Return | Move | Drop)++[1])
+    | (Block <<=
+        (Use | Class | TypeAlias | Bind | Return | LLVM | Move | Drop)++[1])
     | (Return <<= Move)
     | (Tuple <<= (TupleFlatten | Copy | Move)++[2])
     | (TupleFlatten <<= Copy | Move)

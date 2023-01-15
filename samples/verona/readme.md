@@ -1,8 +1,8 @@
 # Todo
 
 LLVM lowering
-- turn off NLR checking if the called function has an llvmfunctype
 - no `bind` for llvm literals if there's no `let`
+- turn off NLR checking if the called function has an llvmfunctype
 - `new`
 - `copy` and `drop` on `Ptr` and `Ref[T]`
 - dynamic function lookup

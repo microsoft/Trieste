@@ -1709,6 +1709,10 @@ namespace verona
       // Lift RefLet and Return.
       T(Expr) << (T(RefLet) / T(Return))[Op] >> [](Match& _) { return _(Op); },
 
+      // Lift LLVM literals that are at the block level.
+      In(Block) * (T(Expr) << T(LLVM)[LLVM]) >>
+        [](Match& _) { return _(LLVM); },
+
       // Create a new binding for this liftable expr.
       T(Expr)
           << (Liftable[Lift] /
