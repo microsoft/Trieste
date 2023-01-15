@@ -2,7 +2,7 @@ class I32
 {
   create(): I32
   {
-    let a = :[i32 0]
+    let a = :[i32 0]:
     Dyn::from_i32(a)
   }
 

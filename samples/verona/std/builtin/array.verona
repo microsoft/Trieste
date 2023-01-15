@@ -15,7 +15,7 @@ class Array[T]
     new (0, space, data)
   }
 
-  sizeof(): Dyn // ::: ()->i64
+  sizeof(): Dyn ::: ()->i64
   {
     :[ret i64 8]:
   }

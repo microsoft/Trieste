@@ -242,6 +242,9 @@ namespace verona
         // Dot.
         "\\." >> [](auto& m) { m.add(Dot); },
 
+        // Triple colon.
+        ":::" >> [](auto& m) { m.add(TripleColon); },
+
         // Double colon.
         "::" >> [](auto& m) { m.add(DoubleColon); },
 

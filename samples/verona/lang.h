@@ -21,6 +21,7 @@ namespace verona
   inline constexpr auto Ellipsis = TokenDef("ellipsis");
   inline constexpr auto Colon = TokenDef("colon");
   inline constexpr auto DoubleColon = TokenDef("doublecolon");
+  inline constexpr auto TripleColon = TokenDef("triplecolon");
   inline constexpr auto Arrow = TokenDef("arrow");
   inline constexpr auto Bool = TokenDef("bool", flag::print);
   inline constexpr auto Hex = TokenDef("hex", flag::print);
@@ -33,7 +34,6 @@ namespace verona
   inline constexpr auto String = TokenDef("string", flag::print);
   inline constexpr auto Symbol = TokenDef("symbol", flag::print);
   inline constexpr auto Ident = TokenDef("ident", flag::print);
-  inline constexpr auto LLVM = TokenDef("llvm", flag::print);
 
   // Parsing keywords.
   inline constexpr auto Class = TokenDef(
@@ -116,6 +116,11 @@ namespace verona
   inline constexpr auto Cast = TokenDef("cast");
   inline constexpr auto Return = TokenDef("return");
   inline constexpr auto NLRCheck = TokenDef("nlrcheck");
+
+  // LLVM-specific.
+  inline constexpr auto LLVM = TokenDef("llvm", flag::print);
+  inline constexpr auto LLVMList = TokenDef("llvmlist");
+  inline constexpr auto LLVMFuncType = TokenDef("llvmfunctype");
 
   // Indexing names.
   inline constexpr auto Bound = TokenDef("bound");

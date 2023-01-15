@@ -1,9 +1,8 @@
 # Todo
 
 LLVM lowering
-- allow llvm signatures
-- turn off refcounting in all functions with llvm signatures
-  - no partial application or default args
+- turn off NLR checking if the called function has an llvmfunctype
+- no `bind` for llvm literals if there's no `let`
 - `new`
 - `copy` and `drop` on `Ptr` and `Ref[T]`
 - dynamic function lookup
@@ -17,6 +16,7 @@ dispatch
 - no static type based overloading
 - `::name` as a scoped name, meaning lookup only, no lookdown phase
 
+- is the `refparams` pass unnecessary? `drop` handles it?
 - remove arity ambiguity by including arity `N` in function names
 - remove CallLHS by including `ref` in function names
 - check for conflicting field names, conflicting function arity

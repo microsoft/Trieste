@@ -6,7 +6,7 @@ class Ptr
     Dyn::from_unit()
   }
 
-  ref field(self: Ptr, i: I32): Ref[T] // ::: (ptr, i32)->i64
+  ref field(self: Ptr, i: I32): Ref[T] ::: (ptr, i32)->i64
   {
     // The refcount on `self` is moved to the returned Ref[T].
     let a = Dyn::to_ptr(self)
@@ -15,18 +15,18 @@ class Ptr
     Dyn::from_ref(c)
   }
 
-  function(self: Ptr, i: I32): () // ::: (ptr, i32)->ptr
+  function(self: Ptr, i: I32): () ::: (ptr, i32)->ptr
   {
     // TODO: look in the type descriptor
   }
 
-  copy(self: Ptr): () // ::: ptr->void
+  copy(self: Ptr): () ::: (ptr)->void
   {
     // TODO:
     :[ret void]:
   }
 
-  drop(self: Ptr): () // ::: ptr->void
+  drop(self: Ptr): () ::: (ptr)->void
   {
     // TODO:
     :[ret void]:
