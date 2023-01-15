@@ -737,7 +737,7 @@ namespace verona
           (T(TypeName)[Lhs] * T(DoubleColon) * Name[Id] *
            ~T(TypeArgs)[TypeArgs])[Type] >>
         [](Match& _) {
-          if (lookup_scopedname_name(_(Lhs), _(Id), _(TypeArgs))
+          if (lookup_typename_name(_(Lhs), _(Id), _(TypeArgs))
                 .one({Class, TypeAlias, TypeParam}))
           {
             return TypeName << _[Lhs] << _(Id) << (_[TypeArgs] | TypeArgs);
@@ -787,7 +787,25 @@ namespace verona
 
   auto call(Node op, Node lhs = {}, Node rhs = {})
   {
-    return NLRCheck << (Call << op << arg(arg(Args, lhs), rhs));
+    auto args = arg(arg(Args, lhs), rhs);
+
+    if (op->type() == FunctionName)
+    {
+      auto look = lookup_functionname(op);
+
+      for (auto& def : look.defs)
+      {
+        if (
+          (def.def->type() == Function) &&
+          (def.def->at(wf / Function / Params)->size() == args->size()) &&
+          (def.def->at(wf / Function / LLVMFuncType)->type() == LLVMFuncType))
+        {
+          return Call << op << args;
+        }
+      }
+    }
+
+    return NLRCheck << (Call << op << args);
   }
 
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /

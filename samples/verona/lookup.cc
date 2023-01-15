@@ -93,7 +93,7 @@ namespace verona
       {
         // Resolve the typename and try again. Pass `visited` into the resulting
         // lookdowns, so that each path tracks cycles independently.
-        return lookdown(lookup_scopedname(lookup.def), id, ta, visited);
+        return lookdown(lookup_typename(lookup.def), id, ta, visited);
       }
       else if (lookup.def->type() == Type)
       {
@@ -152,7 +152,7 @@ namespace verona
     return lookups;
   }
 
-  Lookups lookup_scopedname(Node tn)
+  Lookups lookup_typename(Node tn)
   {
     assert(tn->type() == TypeName);
     auto ctx = tn->at(wf / TypeName / TypeName);
@@ -162,11 +162,24 @@ namespace verona
     if (ctx->type() == TypeUnit)
       return lookup_name(id, ta);
 
-    return lookup_scopedname_name(ctx, id, ta);
+    return lookup_typename_name(ctx, id, ta);
   }
 
-  Lookups lookup_scopedname_name(Node tn, Node id, Node ta)
+  Lookups lookup_typename_name(Node tn, Node id, Node ta)
   {
-    return lookdown(lookup_scopedname(tn), id, ta);
+    return lookdown(lookup_typename(tn), id, ta);
+  }
+
+  Lookups lookup_functionname(Node fn)
+  {
+    assert(fn->type() == FunctionName);
+    auto ctx = fn->at(wf / FunctionName / TypeName);
+    auto id = fn->at(wf / FunctionName / Ident);
+    auto ta = fn->at(wf / FunctionName / TypeArgs);
+
+    if (ctx->type() == TypeUnit)
+      return lookup_name(id, ta);
+
+    return lookup_typename_name(ctx, id, ta);
   }
 }
