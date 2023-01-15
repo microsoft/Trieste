@@ -35,11 +35,17 @@ namespace verona
       // Files in a directory aren't semantically meaningful.
       In(Brace) * T(File)[File] >> [](Match& _) { return Seq << *_[File]; },
 
-      // Type assertion. Treat an empty assertion as DontCare. The type is
-      // finished at the end of the group, or at a brace. Put a typetrait in
-      // parentheses to include it in a type assertion.
-      T(Colon) * ((!T(Brace))++)[Type] >>
+      // Type assertion. Treat an empty assertion as DontCare. Accept a brace if
+      // it comes immediately after the colon or after a symbol or dot.
+      In(Group) * T(Colon) *
+          (~T(Brace) *
+           (((T(Symbol) / T(Dot)) * T(Brace)) / (!T(Brace)))++)[Type] >>
         [](Match& _) { return Type << (_[Type] | DontCare); },
+
+      In(Type) * T(Colon)[Colon] >>
+        [](Match& _) {
+          return err(_[Colon], "can't put a type assertion inside a type");
+        },
     };
   }
 
@@ -329,7 +335,7 @@ namespace verona
                               << (Ident ^ create) << Unit);
         },
 
-      // Lambda: (group typeparams) (list params...) -> Rhs
+      // Lambda: (group typeparams) (list params...) => Rhs
       In(Expr) * T(Brace)
           << (((T(Group) << T(Square)[TypeParams]) * T(List)[Params]) *
               (T(Group) << T(Arrow)) * (Any++)[Rhs]) >>
@@ -338,7 +344,7 @@ namespace verona
                         << (Params << *_[Params]) << (Block << _[Rhs]);
         },
 
-      // Lambda: (group typeparams) (group param) -> Rhs
+      // Lambda: (group typeparams) (group param) => Rhs
       In(Expr) * T(Brace)
           << (((T(Group) << T(Square)[TypeParams]) * T(Group)[Param]) *
               (T(Group) << T(Arrow)) * (Any++)[Rhs]) >>
@@ -347,7 +353,7 @@ namespace verona
                         << (Params << _[Param]) << (Block << _[Rhs]);
         },
 
-      // Lambda: (list (group typeparams? param) params...) -> Rhs
+      // Lambda: (list (group typeparams? param) params...) => Rhs
       In(Expr) * T(Brace)
           << ((T(List)
                << ((T(Group) << (~T(Square)[TypeParams] * (Any++)[Param])) *
@@ -359,7 +365,7 @@ namespace verona
                         << (Block << _[Rhs]);
         },
 
-      // Lambda: (group typeparams? param) -> Rhs
+      // Lambda: (group typeparams? param) => Rhs
       In(Expr) * T(Brace)
           << ((T(Group) << (~T(Square)[TypeParams] * (Any++)[Param])) *
               (T(Group) << T(Arrow)) * (Any++)[Rhs]) >>
@@ -475,12 +481,13 @@ namespace verona
     return {
       // Function types bind more tightly than throw types. This is the only
       // right-associative operator.
-      TypeStruct * TypeElem[Lhs] * T(Arrow) * TypeElem[Rhs] * --T(Arrow) >>
+      TypeStruct * TypeElem[Lhs] * T(Symbol, "->") * TypeElem[Rhs] *
+          --T(Symbol, "->") >>
         [](Match& _) {
           return TypeFunc << (Type << _[Lhs]) << (Type << _[Rhs]);
         },
-      TypeStruct * T(Arrow)[Arrow] >>
-        [](Match& _) { return err(_[Arrow], "misplaced function type"); },
+      TypeStruct * T(Symbol, "->")[Symbol] >>
+        [](Match& _) { return err(_[Symbol], "misplaced function type"); },
     };
   }
 
@@ -614,7 +621,7 @@ namespace verona
     }
 
     return Conditional << cond << (block << (Expr << lambda << args))
-                       << (Block << (Conditional << _[Rhs]));
+                       << (Block << (Expr << (Conditional << _[Rhs])));
   }
 
   PassDef conditionals()
@@ -622,30 +629,27 @@ namespace verona
     return {
       // Conditionals are right-associative.
       In(Expr) * T(If) * (!T(Lambda) * (!T(Lambda))++)[Expr] * T(Lambda)[Lhs] *
-          ((T(Else) * T(If) * (!T(Lambda) * !T(Lambda))++ * T(Lambda))++ *
+          ((T(Else) * T(If) * (!T(Lambda) * (!T(Lambda))++) * T(Lambda))++ *
            ~(T(Else) * T(Lambda)))[Rhs] >>
         [](Match& _) { return make_conditional(_); },
 
       T(Conditional)
-          << ((T(Else) * T(If) * (!T(Lambda))++[Expr] * T(Lambda)[Lhs]) *
+          << ((T(Else) * T(If) * (!T(Lambda) * (!T(Lambda))++)[Expr] *
+               T(Lambda)[Lhs]) *
               Any++[Rhs]) >>
         [](Match& _) { return make_conditional(_); },
 
-      T(Conditional) << (~(T(Else) * T(Lambda)[Rhs]) * End) >>
-        [](Match& _) {
-          // Handle a trailing `else`, inserting a Unit value if needed.
-          if (_(Rhs))
-            return Expr << _(Rhs) << Unit;
+      T(Conditional) << (T(Else) * T(Lambda)[Rhs] * End) >>
+        [](Match& _) { return _(Rhs); },
 
-          return Expr << Unit;
-        },
+      T(Conditional) << End >> ([](Match&) -> Node { return Unit; }),
 
-      T(If) >>
+      T(If)[If] >>
         [](Match& _) {
           return err(_[If], "`if` must be followed by a condition and braces");
         },
 
-      T(Else) >>
+      T(Else)[Else] >>
         [](Match& _) {
           return err(
             _[Else],
@@ -657,6 +661,31 @@ namespace verona
   PassDef reference()
   {
     return {
+      // LLVM literal.
+      T(LLVM)[LLVM] * T(Ident)[Lhs] * T(Ident)++[Rhs] >>
+        [](Match& _) {
+          auto llvm = _(LLVM);
+          auto rhs = _[Rhs];
+          auto s = std::string()
+                     .append(llvm->location().view())
+                     .append(" %")
+                     .append(_(Lhs)->location().view());
+
+          for (auto& i = rhs.first; i != rhs.second; ++i)
+            s.append(", %").append((*i)->location().view());
+
+          return LLVM ^ s;
+        },
+
+      T(LLVM)[Lhs] * T(LLVM)[Rhs] >>
+        [](Match& _) {
+          return LLVM ^
+            std::string()
+              .append(_(Lhs)->location().view())
+              .append(" ")
+              .append(_(Rhs)->location().view());
+        },
+
       // Dot notation. Use `Id` as a selector, even if it's in scope.
       In(Expr) * T(Dot) * Name[Id] * ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {

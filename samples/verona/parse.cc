@@ -109,7 +109,7 @@ namespace verona
         ";" >> [](auto& m) { m.term(terminators); },
 
         // Function type or lambda.
-        "->" >>
+        "=>" >>
           [indent](auto& m) {
             indent->back() = m.linecol().second + 1;
             m.term(terminators);

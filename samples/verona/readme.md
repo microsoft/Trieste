@@ -1,16 +1,13 @@
 # Todo
 
-LLVM literals
+LLVM lowering
 - allow llvm signatures
 - turn off refcounting in all functions with llvm signatures
-- handle llvm literal application
-
-LLVM lowering
+  - no partial application or default args
 - `new`
 - `copy` and `drop` on `Ptr` and `Ref[T]`
-- function lookup
+- dynamic function lookup
   - Ptr, Ref[T], primitive types
-- `Weak[T]`?
 - region types, cowns, `when`
 
 autocreate ignores field initializers if there's already a `create` method. this seems wrong.
@@ -27,10 +24,10 @@ dispatch
 - mixins
 - match
 - lazy[T]
+- weak[T]?
 - public/private
 - package schemes
-- type assertions are accidentally allowed as types
-- list inside TypeParams or TypeArgs along with groups or other lists
+- list inside TypeParams, Params, TypeArgs along with groups or other lists
 
 ## Future Passes
 
@@ -95,6 +92,7 @@ A `var` field has both a `ref` accessor function and a non-`ref` accessor functi
 - struct for every concrete type
 - static and virtual dispatch
 - heap to stack with escape analysis
+- refcount op elimination
 
 ## Ellipsis
 
