@@ -26,13 +26,15 @@ class Ref[T]
 
   copy(self: Ref[T]): () ::: (ptr)->void
   {
-    // TODO:
+    let a = :[call ptr @verona_enclosing_object(ptr]: self :[)]:
+    Ptr::copy(a)
     :[ret void]:
   }
 
   drop(self: Ref[T]): () ::: (ptr)->void
   {
-    // TODO:
+    let a = :[call ptr @verona_enclosing_object(ptr]: self :[)]:
+    Ptr::drop(a)
     :[ret void]:
   }
 }

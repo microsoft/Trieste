@@ -1923,7 +1923,14 @@ namespace verona
             for (auto it = list.begin(); it != list.end(); ++it)
             {
               auto ref = it->second;
-              ref->parent()->replace(ref, Move << ref->at(wf / RefLet / Ident));
+              auto parent = ref->parent();
+              bool immediate = parent->type() == Block;
+
+              if (immediate && (parent->back() != ref))
+                parent->replace(ref);
+              else
+                parent->replace(ref, Move << ref->at(wf / RefLet / Ident));
+
               changes++;
             }
           }
@@ -2018,6 +2025,11 @@ namespace verona
 
         T(RefLet)[RefLet] << T(Ident)[Id] >> ([drop_map](Match& _) -> Node {
           drop_map->back().ref(_(Id)->location(), _(RefLet));
+          return NoChange;
+        }),
+
+        T(LLVM) >> ([drop_map](Match&) -> Node {
+          drop_map->back().llvm = true;
           return NoChange;
         }),
       }};

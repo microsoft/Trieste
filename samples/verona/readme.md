@@ -1,6 +1,10 @@
 # Todo
 
 LLVM lowering
+- llvm and memory management
+  - lambdas with LLVM literals may need LLVM function types?
+  - calling a function with an LLVM type also turns off memory management?
+- could parse LLVM literals late, allowing expr that lift to reflet and not just ident
 - `new`
 - `copy` and `drop` on `Ptr` and `Ref[T]`
 - dynamic function lookup
