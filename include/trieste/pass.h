@@ -100,6 +100,9 @@ namespace trieste
 
     size_t apply(Node node)
     {
+      if (node->type().in({Error, Lift}))
+        return 0;
+
       size_t changes = 0;
 
       auto pre_f = pre_.find(node->type());

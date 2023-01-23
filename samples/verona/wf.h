@@ -92,8 +92,7 @@ namespace verona
     | (LLVMList <<= (LLVM | Ident)++)
     | (Type <<=
         (Type | TypeTuple | TypeVar | TypeArgs | Package | Lin | In_ | Out |
-         Const | DontCare | Ellipsis | Ident | Symbol | Dot | Arrow |
-         DoubleColon)++)
+         Const | DontCare | Ellipsis | Ident | Symbol | Dot | DoubleColon)++)
     | (Expr <<=
         (Expr | ExprSeq | Unit | Tuple | Assign | TypeArgs | If | Else |
          Lambda | Let | Var | New | Try | Ref | DontCare | Ellipsis | Dot |
@@ -113,7 +112,7 @@ namespace verona
     // Remove DontCare, Ident, TypeArgs, DoubleColon, Dot, Ellipsis.
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
-         Symbol | Arrow | TypeName | TypeView | TypeList)++)
+         Symbol | TypeName | TypeView | TypeList)++)
     ;
   // clang-format on
 
@@ -121,7 +120,7 @@ namespace verona
   inline constexpr auto wfPassTypeFunc =
       wfPassTypeView
 
-    // Remove Arrow. Add TypeFunc.
+    // Add TypeFunc.
     | (TypeFunc <<= (Lhs >>= Type) * (Rhs >>= Type))
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |

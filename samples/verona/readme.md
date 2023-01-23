@@ -1,14 +1,18 @@
 # Todo
 
+Switch to RE2?
+
 LLVM lowering
 - llvm and memory management
-  - lambdas with LLVM literals may need LLVM function types?
-  - calling a function with an LLVM type also turns off memory management?
+  - a lambda inside an LLVM function becomes an LLVM function?
+  - calling an LLVM function turns off memory management?
+    - but doesn't turn the caller into an LLVM function
+    - not needed if lambdas in LLVM functions become LLVM functions?
 - could parse LLVM literals late, allowing expr that lift to reflet and not just ident
 - `new`
-- `copy` and `drop` on `Ptr` and `Ref[T]`
 - dynamic function lookup
   - Ptr, Ref[T], primitive types
+- `copy` and `drop` on `Ptr` and `Ref[T]`
 - region types, cowns, `when`
 
 autocreate ignores field initializers if there's already a `create` method. this seems wrong.

@@ -288,8 +288,9 @@ namespace verona
         [](Match& _) { return Package << _(Package); },
 
       TypeStruct *
-          (T(Equals) / T(Use) / T(Class) / T(TypeAlias) / T(Var) / T(Let) /
-           T(Ref) / T(If) / T(Else) / T(New) / T(Try) / Literal)[Type] >>
+          (T(Equals) / T(Arrow) / T(Use) / T(Class) / T(TypeAlias) / T(Var) /
+           T(Let) / T(Ref) / T(If) / T(Else) / T(New) / T(Try) /
+           Literal)[Type] >>
         [](Match& _) { return err(_[Type], "can't put this in a type"); },
 
       // A group can be in a Block, Expr, ExprSeq, Tuple, or Assign.
@@ -680,7 +681,7 @@ namespace verona
   {
     return {
       // LLVM literal.
-      T(LLVM)[LLVM] * T(Ident)[Lhs] * T(Ident)++[Rhs] >>
+      In(Expr) * T(LLVM)[LLVM] * T(Ident)[Lhs] * T(Ident)++[Rhs] >>
         [](Match& _) {
           auto llvm = _(LLVM);
           auto rhs = _[Rhs];
@@ -695,7 +696,7 @@ namespace verona
           return LLVM ^ s;
         },
 
-      T(LLVM)[Lhs] * T(LLVM)[Rhs] >>
+      In(Expr) * T(LLVM)[Lhs] * T(LLVM)[Rhs] >>
         [](Match& _) {
           return LLVM ^
             std::string()
@@ -1486,11 +1487,10 @@ namespace verona
               wf / Class / Ident, wf / TypeTrait / Ident);
             Node args = Args;
             auto fwd = Expr
-              << (clone(call)
-                  << (FunctionName
-                      << (TypeName << TypeUnit << clone(tn) << TypeArgs)
-                      << clone(id) << TypeArgs)
-                  << args);
+              << (call << (FunctionName
+                           << (TypeName << TypeUnit << clone(tn) << TypeArgs)
+                           << clone(id) << TypeArgs)
+                       << args);
 
             auto lhs = _[Lhs];
             auto rhs = _[Rhs];
@@ -1500,7 +1500,8 @@ namespace verona
             {
               auto param_id = (*it)->at(wf / Param / Ident);
               params
-                << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
+                << (Param << clone(param_id)
+                          << clone((*it)->at(wf / Param / Type)));
               args << (Expr << (RefLet << clone(param_id)));
             }
 
@@ -1516,19 +1517,21 @@ namespace verona
 
               // Add the default argument to the forwarding call.
               args << (Expr << def_arg);
-              auto block = Block << clone(fwd);
-              args->pop_back();
 
               // Add a new function that calls the arity+1 function.
               seq
                 << (Function << clone(ref) << clone(id) << clone(tp)
                              << clone(params) << clone(ty) << DontCare
-                             << block);
+                             << (Block << clone(fwd)));
 
-              // Add a parameter and an argument.
+              // Add a parameter.
               auto param_id = (*it)->at(wf / Param / Ident);
               params
-                << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
+                << (Param << clone(param_id)
+                          << clone((*it)->at(wf / Param / Type)));
+
+              // Replace the last argument with a reference to the parameter.
+              args->pop_back();
               args << (Expr << (RefLet << clone(param_id)));
             }
 
