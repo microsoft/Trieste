@@ -771,6 +771,27 @@ namespace verona
     };
   }
 
+  bool is_llvm_call(Node op, size_t arity)
+  {
+    if (op->type() == FunctionName)
+    {
+      auto look = lookup_functionname(op);
+
+      for (auto& def : look.defs)
+      {
+        if (
+          (def.def->type() == Function) &&
+          (def.def->at(wf / Function / Params)->size() == arity) &&
+          (def.def->at(wf / Function / LLVMFuncType)->type() == LLVMFuncType))
+        {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   auto arg(Node args, Node arg)
   {
     if (arg)
@@ -789,24 +810,12 @@ namespace verona
   auto call(Node op, Node lhs = {}, Node rhs = {})
   {
     auto args = arg(arg(Args, lhs), rhs);
+    auto call = Call << op << args;
 
-    if (op->type() == FunctionName)
-    {
-      auto look = lookup_functionname(op);
+    if (!is_llvm_call(op, args->size()))
+      call = NLRCheck << call;
 
-      for (auto& def : look.defs)
-      {
-        if (
-          (def.def->type() == Function) &&
-          (def.def->at(wf / Function / Params)->size() == args->size()) &&
-          (def.def->at(wf / Function / LLVMFuncType)->type() == LLVMFuncType))
-        {
-          return Call << op << args;
-        }
-      }
-    }
-
-    return NLRCheck << (Call << op << args);
+    return call;
   }
 
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
@@ -2035,6 +2044,14 @@ namespace verona
           drop_map->back().llvm = true;
           return NoChange;
         }),
+
+        T(Call) << (T(FunctionName)[Op] * T(Args)[Args]) >>
+          ([drop_map](Match& _) -> Node {
+            if (is_llvm_call(_(Op), _(Args)->size()))
+              drop_map->back().llvm = true;
+
+            return NoChange;
+          }),
       }};
 
     drop.pre(Block, [drop_map](Node node) {
