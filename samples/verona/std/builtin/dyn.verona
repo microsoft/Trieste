@@ -75,13 +75,10 @@ class Dyn
     Dyn::from_bool(b)
   }
 
-  assert(self: Dyn): () ::: (i64)->void
+  assert(test: Bool): () ::: (i64)->void
   {
-    let a = Dyn::to_bool(self)
-    let b = :[icmp ne i1 1,]: a
-    let c = Dyn::from_bool(b)
-
-    if (c)
+    // Avoid anything that could recurse to `assert`.
+    if test {} else
     {
       :[call void @llvm.debugtrap()]:
       ()

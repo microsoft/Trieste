@@ -661,7 +661,7 @@ namespace verona
         [](Match& _) { return make_conditional(_); },
 
       T(Conditional) << (T(Else) * T(Lambda)[Rhs] * End) >>
-        [](Match& _) { return _(Rhs); },
+        [](Match& _) { return Seq << _(Rhs) << Unit; },
 
       T(Conditional) << End >> ([](Match&) -> Node { return Unit; }),
 
