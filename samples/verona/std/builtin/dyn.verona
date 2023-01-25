@@ -84,6 +84,7 @@ class Dyn
     if (c)
     {
       :[call void @llvm.debugtrap()]:
+      ()
     }
 
     :[ret void]:
@@ -159,10 +160,12 @@ class Dyn
     if (Dyn::is_ptr(self, Dyn::ptr_type))
     {
       Ptr::copy(Dyn::to_ptr(self))
+      ()
     }
     else if (Dyn::is_ptr(self, Dyn::ref_type))
     {
       Ref::copy(Dyn::to_ref(self))
+      ()
     }
 
     :[ret void]:
@@ -173,10 +176,12 @@ class Dyn
     if (Dyn::is_ptr(self, Dyn::ptr_type))
     {
       Ptr::drop(Dyn::to_ptr(self))
+      ()
     }
     else if (Dyn::is_ptr(self, Dyn::ref_type))
     {
       Ref::drop(Dyn::to_ref(self))
+      ()
     }
 
     :[ret void]:

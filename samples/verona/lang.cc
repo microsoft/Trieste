@@ -290,7 +290,7 @@ namespace verona
       TypeStruct *
           (T(Equals) / T(Arrow) / T(Use) / T(Class) / T(TypeAlias) / T(Var) /
            T(Let) / T(Ref) / T(If) / T(Else) / T(New) / T(Try) /
-           Literal)[Type] >>
+           T(LLVMFuncType) / Literal)[Type] >>
         [](Match& _) { return err(_[Type], "can't put this in a type"); },
 
       // A group can be in a Block, Expr, ExprSeq, Tuple, or Assign.
@@ -433,7 +433,9 @@ namespace verona
           return Expr << (TypeAssert << (Expr << _[Expr]) << _(Type));
         },
 
-      In(Expr) * (T(Lin) / T(In_) / T(Out) / T(Const) / T(Arrow))[Expr] >>
+      In(Expr) *
+          (T(Lin) / T(In_) / T(Out) / T(Const) / T(Arrow) /
+           T(LLVMFuncType))[Expr] >>
         [](Match& _) {
           return err(_[Expr], "can't put this in an expression");
         },
@@ -773,6 +775,7 @@ namespace verona
 
   bool is_llvm_call(Node op, size_t arity)
   {
+    // `op` must already be in the AST in order to resolve the FunctionName.
     if (op->type() == FunctionName)
     {
       auto look = lookup_functionname(op);
@@ -810,12 +813,11 @@ namespace verona
   auto call(Node op, Node lhs = {}, Node rhs = {})
   {
     auto args = arg(arg(Args, lhs), rhs);
-    auto call = Call << op << args;
 
     if (!is_llvm_call(op, args->size()))
-      call = NLRCheck << call;
+      return NLRCheck << (Call << op << args);
 
-    return call;
+    return Call << op << args;
   }
 
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /

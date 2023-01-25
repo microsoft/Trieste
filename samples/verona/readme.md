@@ -3,11 +3,6 @@
 Switch to RE2?
 
 LLVM lowering
-- llvm and memory management
-  - a lambda inside an LLVM function becomes an LLVM function?
-  - calling an LLVM function turns off memory management?
-    - but doesn't turn the caller into an LLVM function
-    - not needed if lambdas in LLVM functions become LLVM functions?
 - could parse LLVM literals late, allowing expr that lift to reflet and not just ident
 - `new`
 - dynamic function lookup
