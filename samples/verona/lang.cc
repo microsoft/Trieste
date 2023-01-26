@@ -35,11 +35,31 @@ namespace verona
       // Files in a directory aren't semantically meaningful.
       In(Brace) * T(File)[File] >> [](Match& _) { return Seq << *_[File]; },
 
-      // Type assertion. Treat an empty assertion as DontCare. The type is
-      // finished at the end of the group, or at a brace. Put a typetrait in
-      // parentheses to include it in a type assertion.
-      T(Colon) * ((!T(Brace))++)[Type] >>
+      // Type assertion. Treat an empty assertion as DontCare. Accept a brace if
+      // it comes immediately after the colon or after a symbol or dot.
+      In(Group) * T(Colon) *
+          (~T(Brace) *
+           (((T(Symbol) / T(Dot)) * T(Brace)) /
+            (!(T(Brace) / T(TripleColon))))++)[Type] >>
         [](Match& _) { return Type << (_[Type] | DontCare); },
+
+      In(Type) * T(Colon)[Colon] >>
+        [](Match& _) {
+          return err(_[Colon], "can't put a type assertion inside a type");
+        },
+
+      In(Group) * T(TripleColon) * ~T(LLVM)[Lhs] *
+          (T(Paren)
+           << ((T(List) << (T(Group) << (T(Ident) / T(LLVM)))++[Args]) /
+               ~(T(Group) << (T(Ident) / T(LLVM)))[Args])) *
+          T(Symbol, "->") * (T(Ident) / T(LLVM))[Return] * ~T(LLVM)[Rhs] >>
+        [](Match& _) {
+          return LLVMFuncType << (_[Lhs] | DontCare) << (_[Rhs] | DontCare)
+                              << (LLVMList << *_[Args]) << _(Return);
+        },
+
+      T(TripleColon)[TripleColon] >>
+        [](Match& _) { return err(_[TripleColon], "malformed LLVM type"); },
     };
   }
 
@@ -103,26 +123,30 @@ namespace verona
           (T(Equals)
            << ((T(Group)
                 << (~T(Ref)[Ref] * ~Name[Id] * ~T(Square)[TypeParams] *
-                    T(Paren)[Params] * ~T(Type)[Type])) *
+                    T(Paren)[Params] * ~T(Type)[Type] *
+                    ~T(LLVMFuncType)[LLVMFuncType])) *
                T(Group)++[Rhs])) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
           return Function << (_[Ref] | DontCare) << _(Id)
                           << (TypeParams << *_[TypeParams])
                           << (Params << *_[Params]) << typevar(_, Type)
+                          << (_[LLVMFuncType] | DontCare)
                           << (Block << (Expr << (Default << _[Rhs])));
         },
 
       // Function: (group name square parens type brace)
       In(ClassBody) * T(Group)
           << (~T(Ref)[Ref] * ~Name[Id] * ~T(Square)[TypeParams] *
-              T(Paren)[Params] * ~T(Type)[Type] * ~T(Brace)[Block] *
+              T(Paren)[Params] * ~T(Type)[Type] *
+              ~T(LLVMFuncType)[LLVMFuncType] * ~T(Brace)[Block] *
               (Any++)[Rhs]) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
           return Seq << (Function << (_[Ref] | DontCare) << _(Id)
                                   << (TypeParams << *_[TypeParams])
                                   << (Params << *_[Params]) << typevar(_, Type)
+                                  << (_[LLVMFuncType] | DontCare)
                                   << (Block << *_[Block]))
                      << (Group << _[Rhs]);
         },
@@ -264,8 +288,9 @@ namespace verona
         [](Match& _) { return Package << _(Package); },
 
       TypeStruct *
-          (T(Equals) / T(Use) / T(Class) / T(TypeAlias) / T(Var) / T(Let) /
-           T(Ref) / T(If) / T(Else) / T(New) / T(Try) / Literal)[Type] >>
+          (T(Equals) / T(Arrow) / T(Use) / T(Class) / T(TypeAlias) / T(Var) /
+           T(Let) / T(Ref) / T(If) / T(Else) / T(New) / T(Try) /
+           T(LLVMFuncType) / Literal)[Type] >>
         [](Match& _) { return err(_[Type], "can't put this in a type"); },
 
       // A group can be in a Block, Expr, ExprSeq, Tuple, or Assign.
@@ -329,7 +354,7 @@ namespace verona
                               << (Ident ^ create) << Unit);
         },
 
-      // Lambda: (group typeparams) (list params...) -> Rhs
+      // Lambda: (group typeparams) (list params...) => Rhs
       In(Expr) * T(Brace)
           << (((T(Group) << T(Square)[TypeParams]) * T(List)[Params]) *
               (T(Group) << T(Arrow)) * (Any++)[Rhs]) >>
@@ -338,7 +363,7 @@ namespace verona
                         << (Params << *_[Params]) << (Block << _[Rhs]);
         },
 
-      // Lambda: (group typeparams) (group param) -> Rhs
+      // Lambda: (group typeparams) (group param) => Rhs
       In(Expr) * T(Brace)
           << (((T(Group) << T(Square)[TypeParams]) * T(Group)[Param]) *
               (T(Group) << T(Arrow)) * (Any++)[Rhs]) >>
@@ -347,7 +372,7 @@ namespace verona
                         << (Params << _[Param]) << (Block << _[Rhs]);
         },
 
-      // Lambda: (list (group typeparams? param) params...) -> Rhs
+      // Lambda: (list (group typeparams? param) params...) => Rhs
       In(Expr) * T(Brace)
           << ((T(List)
                << ((T(Group) << (~T(Square)[TypeParams] * (Any++)[Param])) *
@@ -359,7 +384,7 @@ namespace verona
                         << (Block << _[Rhs]);
         },
 
-      // Lambda: (group typeparams? param) -> Rhs
+      // Lambda: (group typeparams? param) => Rhs
       In(Expr) * T(Brace)
           << ((T(Group) << (~T(Square)[TypeParams] * (Any++)[Param])) *
               (T(Group) << T(Arrow)) * (Any++)[Rhs]) >>
@@ -408,7 +433,9 @@ namespace verona
           return Expr << (TypeAssert << (Expr << _[Expr]) << _(Type));
         },
 
-      In(Expr) * (T(Lin) / T(In_) / T(Out) / T(Const) / T(Arrow))[Expr] >>
+      In(Expr) *
+          (T(Lin) / T(In_) / T(Out) / T(Const) / T(Arrow) /
+           T(LLVMFuncType))[Expr] >>
         [](Match& _) {
           return err(_[Expr], "can't put this in an expression");
         },
@@ -475,12 +502,13 @@ namespace verona
     return {
       // Function types bind more tightly than throw types. This is the only
       // right-associative operator.
-      TypeStruct * TypeElem[Lhs] * T(Arrow) * TypeElem[Rhs] * --T(Arrow) >>
+      TypeStruct * TypeElem[Lhs] * T(Symbol, "->") * TypeElem[Rhs] *
+          --T(Symbol, "->") >>
         [](Match& _) {
           return TypeFunc << (Type << _[Lhs]) << (Type << _[Rhs]);
         },
-      TypeStruct * T(Arrow)[Arrow] >>
-        [](Match& _) { return err(_[Arrow], "misplaced function type"); },
+      TypeStruct * T(Symbol, "->")[Symbol] >>
+        [](Match& _) { return err(_[Symbol], "misplaced function type"); },
     };
   }
 
@@ -614,7 +642,7 @@ namespace verona
     }
 
     return Conditional << cond << (block << (Expr << lambda << args))
-                       << (Block << (Conditional << _[Rhs]));
+                       << (Block << (Expr << (Conditional << _[Rhs])));
   }
 
   PassDef conditionals()
@@ -622,30 +650,27 @@ namespace verona
     return {
       // Conditionals are right-associative.
       In(Expr) * T(If) * (!T(Lambda) * (!T(Lambda))++)[Expr] * T(Lambda)[Lhs] *
-          ((T(Else) * T(If) * (!T(Lambda) * !T(Lambda))++ * T(Lambda))++ *
+          ((T(Else) * T(If) * (!T(Lambda) * (!T(Lambda))++) * T(Lambda))++ *
            ~(T(Else) * T(Lambda)))[Rhs] >>
         [](Match& _) { return make_conditional(_); },
 
       T(Conditional)
-          << ((T(Else) * T(If) * (!T(Lambda))++[Expr] * T(Lambda)[Lhs]) *
+          << ((T(Else) * T(If) * (!T(Lambda) * (!T(Lambda))++)[Expr] *
+               T(Lambda)[Lhs]) *
               Any++[Rhs]) >>
         [](Match& _) { return make_conditional(_); },
 
-      T(Conditional) << (~(T(Else) * T(Lambda)[Rhs]) * End) >>
-        [](Match& _) {
-          // Handle a trailing `else`, inserting a Unit value if needed.
-          if (_(Rhs))
-            return Expr << _(Rhs) << Unit;
+      T(Conditional) << (T(Else) * T(Lambda)[Rhs] * End) >>
+        [](Match& _) { return Seq << _(Rhs) << Unit; },
 
-          return Expr << Unit;
-        },
+      T(Conditional) << End >> ([](Match&) -> Node { return Unit; }),
 
-      T(If) >>
+      T(If)[If] >>
         [](Match& _) {
           return err(_[If], "`if` must be followed by a condition and braces");
         },
 
-      T(Else) >>
+      T(Else)[Else] >>
         [](Match& _) {
           return err(
             _[Else],
@@ -657,6 +682,31 @@ namespace verona
   PassDef reference()
   {
     return {
+      // LLVM literal.
+      In(Expr) * T(LLVM)[LLVM] * T(Ident)[Lhs] * T(Ident)++[Rhs] >>
+        [](Match& _) {
+          auto llvm = _(LLVM);
+          auto rhs = _[Rhs];
+          auto s = std::string()
+                     .append(llvm->location().view())
+                     .append(" %")
+                     .append(_(Lhs)->location().view());
+
+          for (auto& i = rhs.first; i != rhs.second; ++i)
+            s.append(", %").append((*i)->location().view());
+
+          return LLVM ^ s;
+        },
+
+      In(Expr) * T(LLVM)[Lhs] * T(LLVM)[Rhs] >>
+        [](Match& _) {
+          return LLVM ^
+            std::string()
+              .append(_(Lhs)->location().view())
+              .append(" ")
+              .append(_(Rhs)->location().view());
+        },
+
       // Dot notation. Use `Id` as a selector, even if it's in scope.
       In(Expr) * T(Dot) * Name[Id] * ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {
@@ -690,7 +740,7 @@ namespace verona
           (T(TypeName)[Lhs] * T(DoubleColon) * Name[Id] *
            ~T(TypeArgs)[TypeArgs])[Type] >>
         [](Match& _) {
-          if (lookup_scopedname_name(_(Lhs), _(Id), _(TypeArgs))
+          if (lookup_typename_name(_(Lhs), _(Id), _(TypeArgs))
                 .one({Class, TypeAlias, TypeParam}))
           {
             return TypeName << _[Lhs] << _(Id) << (_[TypeArgs] | TypeArgs);
@@ -723,6 +773,28 @@ namespace verona
     };
   }
 
+  bool is_llvm_call(Node op, size_t arity)
+  {
+    // `op` must already be in the AST in order to resolve the FunctionName.
+    if (op->type() == FunctionName)
+    {
+      auto look = lookup_functionname(op);
+
+      for (auto& def : look.defs)
+      {
+        if (
+          (def.def->type() == Function) &&
+          (def.def->at(wf / Function / Params)->size() == arity) &&
+          (def.def->at(wf / Function / LLVMFuncType)->type() == LLVMFuncType))
+        {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   auto arg(Node args, Node arg)
   {
     if (arg)
@@ -740,7 +812,12 @@ namespace verona
 
   auto call(Node op, Node lhs = {}, Node rhs = {})
   {
-    return NLRCheck << (Call << op << arg(arg(Args, lhs), rhs));
+    auto args = arg(arg(Args, lhs), rhs);
+
+    if (!is_llvm_call(op, args->size()))
+      return NLRCheck << (Call << op << args);
+
+    return Call << op << args;
   }
 
   inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
@@ -1144,7 +1221,7 @@ namespace verona
             Node new_args = Args;
             auto create_func = Function
               << DontCare << (Ident ^ create) << TypeParams << create_params
-              << (Type << (TypeVar ^ _.fresh()))
+              << (Type << (TypeVar ^ _.fresh())) << DontCare
               << (Block << (Expr << (Call << New << new_args)));
 
             // The create call will instantiate the anonymous type.
@@ -1199,7 +1276,8 @@ namespace verona
                                    << (Type << (TypeVar ^ _.fresh()))
                                    << DontCare)
                          << *_[Params])
-              << (Type << (TypeVar ^ _.fresh())) << (apply_body << *_[Block]);
+              << (Type << (TypeVar ^ _.fresh())) << DontCare
+              << (apply_body << *_[Block]);
 
             // Add the create and apply functions to the anonymous type.
             class_body << create_func << apply_func;
@@ -1263,7 +1341,7 @@ namespace verona
                               << (Params
                                   << (Param << (Ident ^ self_id) << typevar(_)
                                             << DontCare))
-                              << clone(type) << (Block << expr);
+                              << clone(type) << DontCare << (Block << expr);
 
             return Seq << field << f;
           }),
@@ -1277,7 +1355,7 @@ namespace verona
       {
         T(Function)[Function]
             << (T(Ref) * Name[Id] * T(TypeParams)[TypeParams] *
-                T(Params)[Params] * T(Type)[Type] * T(Block)) >>
+                T(Params)[Params] * T(Type)[Type] * T(DontCare) * T(Block)) >>
           ([](Match& _) -> Node {
             auto f = _(Function);
             auto id = _(Id);
@@ -1314,7 +1392,7 @@ namespace verona
 
             auto rhs_f =
               Function << DontCare << clone(id) << clone(_(TypeParams))
-                       << clone(params) << clone(_(Type))
+                       << clone(params) << clone(_(Type)) << DontCare
                        << (Block
                            << (Expr
                                << (Call
@@ -1351,7 +1429,8 @@ namespace verona
           Node new_args = Args;
           auto create_func = Function
             << DontCare << (Ident ^ create) << TypeParams << create_params
-            << typevar(_) << (Block << (Expr << (Call << New << new_args)));
+            << typevar(_) << DontCare
+            << (Block << (Expr << (Call << New << new_args)));
 
           Nodes no_def;
           Nodes def;
@@ -1396,7 +1475,7 @@ namespace verona
   PassDef defaultargs()
   {
     return {
-      dir::bottomup | dir::once,
+      dir::topdown | dir::once,
       {
         T(Function)[Function]
             << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
@@ -1405,7 +1484,7 @@ namespace verona
                  << ((T(Param) << (T(Ident) * T(Type) * T(DontCare)))++[Lhs] *
                      (T(Param) << (T(Ident) * T(Type) * T(Call)))++[Rhs] *
                      End)) *
-                T(Type)[Type] * T(Block)[Block]) >>
+                T(Type)[Type] * T(DontCare) * T(Block)[Block]) >>
           [](Match& _) {
             Node seq = Seq;
             auto ref = _(Ref);
@@ -1419,11 +1498,10 @@ namespace verona
               wf / Class / Ident, wf / TypeTrait / Ident);
             Node args = Args;
             auto fwd = Expr
-              << (clone(call)
-                  << (FunctionName
-                      << (TypeName << TypeUnit << clone(tn) << TypeArgs)
-                      << clone(id) << TypeArgs)
-                  << args);
+              << (call << (FunctionName
+                           << (TypeName << TypeUnit << clone(tn) << TypeArgs)
+                           << clone(id) << TypeArgs)
+                       << args);
 
             auto lhs = _[Lhs];
             auto rhs = _[Rhs];
@@ -1433,7 +1511,8 @@ namespace verona
             {
               auto param_id = (*it)->at(wf / Param / Ident);
               params
-                << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
+                << (Param << clone(param_id)
+                          << clone((*it)->at(wf / Param / Type)));
               args << (Expr << (RefLet << clone(param_id)));
             }
 
@@ -1449,29 +1528,36 @@ namespace verona
 
               // Add the default argument to the forwarding call.
               args << (Expr << def_arg);
-              auto block = Block << clone(fwd);
-              args->pop_back();
 
               // Add a new function that calls the arity+1 function.
               seq
                 << (Function << clone(ref) << clone(id) << clone(tp)
-                             << clone(params) << clone(ty) << block);
+                             << clone(params) << clone(ty) << DontCare
+                             << (Block << clone(fwd)));
 
-              // Add a parameter and an argument.
+              // Add a parameter.
               auto param_id = (*it)->at(wf / Param / Ident);
               params
-                << (Param << clone(param_id) << (*it)->at(wf / Param / Type));
+                << (Param << clone(param_id)
+                          << clone((*it)->at(wf / Param / Type)));
+
+              // Replace the last argument with a reference to the parameter.
+              args->pop_back();
               args << (Expr << (RefLet << clone(param_id)));
             }
 
             // The original function, with no default arguments.
             return seq
-              << (Function << ref << id << tp << params << ty << _(Block));
+              << (Function << ref << id << tp << params << ty << DontCare
+                           << _(Block));
           },
 
-        T(Function)[Function] >>
+        T(Param) << (T(Ident)[Ident] * T(Type)[Type] * T(DontCare)) >>
+          [](Match& _) { return Param << _(Ident) << _(Type); },
+
+        T(Param)[Param] << (T(Ident) * T(Type) * T(Call)) >>
           [](Match& _) {
-            return err(_[Function], "default arguments must all be at the end");
+            return err(_[Param], "can't put a default argument here");
           },
       }};
   }
@@ -1490,7 +1576,8 @@ namespace verona
       dir::bottomup | dir::once,
       {T(Function)[Function]
          << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
-             T(TypeParams)[TypeParams] * T(Params)[Params]) >>
+             T(TypeParams)[TypeParams] * T(Params)[Params] * T(Type) *
+             T(DontCare)) >>
        [](Match& _) {
          auto f = _(Function);
          auto ref = _(Ref);
@@ -1541,7 +1628,7 @@ namespace verona
            Node new_args = Args;
            classbody
              << (Function << DontCare << (Ident ^ create) << TypeParams
-                          << create_params << typevar(_)
+                          << create_params << typevar(_) << DontCare
                           << (Block << (Expr << (Call << New << new_args))));
 
            // Create a function that returns the anonymous class for each arity.
@@ -1549,7 +1636,7 @@ namespace verona
            Node func_args = Args;
            auto func =
              Function << clone(ref) << clone(id) << TypeParams << func_params
-                      << typevar(_)
+                      << typevar(_) << DontCare
                       << (Block
                           << (Expr
                               << (Call
@@ -1621,7 +1708,7 @@ namespace verona
              classbody
                << (Function
                    << clone(ref) << (Ident ^ apply) << TypeParams
-                   << apply_params << typevar(_)
+                   << apply_params << typevar(_) << DontCare
                    << (Block << (Expr << (clone(call) << fwd << fwd_args))));
            }
 
@@ -1654,6 +1741,10 @@ namespace verona
       // Lift RefLet and Return.
       T(Expr) << (T(RefLet) / T(Return))[Op] >> [](Match& _) { return _(Op); },
 
+      // Lift LLVM literals that are at the block level.
+      In(Block) * (T(Expr) << T(LLVM)[LLVM]) >>
+        [](Match& _) { return _(LLVM); },
+
       // Create a new binding for this liftable expr.
       T(Expr)
           << (Liftable[Lift] /
@@ -1683,7 +1774,7 @@ namespace verona
         T(Function)
             << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
                 T(TypeParams)[TypeParams] * T(Params)[Params] * T(Type)[Type] *
-                T(Block)[Block]) >>
+                T(DontCare) * T(Block)[Block]) >>
           [](Match& _) {
             // Reference every parameter at the beginning of the function.
             // This ensures that otherwise unused parameters are correctly
@@ -1696,7 +1787,7 @@ namespace verona
             }
 
             return Function << _(Ref) << _(Id) << _(TypeParams) << _(Params)
-                            << _(Type) << (block << *_[Block]);
+                            << _(Type) << DontCare << (block << *_[Block]);
           },
       }};
   }
@@ -1732,18 +1823,27 @@ namespace verona
       NodeMap<Node> parents;
       NodeMap<Nodes> children;
       NodeMap<Nodes> successors;
+      bool llvm;
+
+      track(bool llvm) : llvm(llvm) {}
 
       void gen(const Location& loc)
       {
-        if (stack.empty())
-          params[loc] = true;
-        else
-          lets[stack.back()][loc] = true;
+        if (!llvm)
+        {
+          if (stack.empty())
+            params[loc] = true;
+          else
+            lets[stack.back()][loc] = true;
+        }
       }
 
       void ref(const Location& loc, Node node)
       {
-        refs[loc].push_back({stack.back(), node});
+        if (llvm)
+          refs[loc].push_back({{}, node});
+        else
+          refs[loc].push_back({stack.back(), node});
       }
 
       bool is_successor(Node of, Node block)
@@ -1792,6 +1892,9 @@ namespace verona
 
       void pre_block(Node block)
       {
+        if (llvm)
+          return;
+
         if (stack.empty())
         {
           lets[block] = params;
@@ -1819,17 +1922,41 @@ namespace verona
 
       void post_block()
       {
-        stack.pop_back();
+        if (!llvm)
+          stack.pop_back();
       }
 
       size_t post_function()
       {
         size_t changes = 0;
 
+        if (llvm)
+        {
+          for (auto& [loc, list] : refs)
+          {
+            for (auto it = list.begin(); it != list.end(); ++it)
+            {
+              auto ref = it->second;
+              auto parent = ref->parent();
+              bool immediate = parent->type() == Block;
+
+              if (immediate && (parent->back() != ref))
+                parent->replace(ref);
+              else
+                parent->replace(ref, Move << ref->at(wf / RefLet / Ident));
+
+              changes++;
+            }
+          }
+
+          return changes;
+        }
+
         for (auto& [loc, list] : refs)
         {
           for (auto it = list.begin(); it != list.end(); ++it)
           {
+            auto refblock = it->first;
             auto ref = it->second;
             auto id = ref->at(wf / RefLet / Ident);
             auto parent = ref->parent()->shared_from_this();
@@ -1840,7 +1967,7 @@ namespace verona
             // successor block.
             for (auto next = it + 1; next != list.end(); ++next)
             {
-              if (is_successor(it->first, next->first))
+              if (is_successor(refblock, next->first))
               {
                 discharging = false;
                 break;
@@ -1866,12 +1993,12 @@ namespace verona
 
               for (auto& block : blocks)
               {
-                if (block == it->first)
+                if (block == refblock)
                   forward = false;
 
                 if (
-                  forward ? is_successor(block, it->first) :
-                            is_successor(it->first, block))
+                  forward ? is_successor(block, refblock) :
+                            is_successor(refblock, block))
                 {
                   lets[block][id->location()] = false;
                 }
@@ -1914,6 +2041,19 @@ namespace verona
           drop_map->back().ref(_(Id)->location(), _(RefLet));
           return NoChange;
         }),
+
+        T(LLVM) >> ([drop_map](Match&) -> Node {
+          drop_map->back().llvm = true;
+          return NoChange;
+        }),
+
+        T(Call) << (T(FunctionName)[Op] * T(Args)[Args]) >>
+          ([drop_map](Match& _) -> Node {
+            if (is_llvm_call(_(Op), _(Args)->size()))
+              drop_map->back().llvm = true;
+
+            return NoChange;
+          }),
       }};
 
     drop.pre(Block, [drop_map](Node node) {
@@ -1926,8 +2066,9 @@ namespace verona
       return 0;
     });
 
-    drop.pre(Function, [drop_map](Node) {
-      drop_map->push_back({});
+    drop.pre(Function, [drop_map](Node f) {
+      auto llvm = f->at(wf / Function / LLVMFuncType)->type() == LLVMFuncType;
+      drop_map->push_back(track(llvm));
       return 0;
     });
 

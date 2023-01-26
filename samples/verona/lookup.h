@@ -52,6 +52,7 @@ namespace verona
   };
 
   Lookups lookup_name(Node id, Node ta);
-  Lookups lookup_scopedname(Node tn);
-  Lookups lookup_scopedname_name(Node tn, Node id, Node ta);
+  Lookups lookup_typename(Node tn);
+  Lookups lookup_typename_name(Node tn, Node id, Node ta);
+  Lookups lookup_functionname(Node fn);
 }

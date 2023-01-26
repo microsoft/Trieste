@@ -1,6 +1,14 @@
 # Todo
 
-> `drop` doesn't know about references inside an LLVM literal
+Switch to RE2?
+
+LLVM lowering
+- could parse LLVM literals late, allowing expr that lift to reflet and not just ident
+- `new`
+- dynamic function lookup
+  - Ptr, Ref[T], primitive types
+- `copy` and `drop` on `Ptr` and `Ref[T]`
+- region types, cowns, `when`
 
 autocreate ignores field initializers if there's already a `create` method. this seems wrong.
 
@@ -9,6 +17,7 @@ dispatch
 - no static type based overloading
 - `::name` as a scoped name, meaning lookup only, no lookdown phase
 
+- is the `refparams` pass unnecessary? `drop` handles it?
 - remove arity ambiguity by including arity `N` in function names
 - remove CallLHS by including `ref` in function names
 - check for conflicting field names, conflicting function arity
@@ -16,10 +25,10 @@ dispatch
 - mixins
 - match
 - lazy[T]
+- weak[T]?
 - public/private
 - package schemes
-- type assertions are accidentally allowed as types
-- list inside TypeParams or TypeArgs along with groups or other lists
+- list inside TypeParams, Params, TypeArgs along with groups or other lists
 
 ## Future Passes
 
@@ -84,6 +93,7 @@ A `var` field has both a `ref` accessor function and a non-`ref` accessor functi
 - struct for every concrete type
 - static and virtual dispatch
 - heap to stack with escape analysis
+- refcount op elimination
 
 ## Ellipsis
 

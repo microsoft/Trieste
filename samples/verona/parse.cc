@@ -46,7 +46,7 @@ namespace verona
 
     p.predir([](auto&, auto& path) {
       static auto re = std::regex(
-        "^[_[:alpha:]][_[:alnum:]]*$", std::regex_constants::optimize);
+        "^[_[:alpha:]][_[:alnum:]]*?$", std::regex_constants::optimize);
       return std::regex_match(path.filename().string(), re);
     });
 
@@ -108,8 +108,8 @@ namespace verona
         // Terminator.
         ";" >> [](auto& m) { m.term(terminators); },
 
-        // Function type or lambda.
-        "->" >>
+        // Lambda.
+        "=>" >>
           [indent](auto& m) {
             indent->back() = m.linecol().second + 1;
             m.term(terminators);
@@ -186,7 +186,7 @@ namespace verona
         "[[:digit:]]+\\b" >> [](auto& m) { m.add(Int); },
 
         // Escaped string.
-        "\"((?:\\\"|[^\"])*)\"" >> [](auto& m) { m.add(Escaped, 1); },
+        "\"((?:\\\"|[^\"])*?)\"" >> [](auto& m) { m.add(Escaped, 1); },
 
         // Unescaped string.
         "('+)\"([\\s\\S]*?)\"\\1" >> [](auto& m) { m.add(String, 2); },
@@ -195,7 +195,7 @@ namespace verona
         "'((?:\\'|[^'])*)'" >> [](auto& m) { m.add(Char, 1); },
 
         // LLVM IR literal.
-        ":\\[([^\\]]*)\\]" >> [](auto& m) { m.add(LLVM, 1); },
+        ":\\[((?:[^\\]]|\\][^:])*)\\]:" >> [](auto& m) { m.add(LLVM, 1); },
 
         // Line comment.
         "//[^\n]*" >> [](auto&) {},
@@ -241,6 +241,9 @@ namespace verona
 
         // Dot.
         "\\." >> [](auto& m) { m.add(Dot); },
+
+        // Triple colon.
+        ":::" >> [](auto& m) { m.add(TripleColon); },
 
         // Double colon.
         "::" >> [](auto& m) { m.add(DoubleColon); },
