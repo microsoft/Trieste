@@ -3,6 +3,8 @@ project(trieste VERSION 1.0.0 LANGUAGES CXX)
 
 include(FetchContent)
 
+set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
+
 FetchContent_Declare(
   re2
   GIT_REPOSITORY https://github.com/google/re2
@@ -37,8 +39,6 @@ set_target_properties(fmt PROPERTIES EXCLUDE_FROM_ALL ON)
 option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
-
-set(RE2_BUILD_TESTING OFF)
 
 # #############################################
 # Create target and set properties

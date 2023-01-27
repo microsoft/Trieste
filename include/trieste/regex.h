@@ -42,7 +42,12 @@ namespace trieste
         locations.resize(matches);
 
       auto matched = regex.Match(
-        sp, 0, sp.length(), re2::RE2::ANCHOR_START, match.data(), matches);
+        sp,
+        0,
+        sp.length(),
+        re2::RE2::ANCHOR_START,
+        match.data(),
+        static_cast<int>(matches));
 
       if (!matched || (match.at(0).size() == 0))
       {
