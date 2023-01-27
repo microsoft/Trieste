@@ -37,17 +37,23 @@ namespace verona
 
   Parse parser()
   {
+    struct Str
+    {
+      size_t start = 0;
+      size_t end = 0;
+    };
+
     Parse p(depth::subdirectories);
+    auto re_dir = std::make_shared<RE2>("[_[:alpha:]][_[:alnum:]]*?");
     auto depth = std::make_shared<size_t>(0);
+    auto str = std::make_shared<Str>();
     auto indent = std::make_shared<std::vector<size_t>>();
     indent->push_back(restart);
 
     p.prefile([](auto&, auto& path) { return path.extension() == ".verona"; });
 
-    p.predir([](auto&, auto& path) {
-      static auto re = std::regex(
-        "^[_[:alpha:]][_[:alnum:]]*?$", std::regex_constants::optimize);
-      return std::regex_match(path.filename().string(), re);
+    p.predir([re_dir](auto&, auto& path) {
+      return RE2::FullMatch(path.filename().string(), *re_dir);
     });
 
     p.postparse([](auto& p, auto& path, auto ast) {
@@ -67,21 +73,21 @@ namespace verona
         // Blank lines terminate.
         "\n(?:[[:blank:]]*\n)+([[:blank:]]*)" >>
           [indent](auto& m) {
-            indent->back() = m.match().length(1);
+            indent->back() = m.match(1).len;
             m.term(terminators);
           },
 
         // A newline that starts a brace block doesn't terminate.
         "\n([[:blank:]]*(\\{)[[:blank:]]*)" >>
           [indent](auto& m) {
-            indent->push_back(m.match().length(1));
+            indent->push_back(m.match(1).len);
             m.push(Brace, 2);
           },
 
         // A newline sometimes terminates.
         "\n([[:blank:]]*)" >>
           [indent](auto& m) {
-            size_t col = m.match().length(1);
+            size_t col = m.match(1).len;
             auto prev = indent->back();
 
             // If following a brace, don't terminate, but reset indentation.
@@ -111,14 +117,11 @@ namespace verona
         // Lambda.
         "=>" >>
           [indent](auto& m) {
-            indent->back() = m.linecol().second + 1;
+            indent->back() = m.match().linecol().second + 1;
             m.term(terminators);
             m.add(Arrow);
             m.term(terminators);
           },
-
-        // Equals.
-        "=(?![!#$%&*+-/<=>?@\\^`|~])" >> [](auto& m) { m.seq(Equals); },
 
         // List.
         "," >> [](auto& m) { m.seq(List, {Equals}); },
@@ -126,7 +129,7 @@ namespace verona
         // Parens.
         "(\\()[[:blank:]]*" >>
           [indent](auto& m) {
-            indent->push_back(m.linecol().second + m.match().length());
+            indent->push_back(m.match().linecol().second + m.match().len);
             m.push(Paren, 1);
           },
 
@@ -140,7 +143,7 @@ namespace verona
         // Square brackets.
         "(\\[)[[:blank:]]*" >>
           [indent](auto& m) {
-            indent->push_back(m.linecol().second + m.match().length());
+            indent->push_back(m.match().linecol().second + m.match().len);
             m.push(Square, 1);
           },
 
@@ -154,7 +157,7 @@ namespace verona
         // Curly braces.
         "(\\{)[[:blank:]]*" >>
           [indent](auto& m) {
-            indent->push_back(m.linecol().second + m.match().length());
+            indent->push_back(m.match().linecol().second + m.match().len);
             m.push(Brace, 1);
           },
 
@@ -189,7 +192,13 @@ namespace verona
         "\"((?:\\\"|[^\"])*?)\"" >> [](auto& m) { m.add(Escaped, 1); },
 
         // Unescaped string.
-        "('+)\"([\\s\\S]*?)\"\\1" >> [](auto& m) { m.add(String, 2); },
+        "([']+)\"([^\"]*)" >>
+          [str](auto& m) {
+            str->start = m.match(1).len;
+            str->end = 0;
+            m.add(String, 2);
+            m.mode("string");
+          },
 
         // Character literal.
         "'((?:\\'|[^'])*)'" >> [](auto& m) { m.add(Char, 1); },
@@ -224,10 +233,10 @@ namespace verona
         "try\\b" >> [](auto& m) { m.add(Try); },
 
         // Don't care.
-        "_(?![_[:alnum:]])" >> [](auto& m) { m.add(DontCare); },
+        "_\\b" >> [](auto& m) { m.add(DontCare); },
 
         // Reserve a sequence of underscores.
-        "_(?:_)+(?![[:alnum:]])" >>
+        "_(?:_)+\\b" >>
           [](auto& m) {
             m.error(
               "a sequence of two or more underscores is a reserved identifier");
@@ -251,18 +260,50 @@ namespace verona
         // Colon.
         ":" >> [](auto& m) { m.add(Colon); },
 
-        // Symbol. Reserved: "'(),.:;[]_{}
+        // Symbol that starts with `=`.
+        "=[!#$%&*+-/<=>?@\\^`|~]+" >> [](auto& m) { m.add(Symbol); },
+
+        // Equals.
+        "=" >> [](auto& m) { m.seq(Equals); },
+
+        // Other symbols. Reserved: "'(),.:;[]_{}
         "[!#$%&*+-/<=>?@\\^`|~]+" >> [](auto& m) { m.add(Symbol); },
+      });
+
+    p("string",
+      {
+        "\"'" >>
+          [str](auto& m) {
+            m.extend_before(String);
+            str->end = 1;
+            if (str->start == str->end)
+              m.mode("start");
+          },
+
+        "'" >>
+          [str](auto& m) {
+            if (str->end > 0)
+            {
+              str->end++;
+              if (str->start == str->end)
+                m.mode("start");
+            }
+          },
+
+        "." >> [str](auto&) { str->end = 0; },
       });
 
     p("comment",
       {
-        "(?:[^\\*]|\\*(?!/))*?/\\*" >> [depth](auto&) { ++(*depth); },
-        "(?:[^/]|/(?!\\*))*?\\*/" >>
+        "/\\*" >> [depth](auto&) { ++(*depth); },
+
+        "\\*/" >>
           [depth](auto& m) {
             if (--(*depth) == 0)
               m.mode("start");
           },
+
+        "." >> [](auto&) {},
       });
 
     p.done([](auto& m) {

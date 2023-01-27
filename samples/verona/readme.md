@@ -1,7 +1,5 @@
 # Todo
 
-Switch to RE2?
-
 LLVM lowering
 - could parse LLVM literals late, allowing expr that lift to reflet and not just ident
 - `new`

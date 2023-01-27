@@ -524,13 +524,13 @@ namespace trieste
             out << child->location().origin_linecol()
                 << "this node appears in the AST multiple times:" << std::endl
                 << child->location().str() << child->str() << std::endl
-                << node->location().origin_linecol()
-                << "here:" << std::endl
+                << node->location().origin_linecol() << "here:" << std::endl
                 << node->str() << std::endl
                 << child->parent()->location().origin_linecol()
                 << "and here:" << std::endl
                 << child->parent()->str() << std::endl
-                << "Implementation needs to explicitly clone nodes if they are duplicated.";
+                << "Implementation needs to explicitly clone nodes if they are "
+                   "duplicated.";
             ok = false;
           }
 
@@ -633,34 +633,31 @@ namespace trieste
 
       Node build_ast(Source source, size_t pos, std::ostream& out) const
       {
-        std::regex hd("^[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
-        std::regex st("^[[:space:]]*\\{[^\\}]*\\}");
-        std::regex id("^[[:space:]]*([[:digit:]]+):");
-        std::regex tl("^[[:space:]]*\\)");
+        auto hd = RE2("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
+        auto st = RE2("[[:space:]]*\\{[^\\}]*\\}");
+        auto id = RE2("[[:space:]]*([[:digit:]]+):");
+        auto tl = RE2("[[:space:]]*\\)");
 
-        auto start = source->view().cbegin();
-        auto it = start + pos;
-        auto end = source->view().cend();
-        sv_match match;
+        REMatch re_match(source, 2);
+        re_match.skip(pos);
+
         Node top;
         Node ast;
 
-        while (it < end)
+        while (!re_match.empty())
         {
-          // Find the type the node. If we didn't find a node, it's an error.
-          if (!std::regex_search(it, end, match, hd))
+          // Find the type of the node. If we didn't find a node, it's an error.
+          if (!re_match.consume(hd))
           {
-            auto loc = Location(source, it - start, 1);
+            auto loc = re_match.at();
             out << loc.origin_linecol() << "expected node" << std::endl
                 << loc.str() << std::endl;
             return {};
           }
 
           // If we don't have a valid node type, it's an error.
-          auto type_loc =
-            Location(source, (it - start) + match.position(1), match.length(1));
+          auto type_loc = re_match.at(1);
           auto type = find_type_i(ast, type_loc);
-          it += match.length();
 
           if (type == Invalid)
           {
@@ -672,12 +669,11 @@ namespace trieste
           // Find the source location of the node as a netstring.
           auto ident_loc = type_loc;
 
-          if (std::regex_search(it, end, match, id))
+          if (re_match.consume(id))
           {
-            auto len = std::stoul(match.str(1));
-            it += match.length();
-            ident_loc = Location(source, it - start, len);
-            it += len;
+            auto len = re_match.parse<size_t>(1);
+            ident_loc = Location(source, ident_loc.pos + ident_loc.len, len);
+            re_match.skip(len);
           }
 
           // Push the node into the AST.
@@ -691,13 +687,11 @@ namespace trieste
           ast = node;
 
           // Skip the symbol table.
-          if (std::regex_search(it, end, match, st))
-            it += match.length();
+          re_match.consume(st);
 
           // `)` ends the node. Otherwise, we'll add children to this node.
-          while (std::regex_search(it, end, match, tl))
+          while (re_match.consume(tl))
           {
-            it += match.length();
             auto parent = ast->parent();
 
             if (!parent)
@@ -708,7 +702,8 @@ namespace trieste
         }
 
         // We never finished the AST, so it's an error.
-        auto loc = Location(source, it - start, 1);
+        re_match.skip(0);
+        auto loc = re_match.at();
         out << loc.origin_linecol() << "incomplete AST" << std::endl
             << loc.str() << std::endl;
         return {};

@@ -7,7 +7,6 @@
 #include <cassert>
 #include <functional>
 #include <optional>
-#include <regex>
 
 namespace trieste
 {
@@ -134,21 +133,18 @@ namespace trieste
     {
     private:
       Token type;
-      std::regex regex;
+      RE2 regex;
 
     public:
-      RegexMatch(const Token& type, const std::string& r) : type(type)
-      {
-        regex = std::regex("^" + r + "$", std::regex_constants::optimize);
-      }
+      RegexMatch(const Token& type, const std::string& r) : type(type), regex(r)
+      {}
 
       bool match(NodeIt& it, NodeIt end, Match&) const override
       {
         if ((it == end) || ((*it)->type() != type))
           return false;
 
-        auto s = (*it)->location().view();
-        if (!std::regex_match(s.begin(), s.end(), regex))
+        if (!RE2::FullMatch((*it)->location().view(), regex))
           return false;
 
         ++it;

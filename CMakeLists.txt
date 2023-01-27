@@ -4,9 +4,19 @@ project(trieste VERSION 1.0.0 LANGUAGES CXX)
 include(FetchContent)
 
 FetchContent_Declare(
+  re2
+  GIT_REPOSITORY https://github.com/google/re2
+  GIT_TAG        2022-12-01
+  GIT_SHALLOW    TRUE
+)
+
+FetchContent_MakeAvailable(re2)
+
+FetchContent_Declare(
   cli11
   GIT_REPOSITORY https://github.com/CLIUtils/CLI11
   GIT_TAG        b9be5b9444772324459989177108a6a65b8b2769
+  GIT_SHALLOW    TRUE
 )
 
 FetchContent_MakeAvailable(cli11)
@@ -15,6 +25,7 @@ FetchContent_Declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt
   GIT_TAG        9.1.0
+  GIT_SHALLOW    TRUE
 )
 
 FetchContent_MakeAvailable(fmt)
