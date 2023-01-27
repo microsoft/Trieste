@@ -4,10 +4,10 @@
 
 #include "ast.h"
 #include "gen.h"
+#include "regex.h"
 
 #include <filesystem>
 #include <functional>
-#include <optional>
 
 namespace trieste
 {
@@ -18,20 +18,21 @@ namespace trieste
     class Make;
     using ParseEffect = std::function<void(Make&)>;
 
-    class Rule
+    class RuleDef
     {
       friend class trieste::Parse;
 
     private:
-      std::regex regex;
+      RE2 regex;
       ParseEffect effect;
 
     public:
-      Rule(const std::string& r, ParseEffect effect) : effect(effect)
-      {
-        regex = std::regex("^" + r, std::regex_constants::optimize);
-      }
+      RuleDef(const std::string& s, ParseEffect effect)
+      : regex(s), effect(effect)
+      {}
     };
+
+    using Rule = std::shared_ptr<RuleDef>;
 
     class Make
     {
@@ -40,27 +41,20 @@ namespace trieste
     private:
       Node top;
       Node node;
-      Location location;
-      sv_match match_;
       std::string mode_;
+      REMatch re_match;
 
     public:
-      Make(const std::string& loc) : Make(File, loc) {}
-
-      Make(const trieste::Token& token, const std::string& loc)
+      Make(const std::string& name, const Token& token, const Source& source)
+      : re_match(source, 10)
       {
-        node = NodeDef::create(token, {loc});
+        node = NodeDef::create(token, {name});
         top = node;
       }
 
-      std::pair<size_t, size_t> linecol() const
+      const Location& match(size_t index = 0) const
       {
-        return location.linecol();
-      }
-
-      const auto& match() const
-      {
-        return match_;
+        return re_match.at(index);
       }
 
       const std::string& mode()
@@ -92,10 +86,7 @@ namespace trieste
         if (!in(Group))
           push(Group);
 
-        auto loc = location;
-        loc.pos += match_.position(index);
-        loc.len = match_.length(index);
-        node->push_back(make_error(loc, msg));
+        node->push_back(make_error(re_match.at(index), msg));
       }
 
       void add(const Token& type, size_t index = 0)
@@ -103,10 +94,7 @@ namespace trieste
         if ((type != Group) && !in(Group))
           push(Group);
 
-        auto loc = location;
-        loc.pos += match_.position(index);
-        loc.len = match_.length(index);
-        node->push_back(NodeDef::create(type, loc));
+        node->push_back(NodeDef::create(type, re_match.at(index)));
       }
 
       void seq(const Token& type, std::initializer_list<Token> skip = {})
@@ -125,7 +113,7 @@ namespace trieste
         }
         else
         {
-          auto seq = NodeDef::create(type, location);
+          auto seq = NodeDef::create(type, re_match.at(0));
           auto group = p->pop_back();
           p->push_back(seq);
           seq->push_back(group);
@@ -153,17 +141,27 @@ namespace trieste
           try_pop(t);
       }
 
-      void extend()
+      void extend_before(const Token& type)
       {
-        node->extend(location);
+        if (!node->empty() && (node->front()->type() == type))
+        {
+          Location loc = re_match.at();
+          loc.len = 0;
+          node->front()->extend(loc);
+        }
+      }
+
+      void extend(const Token& type, size_t index = 0)
+      {
+        if (!node->empty() && (node->back()->type() == type))
+          node->back()->extend(re_match.at(index));
+        else
+          add(type, index);
       }
 
       void invalid()
       {
-        if (node->type() == Invalid)
-          extend();
-        else
-          add(Invalid);
+        extend(Invalid);
       }
 
     private:
@@ -361,10 +359,7 @@ namespace trieste
       if (!source)
         return {};
 
-      auto make = detail::Make(token, name);
-      auto it = source->view().cbegin();
-      auto st = it;
-      auto end = source->view().cend();
+      auto make = detail::Make(name, token, source);
 
       // Find the start rules.
       auto find = rules.find("start");
@@ -372,25 +367,18 @@ namespace trieste
         throw std::runtime_error("unknown mode: start");
 
       auto mode = make.mode_ = find->first;
-      size_t pos = 0;
 
-      while (it != end)
+      while (!make.re_match.empty())
       {
         bool matched = false;
 
         for (auto& rule : find->second)
         {
-          matched = std::regex_search(it, end, make.match_, rule.regex);
+          matched = make.re_match.consume(rule->regex);
 
-          if (matched && (make.match_.length() > 0))
+          if (matched)
           {
-            pos += make.match_.position();
-            size_t len = make.match_.length();
-            make.location = {source, pos, len};
-            rule.effect(make);
-
-            pos += len;
-            it = st + pos;
+            rule->effect(make);
 
             if (make.mode_ != mode)
             {
@@ -407,8 +395,7 @@ namespace trieste
         if (!matched)
         {
           make.invalid();
-          it++;
-          pos++;
+          make.re_match.skip();
         }
       }
 
@@ -454,9 +441,9 @@ namespace trieste
   };
 
   inline detail::Rule
-  operator>>(const std::string& r, std::function<void(detail::Make&)> make)
+  operator>>(const std::string& s, detail::ParseEffect effect)
   {
-    return {r, make};
+    return std::make_shared<detail::RuleDef>(s, effect);
   }
 
   inline std::pair<Token, GenLocationF>

@@ -5,6 +5,7 @@ add_executable(infix
   )
 
 target_link_libraries(infix
+  re2::re2
   CLI11::CLI11
   trieste::trieste
   )
