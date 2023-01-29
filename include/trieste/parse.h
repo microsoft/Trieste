@@ -43,10 +43,11 @@ namespace trieste
       Node node;
       std::string mode_;
       REMatch re_match;
+      REIterator re_iterator;
 
     public:
       Make(const std::string& name, const Token& token, const Source& source)
-      : re_match(source, 10)
+      : re_match(10), re_iterator(source)
       {
         node = NodeDef::create(token, {name});
         top = node;
@@ -368,13 +369,13 @@ namespace trieste
 
       auto mode = make.mode_ = find->first;
 
-      while (!make.re_match.empty())
+      while (!make.re_iterator.empty())
       {
         bool matched = false;
 
         for (auto& rule : find->second)
         {
-          matched = make.re_match.consume(rule->regex);
+          matched = make.re_iterator.consume(rule->regex, make.re_match);
 
           if (matched)
           {
@@ -395,7 +396,7 @@ namespace trieste
         if (!matched)
         {
           make.invalid();
-          make.re_match.skip();
+          make.re_iterator.skip();
         }
       }
 
