@@ -17,6 +17,40 @@ namespace trieste
     std::vector<Location> locations;
     size_t matches = 0;
 
+    bool match_regexp(const RE2& regex, re2::StringPiece& sp, Source& source)
+    {
+      matches = regex.NumberOfCapturingGroups() + 1;
+
+      if (match.size() < matches)
+        match.resize(matches);
+
+      if (locations.size() < matches)
+        locations.resize(matches);
+
+      auto matched = regex.Match(
+        sp,
+        0,
+        sp.length(),
+        re2::RE2::ANCHOR_START,
+        match.data(),
+        static_cast<int>(matches));
+
+      if (!matched || (match.at(0).size() == 0))
+      {
+        return false;
+      }
+
+      for (size_t i = 0; i < matches; i++)
+      {
+        locations[i] = {
+          source,
+          static_cast<size_t>(match.at(i).data() - source->view().data()),
+          match.at(i).size()};
+      }
+
+      return true;
+    }
+
   public:
     REMatch(size_t max_capture = 0)
     {
@@ -62,36 +96,10 @@ namespace trieste
 
     bool consume(const RE2& regex, REMatch& m)
     {
-      m.matches = regex.NumberOfCapturingGroups() + 1;
-
-      if (m.match.size() < m.matches)
-        m.match.resize(m.matches);
-
-      if (m.locations.size() < m.matches)
-        m.locations.resize(m.matches);
-
-      auto matched = regex.Match(
-        sp,
-        0,
-        sp.length(),
-        re2::RE2::ANCHOR_START,
-        m.match.data(),
-        static_cast<int>(m.matches));
-
-      if (!matched || (m.match.at(0).size() == 0))
-      {
+      if (!m.match_regexp(regex, sp, source))
         return false;
-      }
 
-      for (size_t i = 0; i < m.matches; i++)
-      {
-        m.locations[i] = {
-          source,
-          static_cast<size_t>(m.match.at(i).data() - source->view().data()),
-          m.match.at(i).size()};
-      }
-
-      sp.remove_prefix(m.match.at(0).size());
+      sp.remove_prefix(m.at(0).len);
       return true;
     }
 
