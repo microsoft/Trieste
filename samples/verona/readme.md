@@ -15,7 +15,6 @@ dispatch
 - no static type based overloading
 - `::name` as a scoped name, meaning lookup only, no lookdown phase
 
-- is the `refparams` pass unnecessary? `drop` handles it?
 - remove arity ambiguity by including arity `N` in function names
 - remove CallLHS by including `ref` in function names
 - check for conflicting field names, conflicting function arity

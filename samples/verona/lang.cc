@@ -1766,32 +1766,6 @@ namespace verona
     };
   }
 
-  PassDef refparams()
-  {
-    return {
-      dir::topdown | dir::once,
-      {
-        T(Function)
-            << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
-                T(TypeParams)[TypeParams] * T(Params)[Params] * T(Type)[Type] *
-                T(DontCare) * T(Block)[Block]) >>
-          [](Match& _) {
-            // Reference every parameter at the beginning of the function.
-            // This ensures that otherwise unused parameters are correctly
-            // dropped.
-            Node block = Block;
-            for (auto& p : *_(Params))
-            {
-              block
-                << (RefLet << (Ident ^ p->at(wf / Param / Ident)->location()));
-            }
-
-            return Function << _(Ref) << _(Id) << _(TypeParams) << _(Params)
-                            << _(Type) << DontCare << (block << *_[Block]);
-          },
-      }};
-  }
-
   PassDef defbeforeuse()
   {
     return {
@@ -2110,7 +2084,6 @@ namespace verona
         {"defaultargs", defaultargs(), wfPassDefaultArgs()},
         {"partialapp", partialapp(), wfPassDefaultArgs()},
         {"anf", anf(), wfPassANF()},
-        {"refparams", refparams(), wfPassANF()},
         {"defbeforeuse", defbeforeuse(), wfPassANF()},
         {"drop", drop(), wfPassDrop()},
       });
