@@ -638,18 +638,19 @@ namespace trieste
         auto id = RE2("[[:space:]]*([[:digit:]]+):");
         auto tl = RE2("[[:space:]]*\\)");
 
-        REMatch re_match(source, 2);
-        re_match.skip(pos);
+        REMatch re_match(2);
+        REIterator re_iterator(source);
+        re_iterator.skip(pos);
 
         Node top;
         Node ast;
 
-        while (!re_match.empty())
+        while (!re_iterator.empty())
         {
           // Find the type of the node. If we didn't find a node, it's an error.
-          if (!re_match.consume(hd))
+          if (!re_iterator.consume(hd, re_match))
           {
-            auto loc = re_match.at();
+            auto loc = re_iterator.current();
             out << loc.origin_linecol() << "expected node" << std::endl
                 << loc.str() << std::endl;
             return {};
@@ -669,11 +670,11 @@ namespace trieste
           // Find the source location of the node as a netstring.
           auto ident_loc = type_loc;
 
-          if (re_match.consume(id))
+          if (re_iterator.consume(id, re_match))
           {
             auto len = re_match.parse<size_t>(1);
             ident_loc = Location(source, ident_loc.pos + ident_loc.len, len);
-            re_match.skip(len);
+            re_iterator.skip(len);
           }
 
           // Push the node into the AST.
@@ -687,10 +688,10 @@ namespace trieste
           ast = node;
 
           // Skip the symbol table.
-          re_match.consume(st);
+          re_iterator.consume(st, re_match);
 
           // `)` ends the node. Otherwise, we'll add children to this node.
-          while (re_match.consume(tl))
+          while (re_iterator.consume(tl, re_match))
           {
             auto parent = ast->parent();
 
@@ -702,8 +703,7 @@ namespace trieste
         }
 
         // We never finished the AST, so it's an error.
-        re_match.skip(0);
-        auto loc = re_match.at();
+        auto loc = re_iterator.current();
         out << loc.origin_linecol() << "incomplete AST" << std::endl
             << loc.str() << std::endl;
         return {};

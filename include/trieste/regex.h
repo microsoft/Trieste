@@ -10,28 +10,14 @@ namespace trieste
 {
   class REMatch
   {
+    friend class REIterator;
+
   private:
-    Source source;
-    re2::StringPiece sp;
     std::vector<re2::StringPiece> match;
     std::vector<Location> locations;
     size_t matches = 0;
 
-  public:
-    REMatch(Source source, size_t max_capture = 0)
-    : source(source), sp(source->view())
-    {
-      match.resize(max_capture + 1);
-      locations.resize(max_capture + 1);
-      locations[0] = {source, 0, 1};
-    }
-
-    bool empty()
-    {
-      return sp.empty();
-    }
-
-    bool consume(const RE2& regex)
+    bool match_regexp(const RE2& regex, re2::StringPiece& sp, Source& source)
     {
       matches = regex.NumberOfCapturingGroups() + 1;
 
@@ -51,7 +37,6 @@ namespace trieste
 
       if (!matched || (match.at(0).size() == 0))
       {
-        skip(0);
         return false;
       }
 
@@ -63,8 +48,14 @@ namespace trieste
           match.at(i).size()};
       }
 
-      sp.remove_prefix(match.at(0).size());
       return true;
+    }
+
+  public:
+    REMatch(size_t max_capture = 0)
+    {
+      match.resize(max_capture + 1);
+      locations.resize(max_capture + 1);
     }
 
     const Location& at(size_t index = 0) const
@@ -87,14 +78,40 @@ namespace trieste
       arg.Parse(m.data(), m.size());
       return t;
     }
+  };
+
+  class REIterator
+  {
+  private:
+    Source source;
+    re2::StringPiece sp;
+
+  public:
+    REIterator(Source source) : source(source), sp(source->view()) {}
+
+    bool empty()
+    {
+      return sp.empty();
+    }
+
+    bool consume(const RE2& regex, REMatch& m)
+    {
+      if (!m.match_regexp(regex, sp, source))
+        return false;
+
+      sp.remove_prefix(m.at(0).len);
+      return true;
+    }
+
+    Location current() const
+    {
+      return {
+        source, static_cast<size_t>(sp.data() - source->view().data()), 1};
+    }
 
     void skip(size_t count = 1)
     {
       sp.remove_prefix(count);
-      match[0] = {};
-      locations[0] = {
-        source, static_cast<size_t>(sp.data() - source->view().data()), 1};
-      matches = 0;
     }
   };
 }
