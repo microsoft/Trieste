@@ -167,6 +167,9 @@ namespace verona
 
   Lookups lookup_typename_name(Node tn, Node id, Node ta)
   {
+    if (tn->type() == TypeUnit)
+      return lookup_name(id, ta);
+
     return lookdown(lookup_typename(tn), id, ta);
   }
 

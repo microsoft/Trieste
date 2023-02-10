@@ -56,8 +56,9 @@ namespace verona
   inline constexpr auto Try = TokenDef("try");
 
   // Semantic structure.
-  inline constexpr auto TypeTrait =
-    TokenDef("typetrait", flag::symtab | flag::lookup | flag::shadowing);
+  inline constexpr auto TypeTrait = TokenDef(
+    "typetrait",
+    flag::symtab | flag::lookup | flag::lookdown | flag::shadowing);
   inline constexpr auto ClassBody = TokenDef("classbody");
   inline constexpr auto FieldLet = TokenDef("fieldlet", flag::lookdown);
   inline constexpr auto FieldVar = TokenDef("fieldvar", flag::lookdown);

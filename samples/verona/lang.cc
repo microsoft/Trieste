@@ -453,6 +453,77 @@ namespace verona
     };
   }
 
+  PassDef memberconflict()
+  {
+    return {
+      dir::topdown | dir::once,
+      {(T(FieldLet) / T(FieldVar))[Op] << (T(Ident)[Id]) >>
+         ([](Match& _) -> Node {
+           auto field = _(Op);
+           auto defs = field->scope()->lookdown(_(Id)->location());
+
+           for (auto& def : defs)
+           {
+             if (def == field)
+               continue;
+
+             if (def->type().in({FieldLet, FieldVar}))
+               return err(field, "duplicate field name");
+           }
+
+           return NoChange;
+         }),
+
+       (T(Class) / T(TypeAlias) / T(TypeTrait))[Class] << (T(Ident)[Id]) >>
+         ([](Match& _) -> Node {
+           auto cls = _(Class);
+           auto defs = cls->scope()->lookdown(_(Id)->location());
+
+           for (auto& def : defs)
+           {
+             if (def == cls)
+               continue;
+
+             if (def->type().in({Class, TypeAlias, TypeTrait}))
+               return err(cls, "duplicate type name");
+             else if (def->type() == Function)
+               return err(cls, "this type has the same name as a function");
+           }
+
+           return NoChange;
+         }),
+
+       T(Function)[Function]
+           << ((T(Ref) / T(DontCare))[Ref] * Name[Id] * T(TypeParams) *
+               T(Params)[Params]) >>
+         ([](Match& _) -> Node {
+           auto func = _(Function);
+           auto ref = _(Ref);
+           auto defs = func->scope()->lookdown(_(Id)->location());
+
+           for (auto& def : defs)
+           {
+             if (def == func)
+               continue;
+
+             if (def->type().in({Class, TypeAlias, TypeTrait}))
+               return err(func, "this function has the same name as a type");
+             else if (
+               (def->type() == Function) &&
+               (def->at(wf / Function / Ref)->type() == ref->type()) &&
+               (def->at(wf / Function / Params)->size() == _(Params)->size()))
+             {
+               return err(
+                 func,
+                 "this function has the same name, arity, and handedness as "
+                 "another function");
+             }
+           }
+
+           return NoChange;
+         })}};
+  }
+
   inline const auto TypeElem = T(Type) / T(TypeName) / T(TypeTuple) / T(Lin) /
     T(In_) / T(Out) / T(Const) / T(TypeList) / T(TypeView) / T(TypeFunc) /
     T(TypeIsect) / T(TypeUnion) / T(TypeVar) / T(TypeUnit) / T(Package);
@@ -1303,36 +1374,15 @@ namespace verona
       {
         (T(FieldVar) / T(FieldLet))[Op] << (T(Ident)[Id] * T(Type)[Type]) >>
           ([](Match& _) -> Node {
-            auto field = _(Op);
-            auto id = _(Id);
-            auto type = _(Type);
-            auto parent = field->parent()->parent();
-            auto defs = parent->lookdown(id->location());
-            Token is_ref = (field->type() == FieldVar) ? Ref : DontCare;
-            auto found = false;
-
-            // Check if there's an LHS/RHS function with the same name and
-            // arity 1, depending on whether this is a FieldVar or a FieldLet.
-            for (auto def : defs)
-            {
-              if (
-                (def->type() == Function) &&
-                (def->at(wf / Function / Ref)->type() == is_ref) &&
-                (def->at(wf / Function / Params)->size() == 1))
-              {
-                found = true;
-                break;
-              }
-            }
-
-            if (found)
-              return NoChange;
-
             // If it's a FieldLet, generate only an RHS function. If it's a
             // FieldVar, generate an LHS function, which will autogenerate an
             // RHS function.
+            auto field = _(Op);
+            auto id = _(Id);
             auto self_id = _.fresh();
-            auto expr = Expr << (FieldRef << (Ident ^ self_id) << clone(id));
+            Token is_ref = (field->type() == FieldVar) ? Ref : DontCare;
+            auto expr = Expr
+              << (FieldRef << (RefLet << (Ident ^ self_id)) << clone(id));
 
             if (is_ref == DontCare)
               expr = Expr << (Call << clone(Load) << (Args << expr));
@@ -1341,7 +1391,7 @@ namespace verona
                               << (Params
                                   << (Param << (Ident ^ self_id) << typevar(_)
                                             << DontCare))
-                              << clone(type) << DontCare << (Block << expr);
+                              << clone(_(Type)) << DontCare << (Block << expr);
 
             return Seq << field << f;
           }),
@@ -2055,6 +2105,62 @@ namespace verona
     return drop;
   }
 
+  PassDef namearity()
+  {
+    return {
+      dir::bottomup | dir::once,
+      {T(Function)
+           << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
+               T(TypeParams)[TypeParams] * T(Params)[Params] * T(Type)[Type] *
+               (T(LLVMFuncType) / T(DontCare))[LLVMFuncType] *
+               T(Block)[Block]) >>
+         [](Match& _) {
+           auto id = _(Id);
+           auto arity = _(Params)->size();
+           auto name =
+             std::string(id->location().view()) + "." + std::to_string(arity);
+
+           if (_(Ref)->type() == Ref)
+             name += ".ref";
+
+           return Function << (Ident ^ name) << _(TypeParams) << _(Params)
+                           << _(Type) << _(LLVMFuncType) << _(Block);
+         },
+
+       (T(Call) / T(CallLHS))[Call]
+           << ((T(FunctionName)
+                << ((T(TypeName) / T(TypeUnit))[TypeName] * Name[Id] *
+                    T(TypeArgs)[TypeArgs])) *
+               T(Args)[Args]) >>
+         [](Match& _) {
+           auto arity = _(Args)->size();
+           auto name = std::string(_(Id)->location().view()) + "." +
+             std::to_string(arity);
+
+           if (_(Call)->type() == CallLHS)
+             name += ".ref";
+
+           return Call << (FunctionName << _(TypeName) << (Ident ^ name)
+                                        << _(TypeArgs))
+                       << _(Args);
+         },
+
+       (T(Call) / T(CallLHS))[Call]
+           << ((T(Selector) << (Name[Id] * T(TypeArgs)[TypeArgs])) *
+               T(Args)[Args]) >>
+         [](Match& _) {
+           auto arity = _(Args)->size();
+           auto name = std::string(_(Id)->location().view()) + "." +
+             std::to_string(arity);
+
+           if (_(Call)->type() == CallLHS)
+             name += ".ref";
+
+           return Call << (Selector << (Ident ^ name) << _(TypeArgs))
+                       << _(Args);
+         }}};
+  }
+
   Driver& driver()
   {
     static Driver d(
@@ -2064,6 +2170,7 @@ namespace verona
       {
         {"modules", modules(), wfPassModules()},
         {"structure", structure(), wfPassStructure()},
+        {"memberconflict", memberconflict(), wfPassStructure()},
         {"typeview", typeview(), wfPassTypeView()},
         {"typefunc", typefunc(), wfPassTypeFunc()},
         {"typealg", typealg(), wfPassTypeAlg()},
@@ -2086,6 +2193,7 @@ namespace verona
         {"anf", anf(), wfPassANF()},
         {"defbeforeuse", defbeforeuse(), wfPassANF()},
         {"drop", drop(), wfPassDrop()},
+        {"namearity", namearity(), wfPassNameArity()},
       });
 
     return d;

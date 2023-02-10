@@ -1,23 +1,41 @@
 # Todo
 
+Type Descriptor
+- sizeof
+- trace: could be "fields that might be pointers"
+- finalizer
+- `typetest`
+- vtable: could use linear/binary search when there's no selector coloring
+
 LLVM lowering
-- could parse LLVM literals late, allowing expr that lift to reflet and not just ident
-- `new`
-- dynamic function lookup
-  - Ptr, Ref[T], primitive types
-- `copy` and `drop` on `Ptr` and `Ref[T]`
-- region types, cowns, `when`
-
-autocreate ignores field initializers if there's already a `create` method. this seems wrong.
-
-dispatch
-- static vs dynamic
-- no static type based overloading
-- `::name` as a scoped name, meaning lookup only, no lookdown phase
-
-- remove arity ambiguity by including arity `N` in function names
-- remove CallLHS by including `ref` in function names
 - check for conflicting field names, conflicting function arity
+- types-as-values?
+  - encode class type arguments as fields?
+  - pass function type arguments as dynamic arguments?
+    - use the default if the typearg isn't specified, or the upper bounds if there's no default
+  - insert type tests (for both args and typeargs) as function prologues?
+- mangling
+  - flatten all names, use fully-qualified names
+- `new`, `fieldref`
+  - autocreate ignores field initializers if there's already a `create` method. this seems wrong
+  - default field values as arguments to `new`?
+- Ptr, Ref[T], primitive types need a way to find their type descriptor
+- `typetest`
+  - every type needs an entry for every `typetest` type
+- dynamic function lookup
+  - find all `selector` nodes
+  - every type needs an entry for every `selector` name
+- literals: integer (including char), float, string, bool
+- `copy` and `drop` on `Ptr` and `Ref[T]`
+- strings can't be arrays without type-checking
+- region types, cowns, `when`
+- could parse LLVM literals late, allowing expr that lift to reflet and not just ident
+- destructuring bind where a variable gets "the rest" or "nothing"
+  - ie lhs and rhs arity don't match
+  - include destructuring selectors on every `class`?
+  - make them RHS only? this still breaks encapsulation
+  - `destruct` method, default impl returns the class fields as a tuple
+
 - free variables in object literals
 - mixins
 - match

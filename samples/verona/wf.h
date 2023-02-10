@@ -329,7 +329,7 @@ namespace verona
       wfPassLambda
 
     // Add FieldRef.
-    | (FieldRef <<= (Lhs >>= Ident) * (Rhs >>= Ident))
+    | (FieldRef <<= RefLet * Ident)
     | (Expr <<=
         ExprSeq | Unit | Tuple | wfLiteral | TypeAssert | Conditional |
         TypeTest | Cast | RefLet | Call | CallLHS | Bind | FieldRef)
@@ -384,12 +384,34 @@ namespace verona
     | (TupleFlatten <<= Copy | Move)
     | (Args <<= (Copy | Move)++)
     | (Conditional <<= (If >>= Copy | Move) * Block * Block)
-    | (TypeTest <<= (Ident >>= Copy | Move) * Type)
-    | (Cast <<= (Ident >>= Copy | Move) * Type)
+    | (TypeTest <<= (Id >>= Copy | Move) * Type)
+    | (Cast <<= (Id >>= Copy | Move) * Type)
+    | (FieldRef <<= (Id >>= Copy | Move) * Ident)
     | (Bind <<= Ident * Type *
         (Rhs >>=
           Unit | Tuple | Call | Conditional | TypeTest | Cast | CallLHS |
           FieldRef | wfLiteral | Copy | Move))[Ident]
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline constexpr auto wfPassNameArity =
+      wfPassDrop
+
+    // Remove Symbol from Function, Selector, and FunctionName.
+    | (FunctionName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
+    | (Selector <<= Ident * TypeArgs)
+
+    // Remove LHS/RHS function distinction.
+    | (Function <<=
+        Ident * TypeParams * Params * Type *
+        (LLVMFuncType >>= LLVMFuncType | DontCare) * Block)
+
+    // Remove CallLHS.
+    | (Bind <<= Ident * Type *
+        (Rhs >>=
+          Unit | Tuple | Call | Conditional | TypeTest | Cast | FieldRef |
+          wfLiteral | Copy | Move))[Ident]
     ;
   // clang-format on
 
@@ -418,8 +440,8 @@ namespace verona
     | (Lambda <<= TypeParams * Params * Block)
     | (Bind <<= Ident * Type *
         (Rhs >>=
-          Unit | Tuple | Call | Conditional | TypeTest | Cast | CallLHS |
-          FieldRef | wfLiteral | Copy | Move))
+          Unit | Tuple | Call | Conditional | TypeTest | Cast | FieldRef |
+          wfLiteral | Copy | Move))
     ;
   // clang-format on
 }
