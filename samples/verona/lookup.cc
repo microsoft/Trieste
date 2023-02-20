@@ -7,35 +7,37 @@
 
 namespace verona
 {
-  bool apply_typeargs(Lookup& lookup)
+  Lookup::Lookup(Node def, Node ta, NodeMap<Node> bindings)
+  : def(def), bindings(std::move(bindings))
   {
-    if (!lookup.ta)
-      return true;
+    if (!def->type().in({Class, TypeAlias, Function}))
+    {
+      if (ta)
+        too_many_typeargs = true;
 
-    if (!lookup.def->type().in({Class, TypeAlias}))
-      return false;
+      return;
+    }
 
-    auto ta = lookup.ta;
-    lookup.ta = {};
-    auto tp =
-      lookup.def->at(wf / Class / TypeParams, wf / TypeAlias / TypeParams);
+    if (!ta)
+      return;
 
-    // If we accept fewer type parameters than we have type arguments, it's not
-    // a valid lookup target.
+    auto tp = def->at(
+      wf / Class / TypeParams,
+      wf / TypeAlias / TypeParams,
+      wf / Function / TypeParams);
+
     if (tp->size() < ta->size())
-      return false;
-
-    Nodes args{ta->begin(), ta->end()};
-    args.resize(tp->size());
+    {
+      too_many_typeargs = true;
+      return;
+    }
 
     std::transform(
+      ta->begin(),
+      ta->end(),
       tp->begin(),
-      tp->end(),
-      args.begin(),
-      std::inserter(lookup.bindings, lookup.bindings.end()),
-      [](auto param, auto arg) { return std::make_pair(param, arg); });
-
-    return true;
+      std::inserter(bindings, bindings.end()),
+      [](auto arg, auto param) { return std::make_pair(param, arg); });
   }
 
   Lookups lookdown(Lookups&& lookups, Node id, Node ta, NodeSet visited = {});
@@ -51,9 +53,6 @@ namespace verona
 
       if (lookup.def->type().in({Class, TypeTrait}))
       {
-        if (!apply_typeargs(lookup))
-          return {};
-
         // Return all lookdowns in the found class or trait.
         Lookups result;
         auto defs = lookup.def->lookdown(id->location());
@@ -62,17 +61,12 @@ namespace verona
           defs.cbegin(),
           defs.cend(),
           std::back_inserter(result.defs),
-          [&](auto& def) {
-            return Lookup{def, ta, lookup.bindings};
-          });
+          [&](auto& def) { return Lookup(def, ta, lookup.bindings); });
 
         return result;
       }
       else if (lookup.def->type() == TypeAlias)
       {
-        if (!apply_typeargs(lookup))
-          return {};
-
         // Replace the def with our type alias and try again.
         lookup.def = lookup.def->at(wf / TypeAlias / Type);
       }
@@ -88,17 +82,18 @@ namespace verona
           lookup.def = lookup.def->at(wf / TypeParam / Bound);
       }
       // The remainder of cases arise from a Use, a TypeAlias, or a TypeParam.
-      // They will all result in some number of TypeName resolutions.
-      else if (lookup.def->type() == TypeName)
-      {
-        // Resolve the typename and try again. Pass `visited` into the resulting
-        // lookdowns, so that each path tracks cycles independently.
-        return lookdown(lookup_typename(lookup.def), id, ta, visited);
-      }
+      // They will all result in some number of name resolutions.
       else if (lookup.def->type() == Type)
       {
         // Replace the def with the content of the type and try again.
         lookup.def = lookup.def->at(wf / Type / Type);
+      }
+      else if (lookup.def->type().in(
+                 {TypeClassName, TypeAliasName, TypeTraitName, TypeParamName}))
+      {
+        // Resolve the name and try again. Pass `visited` into the resulting
+        // lookdowns, so that each path tracks cycles independently.
+        return lookdown(lookup_typename(lookup.def), id, ta, visited);
       }
       else if (lookup.def->type() == TypeView)
       {
@@ -144,9 +139,9 @@ namespace verona
     {
       // Expand Use nodes by looking down into the target type.
       if (def->type() == Use)
-        lookups.add(lookdown({def->at(wf / Use / Type), {}}, id, ta));
+        lookups.add(lookdown(Lookup(def->at(wf / Use / Type)), id, ta));
       else
-        lookups.add({def, ta});
+        lookups.add(Lookup(def, ta));
     }
 
     return lookups;
@@ -154,10 +149,12 @@ namespace verona
 
   Lookups lookup_typename(Node tn)
   {
-    assert(tn->type() == TypeName);
-    auto ctx = tn->at(wf / TypeName / TypeName);
-    auto id = tn->at(wf / TypeName / Ident);
-    auto ta = tn->at(wf / TypeName / TypeArgs);
+    assert(tn->type().in(
+      {TypeClassName, TypeAliasName, TypeParamName, TypeTraitName}));
+
+    auto ctx = tn->at(0);
+    auto id = tn->at(1);
+    auto ta = tn->at(2);
 
     if (ctx->type() == TypeUnit)
       return lookup_name(id, ta);
@@ -176,7 +173,7 @@ namespace verona
   Lookups lookup_functionname(Node fn)
   {
     assert(fn->type() == FunctionName);
-    auto ctx = fn->at(wf / FunctionName / TypeName);
+    auto ctx = fn->at(wf / FunctionName / Lhs);
     auto id = fn->at(wf / FunctionName / Ident);
     auto ta = fn->at(wf / FunctionName / TypeArgs);
 

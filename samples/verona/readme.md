@@ -1,14 +1,25 @@
 # Todo
 
+TypeArgs
+- detect when there are too many
+- add TypeVar to TypeArgs when there are too few?
+- what about on a `selector`?
+
 Type Descriptor
-- sizeof
-- trace: could be "fields that might be pointers"
-- finalizer
-- `typetest`
+- sizeof: encode it as a function?
+```
+%1 = getementptr [0 x %T], ptr null, i64 1
+%2 = ptrtoint ptr %1 to i64
+```
+- sizeofptr: could do this for primitive types
+  - 8 (i64) for most things, 1 (i8) for I8, etc
+- trace: could be "fields that might be pointers", or encoded as a function
+- finalizer: a function
+- `typetest`: could be a function
+- with sizeof, trace, finalizer, and typetest encoded as functions, they could have well-known vtable indices, and the type descriptor is then only a vtable
 - vtable: could use linear/binary search when there's no selector coloring
 
 LLVM lowering
-- check for conflicting field names, conflicting function arity
 - types-as-values?
   - encode class type arguments as fields?
   - pass function type arguments as dynamic arguments?
@@ -25,8 +36,10 @@ LLVM lowering
 - dynamic function lookup
   - find all `selector` nodes
   - every type needs an entry for every `selector` name
+- only `Ref[T]::store` does llvm `store` - it's the only thing that needs to check for immutability?
 - literals: integer (including char), float, string, bool
 - `copy` and `drop` on `Ptr` and `Ref[T]`
+  - implementation depends on the region type
 - strings can't be arrays without type-checking
 - region types, cowns, `when`
 - could parse LLVM literals late, allowing expr that lift to reflet and not just ident

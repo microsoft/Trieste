@@ -100,19 +100,26 @@ namespace verona
     ;
   // clang-format on
 
+  inline constexpr auto wfTypeName =
+    TypeClassName | TypeTraitName | TypeAliasName | TypeParamName;
+
   // clang-format off
   inline constexpr auto wfPassTypeView =
       wfPassStructure
 
-    // Add TypeName, TypeView, TypeList.
-    | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
+    // Add TypeClassName, TypeTraitName, TypeAliasName, TypeParamName, TypeView,
+    // TypeList.
+    | (TypeClassName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
+    | (TypeTraitName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
+    | (TypeAliasName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
+    | (TypeParamName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeView <<= (Lhs >>= Type) * (Rhs >>= Type))
     | (TypeList <<= Type)
 
     // Remove DontCare, Ident, TypeArgs, DoubleColon, Dot, Ellipsis.
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
-         Symbol | TypeName | TypeView | TypeList)++)
+         Symbol | wfTypeName | TypeView | TypeList)++)
     ;
   // clang-format on
 
@@ -124,7 +131,7 @@ namespace verona
     | (TypeFunc <<= (Lhs >>= Type) * (Rhs >>= Type))
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
-         Symbol | TypeName | TypeView | TypeList | TypeFunc)++)
+         Symbol | wfTypeName | TypeView | TypeList | TypeFunc)++)
     ;
   // clang-format on
 
@@ -139,12 +146,13 @@ namespace verona
     // Remove Symbol. Add TypeUnion and TypeIsect.
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
-         TypeName | TypeView | TypeList | TypeFunc | TypeUnion | TypeIsect)++)
+         wfTypeName | TypeView | TypeList | TypeFunc | TypeUnion | TypeIsect)++)
     ;
   // clang-format on
 
-  inline constexpr auto wfTypeNoAlg = TypeTuple | TypeVar | Package | Lin |
-    In_ | Out | Const | TypeName | TypeView | TypeList | TypeFunc | TypeUnit;
+  inline constexpr auto wfTypeNoAlg = TypeEmpty | TypeUnit | TypeTuple |
+    TypeVar | Package | Lin | In_ | Out | Const | wfTypeName | TypeView |
+    TypeList | TypeFunc;
 
   inline constexpr auto wfType = wfTypeNoAlg | TypeUnion | TypeIsect;
 
@@ -165,9 +173,22 @@ namespace verona
     ;
   // clang-format on
 
+  inline constexpr auto wfTypeView = Lin | In_ | Out | Const | TypeParamName |
+    TypeAliasName | TypeView | TypeVar;
+
+  // clang-format off
+  inline constexpr auto wfPassTypeViewDNF =
+      wfPassTypeFlat
+
+    // Simplified form.
+    | (TypeView <<= (Lhs >>= wfTypeView) * (Rhs >>= wfTypeView))
+    | (Type <<= wfType)
+    ;
+  // clang-format on
+
   // clang-format off
   inline constexpr auto wfPassTypeDNF =
-      wfPassTypeFlat
+      wfPassTypeViewDNF
 
     // Disjunctive normal form.
     | (TypeIsect <<= wfTypeNoAlg++[2])
@@ -196,21 +217,19 @@ namespace verona
   inline constexpr auto wfPassReference =
       wfPassConditionals
 
-    // Add RefLet, RefVar, Selector, FunctionName, TypeAssertOp.
+    // Add RefLet, RefVar, Selector, FunctionName.
     | (RefLet <<= Ident)
     | (RefVar <<= Ident)
     | (Selector <<= wfName * TypeArgs)
-    | (FunctionName <<=
-        (TypeName >>= (TypeName | TypeUnit)) * wfName * TypeArgs)
-    | (TypeAssertOp <<= (Op >>= Selector | FunctionName) * Type)
+    | (FunctionName <<= (Lhs >>= (wfTypeName | TypeUnit)) * wfName * TypeArgs)
 
     // Remove TypeArgs, Ident, Symbol, DoubleColon.
-    // Add RefVar, RefLet, Selector, FunctionName, TypeAssertOp.
+    // Add RefVar, RefLet, Selector, FunctionName.
     | (Expr <<=
         (Expr | ExprSeq | Unit | Tuple | Assign | Lambda | Let | Var | New |
          Try | Ref | DontCare | Ellipsis | Dot | wfLiteral | TypeAssert |
          Conditional | TypeTest | Cast | RefVar | RefLet | Selector |
-         FunctionName | TypeAssertOp)++[1])
+         FunctionName)++[1])
     ;
   // clang-format on
 
@@ -219,8 +238,7 @@ namespace verona
       wfPassReference
 
     // Add Call, Args, NLRCheck.
-    | (Call <<=
-        (Selector >>= (New | Selector | FunctionName | TypeAssertOp)) * Args)
+    | (Call <<= (Selector >>= (New | Selector | FunctionName)) * Args)
     | (Args <<= Expr++)
     | (NLRCheck <<= Call)
 
@@ -228,8 +246,8 @@ namespace verona
     | (Expr <<=
         (Expr | ExprSeq | Unit | Tuple | Assign | Lambda | Let | Var | New |
          Try | Ref | DontCare | Ellipsis | wfLiteral | TypeAssert | Conditional |
-         TypeTest | Cast | RefVar | RefLet | Selector | FunctionName |
-         TypeAssertOp | Call | NLRCheck)++[1])
+         TypeTest | Cast | RefVar | RefLet | Selector | FunctionName | Call |
+         NLRCheck)++[1])
     ;
   // clang-format on
 
@@ -242,11 +260,10 @@ namespace verona
     | (TupleFlatten <<= Expr)
     | (NLRCheck <<= Call | CallLHS)
     | (RefVarLHS <<= Ident)
-    | (CallLHS <<=
-        (Selector >>= (New | Selector | FunctionName | TypeAssertOp)) * Args)
+    | (CallLHS <<= (Selector >>= (New | Selector | FunctionName)) * Args)
 
     // Remove New, Try, DontCare, Ellipsis, Selector, FunctionName,
-    // TypeAssertOp. Add CallLHS, RefVarLHS.
+    // Add CallLHS, RefVarLHS.
     | (Expr <<=
         (Expr | ExprSeq | Unit | Tuple | Assign | Lambda | Let | Var | Try |
          Ref | wfLiteral | TypeAssert | Conditional | TypeTest | Cast | RefVar |
@@ -399,13 +416,16 @@ namespace verona
       wfPassDrop
 
     // Remove Symbol from Function, Selector, and FunctionName.
-    | (FunctionName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
+    | (FunctionName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
     | (Selector <<= Ident * TypeArgs)
 
     // Remove LHS/RHS function distinction.
     | (Function <<=
         Ident * TypeParams * Params * Type *
         (LLVMFuncType >>= LLVMFuncType | DontCare) * Block)
+
+    // Turn New into a function.
+    | (Call <<= (Selector >>= (Selector | FunctionName)) * Args)
 
     // Remove CallLHS.
     | (Bind <<= Ident * Type *
@@ -427,9 +447,11 @@ namespace verona
     | (Param <<= Ident * Type * Default)
     | (TypeAssert <<= Expr * Type)
     | (Type <<= wfType)
-    | (FunctionName <<=
-        (TypeName >>= (TypeName | TypeUnit)) * wfName * TypeArgs)
-    | (TypeName <<= (TypeName >>= (TypeName | TypeUnit)) * Ident * TypeArgs)
+    | (FunctionName <<= (Lhs >>= (wfTypeName | TypeUnit)) * wfName * TypeArgs)
+    | (TypeClassName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
+    | (TypeTraitName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
+    | (TypeAliasName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
+    | (TypeParamName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeFunc <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeTrait <<= Ident * ClassBody)

@@ -100,7 +100,7 @@ class Dyn
     a
   }
 
-  to_ref[T](self: Dyn): ref[T] ::: (i64)->ptr
+  to_ref[T](self: Dyn): Ref[T] ::: (i64)->ptr
   {
     Dyn::assert(Dyn::is_ptr(self, Dyn::ref_type))
     let a = :[and i64 0x0000FFFFFFFFFFFF,]: self
@@ -108,7 +108,7 @@ class Dyn
     :[ret ptr]: b
   }
 
-  from_ref[T](x: ref[T]): Dyn ::: (ptr)->i64
+  from_ref[T](x: Ref[T]): Dyn ::: (ptr)->i64
   {
     let a = :[bitcast ptr]: x :[to i64]:
     Dyn::make(a, Dyn::ref_type)

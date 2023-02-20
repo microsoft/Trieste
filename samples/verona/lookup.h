@@ -10,11 +10,12 @@ namespace verona
 
   struct Lookup
   {
-    // The bindings are for the context of `def`. They don't include any type
-    // arguments on `def` itself.
+    // If a typearg isn't in the bindings, it wasn't specified syntactically.
     Node def;
-    Node ta;
     NodeMap<Node> bindings;
+    bool too_many_typeargs = false;
+
+    Lookup(Node def, Node ta = {}, NodeMap<Node> bindings = {});
   };
 
   struct Lookups
@@ -23,21 +24,9 @@ namespace verona
 
     Lookups() = default;
 
-    Lookups(Node def, Node ta)
+    Lookups(Lookup&& def)
     {
-      if (def)
-        defs.push_back({def, ta, {}});
-    }
-
-    Lookups(Lookup&& lookup)
-    {
-      if (lookup.def)
-        defs.push_back(lookup);
-    }
-
-    bool empty() const
-    {
-      return defs.empty();
+      defs.push_back(def);
     }
 
     void add(Lookups&& other)
@@ -47,12 +36,13 @@ namespace verona
 
     bool one(const std::initializer_list<Token>& types) const
     {
-      return (defs.size() == 1) && defs.front().def->type().in(types);
+      return (defs.size() == 1) && defs.front().def->type().in(types) &&
+        !defs.front().too_many_typeargs;
     }
   };
 
-  Lookups lookup_name(Node id, Node ta);
+  Lookups lookup_name(Node id, Node ta = {});
   Lookups lookup_typename(Node tn);
-  Lookups lookup_typename_name(Node tn, Node id, Node ta);
+  Lookups lookup_typename_name(Node tn, Node id, Node ta = {});
   Lookups lookup_functionname(Node fn);
 }
