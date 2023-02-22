@@ -182,7 +182,6 @@ namespace verona
 
     // Simplified form.
     | (TypeView <<= (Lhs >>= wfTypeView) * (Rhs >>= wfTypeView))
-    | (Type <<= wfType)
     ;
   // clang-format on
 
@@ -437,7 +436,7 @@ namespace verona
 
   // clang-format off
   inline constexpr auto wf =
-      (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * (Default >>= Type))
+      (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * Type)
     | (Class <<= Ident * TypeParams * Type * ClassBody)
     | (FieldLet <<= Ident * Type * Default)
     | (FieldVar <<= Ident * Type * Default)

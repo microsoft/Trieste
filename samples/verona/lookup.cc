@@ -5,10 +5,12 @@
 #include "lang.h"
 #include "wf.h"
 
+#include <deque>
+
 namespace verona
 {
-  Lookup::Lookup(Node def, Node ta, NodeMap<Node> bindings)
-  : def(def), bindings(std::move(bindings))
+  Lookup::Lookup(Node def, Node ta, NodeMap<Node> b)
+  : def(def), bindings(std::move(b))
   {
     if (!def->type().in({Class, TypeAlias, Function}))
     {
@@ -181,5 +183,65 @@ namespace verona
       return lookup_name(id, ta);
 
     return lookup_typename_name(ctx, id, ta);
+  }
+
+  bool lookup_recursive(Node alias)
+  {
+    if (alias->type() != TypeAlias)
+      return false;
+
+    std::deque<std::pair<NodeSet, Lookup>> worklist;
+    worklist.emplace_back(NodeSet{alias}, alias->at(wf / TypeAlias / Type));
+
+    while (!worklist.empty())
+    {
+      auto work = worklist.front();
+      auto& set = work.first;
+      auto type = work.second.def;
+      auto& bindings = work.second.bindings;
+      worklist.pop_front();
+
+      if (type->type() == Type)
+      {
+        worklist.emplace_back(
+          set, Lookup(type->at(wf / Type / Type), bindings));
+      }
+      else if (type->type().in({TypeTuple, TypeUnion, TypeIsect}))
+      {
+        for (auto& t : *type)
+          worklist.emplace_back(set, Lookup(t, bindings));
+      }
+      else if (type->type().in({TypeView, TypeFunc}))
+      {
+        worklist.emplace_back(
+          set,
+          Lookup(type->at(wf / TypeView / Lhs, wf / TypeFunc / Lhs), bindings));
+        worklist.emplace_back(
+          set,
+          Lookup(type->at(wf / TypeView / Rhs, wf / TypeFunc / Rhs), bindings));
+      }
+      else if (type->type() == TypeAliasName)
+      {
+        auto def = lookup_typename(type).defs.front();
+
+        if (set.contains(def.def))
+          return true;
+
+        set.insert(def.def);
+        bindings.insert(def.bindings.begin(), def.bindings.end());
+        worklist.emplace_back(
+          set, Lookup(def.def->at(wf / TypeAlias / Type), bindings));
+      }
+      else if (type->type() == TypeParamName)
+      {
+        auto def = lookup_typename(type).defs.front();
+        auto find = bindings.find(def.def);
+
+        if (find != bindings.end())
+          worklist.emplace_back(set, Lookup(find->second, bindings));
+      }
+    }
+
+    return false;
   }
 }

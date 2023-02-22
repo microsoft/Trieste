@@ -759,6 +759,18 @@ namespace verona
       }};
   }
 
+  PassDef typealiasrec()
+  {
+    return {
+      dir::once | dir::topdown,
+      {T(TypeAlias)[TypeAlias] >> ([](Match& _) -> Node {
+         if (lookup_recursive(_(TypeAlias)))
+           return err(_[TypeAlias], "recursive type alias");
+
+         return NoChange;
+       })}};
+  }
+
   auto make_conditional(Match& _)
   {
     // Pack all of the branches into a single conditional and unpack them
@@ -2296,6 +2308,7 @@ namespace verona
         {"typeflat", typeflat(), wfPassTypeFlat()},
         {"typeviewdnf", typeviewdnf(), wfPassTypeViewDNF()},
         {"typednf", typednf(), wfPassTypeDNF()},
+        {"typealiasrec", typealiasrec(), wfPassTypeDNF()},
         {"conditionals", conditionals(), wfPassConditionals()},
         {"reference", reference(), wfPassReference()},
         {"reverseapp", reverseapp(), wfPassReverseApp()},

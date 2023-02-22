@@ -15,7 +15,8 @@ namespace verona
     NodeMap<Node> bindings;
     bool too_many_typeargs = false;
 
-    Lookup(Node def, Node ta = {}, NodeMap<Node> bindings = {});
+    Lookup(Node def, Node ta = {}, NodeMap<Node> b = {});
+    Lookup(Node def, NodeMap<Node> b) : Lookup(def, {}, b) {}
   };
 
   struct Lookups
@@ -45,4 +46,5 @@ namespace verona
   Lookups lookup_typename(Node tn);
   Lookups lookup_typename_name(Node tn, Node id, Node ta = {});
   Lookups lookup_functionname(Node fn);
+  bool lookup_recursive(Node alias);
 }
