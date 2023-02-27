@@ -121,7 +121,7 @@ namespace verona
       else
       {
         // This type isn't resolved yet.
-        return Lookups::retry();
+        return {};
       }
     }
   }

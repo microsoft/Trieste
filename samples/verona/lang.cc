@@ -14,7 +14,7 @@ namespace verona
 
   auto err(Node node, const std::string& msg)
   {
-    return Error << (ErrorMsg ^ msg) << (ErrorAst << node);
+    return Error << (ErrorMsg ^ msg) << ((ErrorAst ^ node) << node);
   }
 
   bool lookup(const NodeRange& n, std::initializer_list<Token> t)
@@ -530,35 +530,63 @@ namespace verona
   Node
   makename(const Lookups& defs, Node lhs, Node id, Node ta, bool func = false)
   {
-    if (defs.try_again)
-      return TryAgain;
+    if (defs.defs.size() == 0)
+      return Error << (ErrorMsg ^ "unknown type name")
+                   << ((ErrorAst ^ id) << lhs << id << ta);
 
-    if (
-      (defs.defs.size() > 0) &&
-      std::all_of(defs.defs.begin(), defs.defs.end(), [](auto& def) {
-        return def.too_many_typeargs;
-      }))
+    if (func)
+    {
+      if (std::any_of(defs.defs.begin(), defs.defs.end(), [](auto& def) {
+            return (def.def->type() == Function) && !def.too_many_typeargs;
+          }))
+      {
+        return FunctionName << lhs << id << ta;
+      }
+      else if (std::any_of(defs.defs.begin(), defs.defs.end(), [](auto& def) {
+                 return (def.def->type() == Function) && def.too_many_typeargs;
+               }))
+      {
+        return Error << (ErrorMsg ^ "too many function type arguments")
+                     << ((ErrorAst ^ id) << lhs << id << ta);
+      }
+    }
+
+    if (defs.defs.size() > 1)
+    {
+      auto err = Error << (ErrorMsg ^ "ambiguous type name")
+                       << ((ErrorAst ^ id) << lhs << id << ta);
+
+      for (auto& def : defs.defs)
+      {
+        err << clone(def.def->at(
+          wf / Class / Ident,
+          wf / TypeAlias / Ident,
+          wf / TypeParam / Ident,
+          wf / TypeTrait / Ident));
+      }
+
+      return err;
+    }
+
+    if (std::all_of(defs.defs.begin(), defs.defs.end(), [](auto& def) {
+          return def.too_many_typeargs;
+        }))
     {
       return Error << (ErrorMsg ^ "too many type arguments")
-                   << (ErrorAst << lhs << id << ta);
+                   << ((ErrorAst ^ id) << lhs << id << ta);
     }
 
     if (defs.one({Class}))
       return TypeClassName << lhs << id << ta;
-    else if (defs.one({TypeAlias}))
+    if (defs.one({TypeAlias}))
       return TypeAliasName << lhs << id << ta;
-    else if (defs.one({TypeParam}))
+    if (defs.one({TypeParam}))
       return TypeParamName << lhs << id << ta;
-    else if (defs.one({TypeTrait}))
+    if (defs.one({TypeTrait}))
       return TypeTraitName << lhs << id << ta;
-    else if (
-      func && std::any_of(defs.defs.begin(), defs.defs.end(), [](auto& def) {
-        return (def.def->type() == Function) && !def.too_many_typeargs;
-      }))
-      return FunctionName << lhs << id << ta;
 
-    return Error << (ErrorMsg ^ "unknown type name")
-                 << (ErrorAst << lhs << id << ta);
+    return Error << (ErrorMsg ^ "can't resolve type name")
+                 << ((ErrorAst ^ id) << lhs << id << ta);
   }
 
   PassDef typenames()

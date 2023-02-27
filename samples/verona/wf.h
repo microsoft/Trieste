@@ -452,6 +452,7 @@ namespace verona
       (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * Type)
     | (Use <<= Type)
     | (Class <<= Ident * TypeParams * Type * ClassBody)
+    | (TypeParam <<= Ident * (Bound >>= Type) * Type)
     | (FieldLet <<= Ident * Type * Default)
     | (FieldVar <<= Ident * Type * Default)
     | (Function <<=

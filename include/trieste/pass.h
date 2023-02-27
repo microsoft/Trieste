@@ -135,11 +135,8 @@ namespace trieste
             // Replace [start, it) with whatever the rule builds.
             auto replace = rule.second(match);
 
-            if (replace && (replace->type().in({NoChange, TryAgain})))
+            if (replace && (replace->type() == NoChange))
             {
-              if (replace->type() == TryAgain)
-                changes++;
-
               it = start;
               continue;
             }
