@@ -530,6 +530,9 @@ namespace verona
   Node
   makename(const Lookups& defs, Node lhs, Node id, Node ta, bool func = false)
   {
+    if (defs.try_again)
+      return TryAgain;
+
     if (
       (defs.defs.size() > 0) &&
       std::all_of(defs.defs.begin(), defs.defs.end(), [](auto& def) {
@@ -558,7 +561,7 @@ namespace verona
                  << (ErrorAst << lhs << id << ta);
   }
 
-  PassDef typeview()
+  PassDef typenames()
   {
     return {
       TypeStruct * T(DontCare)[DontCare] >>
@@ -578,7 +581,12 @@ namespace verona
           auto defs = lookup_typename_name(_(Lhs), _(Id), _(TypeArgs));
           return makename(defs, _(Lhs), _(Id), (_(TypeArgs) / TypeArgs));
         },
+    };
+  }
 
+  PassDef typeview()
+  {
+    return {
       // Viewpoint adaptation binds more tightly than function types.
       TypeStruct * TypeElem[Lhs] * T(Dot) * TypeElem[Rhs] >>
         [](Match& _) {
@@ -2302,6 +2310,7 @@ namespace verona
         {"modules", modules(), wfPassModules()},
         {"structure", structure(), wfPassStructure()},
         {"memberconflict", memberconflict(), wfPassStructure()},
+        {"typenames", typenames(), wfPassTypeNames()},
         {"typeview", typeview(), wfPassTypeView()},
         {"typefunc", typefunc(), wfPassTypeFunc()},
         {"typealg", typealg(), wfPassTypeAlg()},

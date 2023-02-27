@@ -104,7 +104,7 @@ namespace verona
     TypeClassName | TypeTraitName | TypeAliasName | TypeParamName;
 
   // clang-format off
-  inline constexpr auto wfPassTypeView =
+  inline constexpr auto wfPassTypeNames =
       wfPassStructure
 
     // Add TypeClassName, TypeTraitName, TypeAliasName, TypeParamName, TypeView,
@@ -113,10 +113,23 @@ namespace verona
     | (TypeTraitName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeAliasName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeParamName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
+
+    // Remove DontCare, Ident, TypeArgs, DoubleColon.
+    | (Type <<=
+        (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
+         Ellipsis | Dot | Symbol | wfTypeName)++)
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline constexpr auto wfPassTypeView =
+      wfPassTypeNames
+
+    // Add TypeView, TypeList.
     | (TypeView <<= (Lhs >>= Type) * (Rhs >>= Type))
     | (TypeList <<= Type)
 
-    // Remove DontCare, Ident, TypeArgs, DoubleColon, Dot, Ellipsis.
+    // Remove Dot, Ellipsis.
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
          Symbol | wfTypeName | TypeView | TypeList)++)
@@ -437,6 +450,7 @@ namespace verona
   // clang-format off
   inline constexpr auto wf =
       (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * Type)
+    | (Use <<= Type)
     | (Class <<= Ident * TypeParams * Type * ClassBody)
     | (FieldLet <<= Ident * Type * Default)
     | (FieldVar <<= Ident * Type * Default)

@@ -1,10 +1,5 @@
 # Todo
 
-TypeArgs
-- detect when there are too many
-- add TypeVar to TypeArgs when there are too few?
-- what about on a `selector`?
-
 Type Descriptor
 - sizeof: encode it as a function?
 ```

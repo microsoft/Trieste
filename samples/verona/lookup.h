@@ -22,12 +22,18 @@ namespace verona
   struct Lookups
   {
     std::vector<Lookup> defs;
+    bool try_again;
 
-    Lookups() = default;
+    Lookups(bool try_again = false) : try_again(try_again) {}
 
     Lookups(Lookup&& def)
     {
       defs.push_back(def);
+    }
+
+    static Lookups retry()
+    {
+      return Lookups(true);
     }
 
     void add(Lookups&& other)

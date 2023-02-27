@@ -112,9 +112,16 @@ namespace verona
         // TODO: return only things that are identical in all disjunctions
         return {};
       }
+      else if (lookup.def->type().in(
+                 {TypeUnit, TypeList, TypeTuple, TypeFunc, TypeVar, TypeEmpty}))
+      {
+        // Nothing to do here.
+        return {};
+      }
       else
       {
-        return {};
+        // This type isn't resolved yet.
+        return Lookups::retry();
       }
     }
   }
@@ -141,9 +148,14 @@ namespace verona
     {
       // Expand Use nodes by looking down into the target type.
       if (def->type() == Use)
-        lookups.add(lookdown(Lookup(def->at(wf / Use / Type)), id, ta));
+      {
+        if (def->precedes(id))
+          lookups.add(lookdown(Lookup(def->at(wf / Use / Type)), id, ta));
+      }
       else
+      {
         lookups.add(Lookup(def, ta));
+      }
     }
 
     return lookups;
