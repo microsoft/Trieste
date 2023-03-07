@@ -116,6 +116,7 @@ namespace verona
     // Will need to assume success to avoid infinite recursion.
     assert(sup() == TypeTrait);
     (void)sub;
+    (void)sup;
     return false;
   }
 
@@ -132,6 +133,7 @@ namespace verona
     // TODO:
     assert(sup() == TypeView);
     (void)sub;
+    (void)sup;
     return false;
   }
 
