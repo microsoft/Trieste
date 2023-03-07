@@ -180,6 +180,7 @@ namespace verona
 
   bool subtype(Btype sub, Btype sup)
   {
+    // TODO: replace this with sequent calculus.
     // Empty types have no subtype relationship.
     if ((sub() == TypeEmpty) || (sup() == TypeEmpty))
       return false;
