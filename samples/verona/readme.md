@@ -1,8 +1,26 @@
 # Todo
 
+Subtyping
+- `assume` when starting a typetrait check?
+- make invariant typeargs work
+- use fresh typevar in `lookup` for no typearg? or use the typeparam itself?
+- add typeparam to fresh typevar binding for unspecified parent types?
+  - do this in lookup
+- track `typevar <: x` as upper bounds, `x <: typevar` as lower bounds?
+- typealg: `!`, `A ? B : C`
+
+Possible approach
+- pass to make all typenames absolute paths from the root
+  - class/trait/alias/param can be in classbody(class/trait)/block(function)
+- lookup mode that's a typename from an arbitrary root
+- typealias expansion and DNF for non-typeargs in advance
+  - on demand for typeargs only when checking subtypes
+- if two types are syntactically equal, they're also subtypes
+  - this short circuits infinite recursion
+
 Type Descriptor
 - sizeof: encode it as a function?
-```
+```c
 %1 = getementptr [0 x %T], ptr null, i64 1
 %2 = ptrtoint ptr %1 to i64
 ```

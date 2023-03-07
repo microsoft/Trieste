@@ -475,6 +475,16 @@ namespace trieste
       }
     }
 
+    bool equals(Node& node)
+    {
+      return (type_ == node->type()) && (children.size() == node->size()) &&
+        (std::equal(
+          children.begin(),
+          children.end(),
+          node->children.begin(),
+          [](auto& a, auto& b) { return a->equals(b); }));
+    }
+
     bool precedes(Node node)
     {
       return precedes(node.get());

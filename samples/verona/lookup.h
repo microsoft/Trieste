@@ -43,8 +43,7 @@ namespace verona
   };
 
   Lookups lookup_name(Node id, Node ta = {});
-  Lookups lookup_typename(Node tn);
-  Lookups lookup_typename_name(Node tn, Node id, Node ta = {});
-  Lookups lookup_functionname(Node fn);
-  bool lookup_recursive(Node alias);
+  Lookups lookup_scopedname(Node tn);
+  Lookups lookup_scopedname_name(Node tn, Node id, Node ta = {});
+  bool lookup_recursive(Node node);
 }

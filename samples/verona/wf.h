@@ -114,10 +114,10 @@ namespace verona
     | (TypeAliasName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeParamName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
 
-    // Remove DontCare, Ident, TypeArgs, DoubleColon.
+    // Remove DontCare, Ident.
     | (Type <<=
-        (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
-         Ellipsis | Dot | Symbol | wfTypeName)++)
+        (Type | TypeTuple | TypeVar | TypeArgs | Package | Lin | In_ | Out |
+         Const | Ellipsis | Dot | DoubleColon | Symbol | wfTypeName)++)
     ;
   // clang-format on
 
@@ -129,7 +129,7 @@ namespace verona
     | (TypeView <<= (Lhs >>= Type) * (Rhs >>= Type))
     | (TypeList <<= Type)
 
-    // Remove Dot, Ellipsis.
+    // Remove DoubleColon, Dot, Ellipsis, TypeArgs.
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
          Symbol | wfTypeName | TypeView | TypeList)++)
@@ -152,20 +152,22 @@ namespace verona
   inline constexpr auto wfPassTypeAlg =
       wfPassTypeFunc
 
-    // Add TypeUnion, TypeIsect.
+    // Add TypeUnion, TypeIsect, TypeSubtype.
     | (TypeUnion <<= Type++[2])
     | (TypeIsect <<= Type++[2])
+    | (TypeSubtype <<= (Lhs >>= Type) * (Rhs >>= Type))
 
-    // Remove Symbol. Add TypeUnion and TypeIsect.
+    // Remove Symbol. Add TypeUnion, TypeIsect, TypeSubtype.
     | (Type <<=
         (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
-         wfTypeName | TypeView | TypeList | TypeFunc | TypeUnion | TypeIsect)++)
+         wfTypeName | TypeView | TypeList | TypeFunc | TypeUnion | TypeIsect |
+         TypeSubtype)++)
     ;
   // clang-format on
 
   inline constexpr auto wfTypeNoAlg = TypeEmpty | TypeUnit | TypeTuple |
     TypeVar | Package | Lin | In_ | Out | Const | wfTypeName | TypeView |
-    TypeList | TypeFunc;
+    TypeList | TypeFunc | TypeSubtype | TypeTrue | TypeFalse;
 
   inline constexpr auto wfType = wfTypeNoAlg | TypeUnion | TypeIsect;
 
@@ -178,6 +180,7 @@ namespace verona
     | (TypeTuple <<= wfType++[2])
     | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeFunc <<= (Lhs >>= wfType) * (Rhs >>= wfType))
+    | (TypeSubtype <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeUnion <<= (wfTypeNoAlg | TypeIsect)++[2])
     | (TypeIsect <<= (wfTypeNoAlg | TypeUnion)++[2])
 
@@ -206,7 +209,6 @@ namespace verona
     | (TypeIsect <<= wfTypeNoAlg++[2])
     ;
   // clang-format on
-
   // clang-format off
   inline constexpr auto wfPassConditionals =
       wfPassTypeDNF

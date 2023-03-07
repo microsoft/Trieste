@@ -3,6 +3,7 @@
 #include "lang.h"
 
 #include "lookup.h"
+#include "subtype.h"
 #include "wf.h"
 
 namespace verona
@@ -64,7 +65,8 @@ namespace verona
   }
 
   inline const auto TypeStruct = In(Type) / In(TypeList) / In(TypeTuple) /
-    In(TypeView) / In(TypeFunc) / In(TypeUnion) / In(TypeIsect);
+    In(TypeView) / In(TypeFunc) / In(TypeUnion) / In(TypeIsect) /
+    In(TypeSubtype);
   inline const auto Name = T(Ident) / T(Symbol);
   inline const auto Literal = T(String) / T(Escaped) / T(Char) / T(Bool) /
     T(Hex) / T(Bin) / T(Int) / T(Float) / T(HexFloat) / T(LLVM);
@@ -525,7 +527,7 @@ namespace verona
   inline const auto TypeElem = T(Type) / TypeName / T(TypeTuple) / T(Lin) /
     T(In_) / T(Out) / T(Const) / T(TypeList) / T(TypeView) / T(TypeFunc) /
     T(TypeIsect) / T(TypeUnion) / T(TypeVar) / T(TypeUnit) / T(Package) /
-    T(TypeEmpty);
+    T(TypeEmpty) / T(TypeSubtype) / T(TypeTrue) / T(TypeFalse);
 
   Node
   makename(const Lookups& defs, Node lhs, Node id, Node ta, bool func = false)
@@ -606,7 +608,7 @@ namespace verona
       TypeStruct * TypeName[Lhs] * T(DoubleColon) * T(Ident)[Id] *
           ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {
-          auto defs = lookup_typename_name(_(Lhs), _(Id), _(TypeArgs));
+          auto defs = lookup_scopedname_name(_(Lhs), _(Id), _(TypeArgs));
           return makename(defs, _(Lhs), _(Id), (_(TypeArgs) / TypeArgs));
         },
     };
@@ -665,6 +667,10 @@ namespace verona
         [](Match& _) {
           return TypeUnion << (Type << _[Lhs]) << (Type << _[Rhs]);
         },
+      TypeStruct * TypeElem[Lhs] * T(Symbol, "<") * TypeElem[Rhs] >>
+        [](Match& _) {
+          return TypeSubtype << (Type << _[Lhs]) << (Type << _[Rhs]);
+        },
 
       TypeStruct * T(Symbol)[Symbol] >>
         [](Match& _) { return err(_[Symbol], "invalid symbol in type"); },
@@ -697,6 +703,44 @@ namespace verona
         },
     };
   }
+
+  PassDef typerec()
+  {
+    return {
+      dir::once | dir::topdown,
+      {
+        T(TypeAlias)[TypeAlias] >> ([](Match& _) -> Node {
+          if (lookup_recursive(_(TypeAlias)))
+            return err(_[TypeAlias], "recursive type alias");
+
+          return NoChange;
+        }),
+
+        T(TypeParam)[TypeParam] >> ([](Match& _) -> Node {
+          if (lookup_recursive(_(TypeParam)))
+            return err(_[TypeParam], "recursive type parameter");
+
+          return NoChange;
+        }),
+      }};
+  }
+
+  // PassDef typeabs()
+  // {
+  //   return {
+  //     (T(TypeClassName) / T(TypeTraitName) / T(TypeAliasName) /
+  //      T(TypeParamName))[Type]
+  //         << (T(TypeUnit) * T(Ident)[Id] * T(TypeArgs)[TypeArgs]) >>
+  //       [](Match& _) {
+  //         auto def = lookup_name(_(Id), _(TypeArgs)).defs.front();
+  //         auto parent = def.def->parent({Top, Class, TypeTrait, Function})
+  //                         ->shared_from_this();
+
+  //         if (parent->type() == Top)
+  //           return NoChange;
+  //       },
+  //   };
+  // }
 
   PassDef typeviewdnf()
   {
@@ -731,7 +775,7 @@ namespace verona
         T(TypeView)
             << ((T(TypeEmpty) / T(TypeUnit) / T(TypeTuple) / T(Package) /
                  T(TypeClassName) / T(TypeTraitName) / T(TypeList) /
-                 T(TypeFunc)) *
+                 T(TypeFunc) / T(TypeSubtype) / T(TypeTrue) / T(TypeFalse)) *
                 Any) >>
           ([](Match&) -> Node { return TypeEmpty; }),
 
@@ -759,7 +803,8 @@ namespace verona
         T(TypeView)
             << (Any *
                 (T(TypeEmpty) / T(TypeUnit) / T(Package) / T(TypeClassName) /
-                 T(TypeTraitName) / T(TypeList) / T(TypeFunc))[Rhs]) >>
+                 T(TypeTraitName) / T(TypeList) / T(TypeFunc) / T(TypeSubtype) /
+                 T(TypeTrue) / T(TypeFalse))[Rhs]) >>
           [](Match& _) { return _(Rhs); },
 
         // Re-flatten algebraic types, as DNF can produce them.
@@ -793,18 +838,6 @@ namespace verona
         In(TypeIsect) * T(TypeIsect)[Lhs] >>
           [](Match& _) { return Seq << *_[Lhs]; },
       }};
-  }
-
-  PassDef typealiasrec()
-  {
-    return {
-      dir::once | dir::topdown,
-      {T(TypeAlias)[TypeAlias] >> ([](Match& _) -> Node {
-         if (lookup_recursive(_(TypeAlias)))
-           return err(_[TypeAlias], "recursive type alias");
-
-         return NoChange;
-       })}};
   }
 
   auto make_conditional(Match& _)
@@ -969,7 +1002,7 @@ namespace verona
           (TypeName[Lhs] * T(DoubleColon) * Name[Id] *
            ~T(TypeArgs)[TypeArgs])[Type] >>
         [](Match& _) {
-          auto defs = lookup_typename_name(_(Lhs), _(Id), _(TypeArgs));
+          auto defs = lookup_scopedname_name(_(Lhs), _(Id), _(TypeArgs));
           return makename(defs, _(Lhs), _(Id), (_(TypeArgs) / TypeArgs), true);
         },
 
@@ -996,7 +1029,7 @@ namespace verona
     // `op` must already be in the AST in order to resolve the FunctionName.
     if (op->type() == FunctionName)
     {
-      auto look = lookup_functionname(op);
+      auto look = lookup_scopedname(op);
 
       for (auto& def : look.defs)
       {
@@ -2328,6 +2361,16 @@ namespace verona
       }};
   }
 
+  PassDef typesubtype()
+  {
+    return {
+      T(TypeSubtype) << (TypeElem[Lhs] * TypeElem[Rhs]) >>
+        ([](Match& _) -> Node {
+          return subtype(_(Lhs), _(Rhs)) ? TypeTrue : TypeFalse;
+        }),
+    };
+  }
+
   Driver& driver()
   {
     static Driver d(
@@ -2343,9 +2386,9 @@ namespace verona
         {"typefunc", typefunc(), wfPassTypeFunc()},
         {"typealg", typealg(), wfPassTypeAlg()},
         {"typeflat", typeflat(), wfPassTypeFlat()},
+        {"typerec", typerec(), wfPassTypeFlat()},
         {"typeviewdnf", typeviewdnf(), wfPassTypeViewDNF()},
         {"typednf", typednf(), wfPassTypeDNF()},
-        {"typealiasrec", typealiasrec(), wfPassTypeDNF()},
         {"conditionals", conditionals(), wfPassConditionals()},
         {"reference", reference(), wfPassReference()},
         {"reverseapp", reverseapp(), wfPassReverseApp()},
@@ -2364,6 +2407,7 @@ namespace verona
         {"defbeforeuse", defbeforeuse(), wfPassANF()},
         {"drop", drop(), wfPassDrop()},
         {"namearity", namearity(), wfPassNameArity()},
+        {"typesubtype", typesubtype(), wfPassNameArity()},
       });
 
     return d;
