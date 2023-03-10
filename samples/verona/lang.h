@@ -56,8 +56,9 @@ namespace verona
   inline constexpr auto Try = TokenDef("try");
 
   // Semantic structure.
-  inline constexpr auto TypeTrait =
-    TokenDef("typetrait", flag::symtab | flag::lookup | flag::shadowing);
+  inline constexpr auto TypeTrait = TokenDef(
+    "typetrait",
+    flag::symtab | flag::lookup | flag::lookdown | flag::shadowing);
   inline constexpr auto ClassBody = TokenDef("classbody");
   inline constexpr auto FieldLet = TokenDef("fieldlet", flag::lookdown);
   inline constexpr auto FieldVar = TokenDef("fieldvar", flag::lookdown);
@@ -77,19 +78,25 @@ namespace verona
   inline constexpr auto Type = TokenDef("type");
   inline constexpr auto TypeUnit = TokenDef("typeunit");
   inline constexpr auto TypeList = TokenDef("typelist");
-  inline constexpr auto TypeName = TokenDef("typename");
+  inline constexpr auto TypeClassName = TokenDef("typeclassname");
+  inline constexpr auto TypeAliasName = TokenDef("typealiasname");
+  inline constexpr auto TypeParamName = TokenDef("typeparamname");
+  inline constexpr auto TypeTraitName = TokenDef("typetraitname");
   inline constexpr auto TypeTuple = TokenDef("typetuple");
   inline constexpr auto TypeView = TokenDef("typeview");
   inline constexpr auto TypeFunc = TokenDef("typefunc");
   inline constexpr auto TypeIsect = TokenDef("typeisect");
   inline constexpr auto TypeUnion = TokenDef("typeunion");
   inline constexpr auto TypeVar = TokenDef("typevar", flag::print);
+  inline constexpr auto TypeSubtype = TokenDef("typesubtype");
+  inline constexpr auto TypeTrue = TokenDef("typetrue");
+  inline constexpr auto TypeFalse = TokenDef("typefalse");
+  inline constexpr auto TypeEmpty = TokenDef("typeempty");
 
   // Expression structure.
   inline constexpr auto Expr = TokenDef("expr");
   inline constexpr auto ExprSeq = TokenDef("exprseq");
   inline constexpr auto TypeAssert = TokenDef("typeassert");
-  inline constexpr auto TypeAssertOp = TokenDef("typeassertop");
   inline constexpr auto TypeArgs = TokenDef("typeargs");
   inline constexpr auto Lambda =
     TokenDef("lambda", flag::symtab | flag::defbeforeuse);
@@ -134,7 +141,6 @@ namespace verona
 
   // Sythetic locations.
   inline const auto standard = Location("std");
-  inline const auto ref = Location("ref");
   inline const auto cell = Location("cell");
   inline const auto create = Location("create");
   inline const auto apply = Location("apply");

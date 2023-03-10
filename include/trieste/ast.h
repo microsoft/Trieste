@@ -475,6 +475,16 @@ namespace trieste
       }
     }
 
+    bool equals(Node& node)
+    {
+      return (type_ == node->type()) && (children.size() == node->size()) &&
+        (std::equal(
+          children.begin(),
+          children.end(),
+          node->children.begin(),
+          [](auto& a, auto& b) { return a->equals(b); }));
+    }
+
     bool precedes(Node node)
     {
       return precedes(node.get());
@@ -536,22 +546,34 @@ namespace trieste
 
     bool errors(std::ostream& out)
     {
+      if (type_ == Error)
+      {
+        auto msg = children.at(0);
+        auto ast = children.at(1);
+
+        if (ast->errors(out))
+          return true;
+
+        out << ast->location().origin_linecol() << msg->location().view()
+            << std::endl
+            << ast->location().str() << std::endl;
+
+        for (size_t i = 2; i < children.size(); ++i)
+        {
+          ast = children.at(i);
+          out << ast->location().origin_linecol() << std::endl
+              << ast->location().str() << std::endl;
+        }
+
+        return true;
+      }
+
       bool err = false;
 
       for (auto& child : children)
       {
         if (child->errors(out))
           err = true;
-      }
-
-      if (!err && (type_ == Error))
-      {
-        auto msg = children.at(0);
-        auto ast = children.at(1);
-        out << ast->location().origin_linecol() << msg->location().view()
-            << std::endl
-            << ast->location().str() << std::endl;
-        err = true;
       }
 
       return err;

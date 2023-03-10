@@ -5,6 +5,7 @@ add_executable(verona
   lookup.cc
   main.cc
   parse.cc
+  subtype.cc
   )
 
 target_link_libraries(verona

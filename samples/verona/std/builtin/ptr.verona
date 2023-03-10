@@ -6,7 +6,7 @@ class Ptr
     Dyn::from_unit()
   }
 
-  ref field(self: Ptr, i: I32): Ref[T] ::: (ptr, i32)->i64
+  ref field[T](self: Ptr, i: I32): Ref[T] ::: (ptr, i32)->i64
   {
     // The refcount on `self` is moved to the returned Ref[T].
     let a = Dyn::to_ptr(self)

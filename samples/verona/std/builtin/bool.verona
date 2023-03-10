@@ -73,5 +73,5 @@ class Bool
 
 type ToBool =
 {
-  bool(self: Self): Bool
+  bool(self/*: Self*/): Bool
 }

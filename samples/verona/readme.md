@@ -1,24 +1,67 @@
 # Todo
 
+Subtyping
+- `assume` when starting a typetrait check?
+- make invariant typeargs work
+- use fresh typevar in `lookup` for no typearg? or use the typeparam itself?
+- add typeparam to fresh typevar binding for unspecified parent types?
+  - do this in lookup
+- track `typevar <: x` as upper bounds, `x <: typevar` as lower bounds?
+- typealg: `!`, `A ? B : C`
+
+Possible approach
+- pass to make all typenames absolute paths from the root
+  - class/trait/alias/param can be in classbody(class/trait)/block(function)
+- lookup mode that's a typename from an arbitrary root
+- typealias expansion and DNF for non-typeargs in advance
+  - on demand for typeargs only when checking subtypes
+- if two types are syntactically equal, they're also subtypes
+  - this short circuits infinite recursion
+
+Type Descriptor
+- sizeof: encode it as a function?
+```c
+%1 = getementptr [0 x %T], ptr null, i64 1
+%2 = ptrtoint ptr %1 to i64
+```
+- sizeofptr: could do this for primitive types
+  - 8 (i64) for most things, 1 (i8) for I8, etc
+- trace: could be "fields that might be pointers", or encoded as a function
+- finalizer: a function
+- `typetest`: could be a function
+- with sizeof, trace, finalizer, and typetest encoded as functions, they could have well-known vtable indices, and the type descriptor is then only a vtable
+- vtable: could use linear/binary search when there's no selector coloring
+
 LLVM lowering
-- could parse LLVM literals late, allowing expr that lift to reflet and not just ident
-- `new`
+- types-as-values?
+  - encode class type arguments as fields?
+  - pass function type arguments as dynamic arguments?
+    - use the default if the typearg isn't specified, or the upper bounds if there's no default
+  - insert type tests (for both args and typeargs) as function prologues?
+- mangling
+  - flatten all names, use fully-qualified names
+- `new`, `fieldref`
+  - autocreate ignores field initializers if there's already a `create` method. this seems wrong
+  - default field values as arguments to `new`?
+- Ptr, Ref[T], primitive types need a way to find their type descriptor
+- `typetest`
+  - every type needs an entry for every `typetest` type
 - dynamic function lookup
-  - Ptr, Ref[T], primitive types
+  - find all `selector` nodes
+  - every type needs an entry for every `selector` name
+- only `Ref[T]::store` does llvm `store` - it's the only thing that needs to check for immutability?
+- literals: integer (including char), float, string, bool
 - `copy` and `drop` on `Ptr` and `Ref[T]`
+  - implementation depends on the region type
+- strings can't be arrays without type-checking
 - region types, cowns, `when`
+- could parse LLVM literals late, allowing expr that lift to reflet and not just ident
+- destructuring bind where a variable gets "the rest" or "nothing"
+  - ie lhs and rhs arity don't match
+  - include destructuring selectors on every `class`?
+  - make them RHS only? this still breaks encapsulation
+  - `destruct` method, default impl returns the class fields as a tuple
 
-autocreate ignores field initializers if there's already a `create` method. this seems wrong.
-
-dispatch
-- static vs dynamic
-- no static type based overloading
-- `::name` as a scoped name, meaning lookup only, no lookdown phase
-
-- is the `refparams` pass unnecessary? `drop` handles it?
-- remove arity ambiguity by including arity `N` in function names
-- remove CallLHS by including `ref` in function names
-- check for conflicting field names, conflicting function arity
 - free variables in object literals
 - mixins
 - match
