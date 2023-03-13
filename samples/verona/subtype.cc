@@ -17,6 +17,8 @@ namespace verona
     BtypeDef(Node t, NodeMap<Node> b = {}) : node(t), bindings(b)
     {
       // Keep unwinding until done.
+      NodeSet set;
+
       while (true)
       {
         if (node->type() == Type)
@@ -38,10 +40,15 @@ namespace verona
           auto& def = defs.defs.front();
           node = def.def;
           bindings.insert(def.bindings.begin(), def.bindings.end());
+
+          // Check for cycles.
+          if (set.contains(node))
+            return;
         }
         else if (node->type() == TypeParam)
         {
           // An unbound typeparam effectively binds to itself.
+          set.insert(node);
           auto it = bindings.find(node);
           if (it == bindings.end())
             return;
