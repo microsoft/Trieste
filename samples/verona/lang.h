@@ -91,7 +91,6 @@ namespace verona
   inline constexpr auto TypeSubtype = TokenDef("typesubtype");
   inline constexpr auto TypeTrue = TokenDef("typetrue");
   inline constexpr auto TypeFalse = TokenDef("typefalse");
-  inline constexpr auto TypeEmpty = TokenDef("typeempty");
 
   // Expression structure.
   inline constexpr auto Expr = TokenDef("expr");

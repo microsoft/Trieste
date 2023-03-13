@@ -62,6 +62,7 @@ LLVM lowering
   - make them RHS only? this still breaks encapsulation
   - `destruct` method, default impl returns the class fields as a tuple
 
+- `Package` in a scoped name, typeargs on packages
 - free variables in object literals
 - mixins
 - match
