@@ -44,7 +44,7 @@ ninja install
 
 ## Using Trieste in Your Project
 
-You can use Triest via FetchContent by including the following lines
+You can use Trieste via FetchContent by including the following lines
 in your CMake:
 
 ``` cmake
