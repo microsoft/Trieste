@@ -17,7 +17,7 @@ terms:
 
 Before we dive into how Trieste works, it may be worth describing what
 it is for. Trieste is a preparation tool for a compiler. By performing
-multiply passes over the input, Trieste is able to iteratively refine
+multiple passes over the input, Trieste is able to iteratively refine
 the AST until it takes the form that is best suited to compilation.
 What starts as a formless set of tokens provided by the parser
 eventually turns into a clean and easy to process tree. It allows us to
@@ -138,7 +138,7 @@ operator overloading allows for a more compact way of specifying these
 rules:
 
 ``` c++
-p("start", // this indicates the 'mode' these rules are associated with 
+p("start", // this indicates the 'mode' these rules are associated with
   {
     // Whitespace between tokens.
     "[[:blank:]]+" >> [](auto&) {}, // no-op
@@ -363,10 +363,10 @@ auto indent = std::make_shared<std::vector<size_t>>();
 /* ... */
 
 // Parens.
-"(\\()[[:blank:]]*" >> [indent](auto& m) { 
+"(\\()[[:blank:]]*" >> [indent](auto& m) {
   // we push a Paren node. Subsequent nodes will be added
   // as its children.
-  m.push(Paren, 1); 
+  m.push(Paren, 1);
 },
 
 "\\)" >>
@@ -911,7 +911,7 @@ inline constexpr auto wf_pass_expressions =
     (Top <<= Calculation)
   | (Calculation <<= (Assign | Output)++)
   // [Ident] here indicates that the Ident node is a symbol that should
-  // be stored in the symbol table  
+  // be stored in the symbol table
   | (Assign <<= Ident * Expression)[Ident]
   | (Output <<= String * Expression)
   // [1] here indicates that there should be at least one token
@@ -1148,7 +1148,7 @@ flowchart TD
 </table>
 
 The resulting tree can be evaluated recursively to obtain a result
-which respects the operator precedence rules. 
+which respects the operator precedence rules.
 
 ### Pass 4: Trim
 
@@ -1366,13 +1366,13 @@ In(Calculation) * T(Assign) >> [](Match&) -> Node { return {}; },
 
 T(Literal) << Any[Rhs] >> [](Match& _) { return _(Rhs); },
 ```
-      
+
 The final well-formedness check:
 
 ``` c++
 inline constexpr auto wf_pass_cleanup =
-  wf_pass_maths 
-  | (Calculation <<= Output++) 
+  wf_pass_maths
+  | (Calculation <<= Output++)
   // note the use of >>= here. This allows us to have a choice
   // as a field by giving it a temporary name.
   | (Output <<= String * (Expression >>= wf_literal))
