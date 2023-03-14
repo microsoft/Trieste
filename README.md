@@ -67,4 +67,6 @@ target_link_libraries(verona
   )
 ```
 
-## [Contributing](CONTRIBUTING.md)
+## Contributing
+
+If you are interested in contributing to Trieste, please see our [contributing document](CONTRIBUTING.md).
