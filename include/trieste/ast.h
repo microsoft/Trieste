@@ -257,6 +257,15 @@ namespace trieste
         push_back(it);
     }
 
+    void push_back_ephemeral(Node node)
+    {
+      if (!node)
+        return;
+
+      // Don't set the parent of the new child node to `this`.
+      children.push_back(node);
+    }
+
     Node pop_back()
     {
       if (children.empty())

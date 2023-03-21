@@ -39,7 +39,8 @@ namespace verona
 
           auto& def = defs.defs.front();
           node = def.def;
-          bindings.insert(def.bindings.begin(), def.bindings.end());
+          def.bindings.insert(bindings.begin(), bindings.end());
+          bindings.swap(def.bindings);
 
           // Check for cycles.
           if (set.contains(node))
@@ -54,6 +55,10 @@ namespace verona
             return;
 
           node = it->second;
+        }
+        else if (node->type() == TypeView)
+        {
+          reduce_view();
         }
         else
         {
@@ -80,6 +85,115 @@ namespace verona
     const Token& type() const
     {
       return node->type();
+    }
+
+    void reduce_view()
+    {
+      assert(type() == TypeView);
+      auto l = make(wf / TypeView / Lhs);
+
+      if (l->type().in(
+            {TypeTuple, TypeList, Package, Class, TypeTrait, TypeUnit}))
+      {
+        node = TypeTrue;
+        return;
+      }
+
+      if (l->type().in({TypeUnion, TypeIsect}))
+      {
+        // (A | B).C = A.C | B.C
+        // (A & B).C = A.C & B.C
+        auto r = node->at(wf / TypeView / Rhs);
+        node = l->type();
+
+        for (auto& t : *l->node)
+          node << (TypeView << -t << -r);
+
+        return;
+      }
+
+      if (l->type() == TypeAlias)
+      {
+        // This TypeView will itself be reduced.
+        l = l->make(wf / TypeAlias / Type);
+        l->bindings.insert(bindings.begin(), bindings.end());
+        bindings.swap(l->bindings);
+        node = TypeView << -l->node << -node->at(wf / TypeView / Rhs);
+        return;
+      }
+
+      if (l->type().in({TypeTrue, TypeFalse}))
+      {
+        node = l->node;
+        return;
+      }
+
+      auto r = make(wf / TypeView / Rhs);
+
+      if (r->type().in({TypeUnion, TypeIsect, TypeTuple, TypeList}))
+      {
+        // A.(B & C) = A.B & A.C
+        // A.(B | C) = A.B | A.C
+        // A.(B, C) = A.B, A.C
+        // A.(B...) = (A.B)...
+        node = r->type();
+
+        for (auto& t : *r->node)
+          node << (TypeView << -l->node << -t);
+
+        return;
+      }
+
+      if (r->type() == TypeAlias)
+      {
+        // This TypeView will itself be reduced.
+        r = r->make(wf / TypeAlias / Type);
+        r->bindings.insert(bindings.begin(), bindings.end());
+        bindings.swap(r->bindings);
+        node = TypeView << -l->node << -r->node;
+        return;
+      }
+
+      if (r->type().in(
+            {Package, Class, TypeTrait, TypeUnit, TypeTrue, TypeFalse}))
+      {
+        node = r->node;
+        bindings = r->bindings;
+        return;
+      }
+
+      // TODO: l in {TypeParam, TypeVar, K}
+      // TODO: r in {TypeParam, TypeVar, K}
+      if (r->type() == Const)
+      {
+        // *.Const = Const
+        node = r->node;
+        return;
+      }
+
+      if (l->type().in({Lin, In_}) && (r->type() == Lin))
+      {
+        // (Lin | In).Lin = False
+        node = TypeFalse;
+        return;
+      }
+
+      if (l->type().in({Lin, In_}) && (r->type().in({In_, Out})))
+      {
+        // (Lin | In).(In | Out) = In
+        node = In_;
+        return;
+      }
+
+      if (
+        ((l->type() == Out) && (r->type().in({Lin, In_, Out}))) ||
+        ((l->type() == Const) && (r->type().in({Lin, In_, Out}))))
+      {
+        // Out.(Lin | In | Out) = Out
+        // Const.(Lin | In | Out) = Const
+        node = l->node;
+        return;
+      }
     }
   };
 
@@ -136,6 +250,14 @@ namespace verona
           // ---
           // G |- D, (A & B)
 
+          // G |- A < B
+          // G |- A < C
+          // ---
+          // G |- A < (B & C)
+
+          // A |- (B & C)
+          // (A |- B), (A |- C)
+
           // RHS isect is a sequent split.
           for (auto& t : *r->node)
           {
@@ -153,6 +275,11 @@ namespace verona
           // Try both the typealias and the underlying type.
           rhs_pending.push_back(r->make(wf / TypeAlias / Type));
           rhs_atomic.push_back(r);
+        }
+        else if (r->type() == TypeView)
+        {
+          // TODO: if it hasn't reduced, at least one side is a TypeParam or a
+          // TypeVar.
         }
         else
         {
@@ -199,6 +326,10 @@ namespace verona
           // Try both the typealias and the underlying type.
           lhs_pending.push_back(l->make(wf / TypeAlias / Type));
           lhs_atomic.push_back(l);
+        }
+        else if (l->type() == TypeView)
+        {
+          // TODO:
         }
         else if (l->type() == TypeParam)
         {
@@ -320,6 +451,7 @@ namespace verona
           {
             // TODO: check that all methods are present and have the correct
             // type. Add an assumption that (l < r) for each method.
+            auto body = r->node->at(wf / TypeTrait / ClassBody);
             return false;
           }
 

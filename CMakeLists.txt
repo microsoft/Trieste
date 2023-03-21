@@ -3,7 +3,18 @@ project(trieste VERSION 1.0.0 LANGUAGES CXX)
 
 include(FetchContent)
 
+set(BUILD_TESTING OFF CACHE INTERNAL "Turn off snmalloc tests")
+set(SNMALLOC_STATIC_LIBRARY_PREFIX "")
 set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
+
+FetchContent_Declare(
+  snmalloc
+  GIT_REPOSITORY https://github.com/microsoft/snmalloc
+  GIT_TAG main
+  GIT_SHALLOW TRUE
+)
+
+FetchContent_MakeAvailable(snmalloc)
 
 FetchContent_Declare(
   re2

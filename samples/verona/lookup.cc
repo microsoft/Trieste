@@ -242,7 +242,8 @@ namespace verona
             return true;
 
           set.insert(def.def);
-          bindings.insert(def.bindings.begin(), def.bindings.end());
+          def.bindings.insert(bindings.begin(), bindings.end());
+          bindings.swap(def.bindings);
           worklist.emplace_back(
             set, Lookup(def.def->at(wf / TypeAlias / Type), bindings));
         }
@@ -266,7 +267,8 @@ namespace verona
               return true;
 
             set.insert(def.def);
-            bindings.insert(def.bindings.begin(), def.bindings.end());
+            def.bindings.insert(bindings.begin(), bindings.end());
+            bindings.swap(def.bindings);
             worklist.emplace_back(
               set, Lookup(def.def->at(wf / TypeParam / Bound), bindings));
           }

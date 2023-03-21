@@ -2,10 +2,6 @@
 
 Subtyping
 - `assume` when starting a typetrait check?
-- make invariant typeargs work
-- use fresh typevar in `lookup` for no typearg? or use the typeparam itself?
-- add typeparam to fresh typevar binding for unspecified parent types?
-  - do this in lookup
 - track `typevar <: x` as upper bounds, `x <: typevar` as lower bounds?
 - typealg: `!`, `A ? B : C`
 

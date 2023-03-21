@@ -686,6 +686,14 @@ namespace verona
       In(TypeIsect) * T(TypeIsect)[Lhs] >>
         [](Match& _) { return Seq << *_[Lhs]; },
 
+      // T1.(T2.T3) = (T1.T2).T3
+      T(TypeView)
+          << (TypeElem[Op] *
+              (T(TypeView) << (TypeElem[Lhs] * TypeElem[Rhs]))) >>
+        [](Match& _) {
+          return TypeView << (TypeView << _(Op) << _(Lhs)) << _(Rhs);
+        },
+
       // Tuples of arity 1 are scalar types, tuples of arity 0 are the unit
       // type.
       T(TypeTuple) << (TypeElem[Op] * End) >> [](Match& _) { return _(Op); },
@@ -2249,11 +2257,13 @@ namespace verona
   PassDef typesubtype()
   {
     return {
-      T(TypeSubtype) << (TypeElem[Lhs] * TypeElem[Rhs]) >>
-        ([](Match& _) -> Node {
-          return subtype(_(Lhs), _(Rhs)) ? TypeTrue : TypeFalse;
-        }),
-    };
+      dir::bottomup,
+      {
+        T(TypeSubtype) << (TypeElem[Lhs] * TypeElem[Rhs]) >>
+          ([](Match& _) -> Node {
+            return subtype(_(Lhs), _(Rhs)) ? TypeTrue : TypeFalse;
+          }),
+      }};
   }
 
   Driver& driver()
