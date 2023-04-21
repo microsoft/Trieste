@@ -162,10 +162,9 @@ namespace verona
         return;
       }
 
-      // TODO: l in {TypeParam, TypeVar, K}
-      // TODO: r in {TypeParam, TypeVar, K}
-      if (r->type() == Const)
+      if ((l->type() == Const) || (r->type() == Const))
       {
+        // Const.* = Const
         // *.Const = Const
         node = r->node;
         return;
@@ -185,15 +184,17 @@ namespace verona
         return;
       }
 
-      if (
-        ((l->type() == Out) && (r->type().in({Lin, In_, Out}))) ||
-        ((l->type() == Const) && (r->type().in({Lin, In_, Out}))))
+      if ((l->type() == Out) && (r->type().in({Lin, In_, Out})))
       {
         // Out.(Lin | In | Out) = Out
-        // Const.(Lin | In | Out) = Const
         node = l->node;
         return;
       }
+
+      // TODO: TypeView on LHS or RHS?
+
+      // At this point, the TypeView has a TypeParam or a TypeVar on either the
+      // LHS or RHS, and the other side is a TypeParam, TypeVar, or K.
     }
   };
 
@@ -276,11 +277,6 @@ namespace verona
           rhs_pending.push_back(r->make(wf / TypeAlias / Type));
           rhs_atomic.push_back(r);
         }
-        else if (r->type() == TypeView)
-        {
-          // TODO: if it hasn't reduced, at least one side is a TypeParam or a
-          // TypeVar.
-        }
         else
         {
           rhs_atomic.push_back(r);
@@ -327,10 +323,6 @@ namespace verona
           lhs_pending.push_back(l->make(wf / TypeAlias / Type));
           lhs_atomic.push_back(l);
         }
-        else if (l->type() == TypeView)
-        {
-          // TODO:
-        }
         else if (l->type() == TypeParam)
         {
           // Try both the typeparam and the upper bound.
@@ -374,6 +366,7 @@ namespace verona
           if (r->type() == TypeTuple)
           {
             // Tuples must be the same arity and each element must be a subtype.
+            // TODO: carry trait assumptions into tuple elements
             return (l->type() == TypeTuple) &&
               std::equal(
                      l->node->begin(),
@@ -416,6 +409,7 @@ namespace verona
                 auto la = l->make(tp);
                 auto ra = r->make(tp);
 
+                // TODO: carry trait assumptions into type arguments
                 if (!reduce(la, ra) || !reduce(ra, la))
                   return false;
               }
@@ -430,8 +424,9 @@ namespace verona
           {
             // The LHS must accept all the arguments of the RHS and return a
             // result that is a subtype of the RHS's result.
-            return reduce(
-                     r->make(wf / TypeFunc / Lhs),
+            // TODO: carry trait assumptions into function types
+            return (l->type() == TypeFunc) &&
+              reduce(r->make(wf / TypeFunc / Lhs),
                      l->make(wf / TypeFunc / Lhs)) &&
               reduce(l->make(wf / TypeFunc / Rhs),
                      r->make(wf / TypeFunc / Rhs));
@@ -449,9 +444,34 @@ namespace verona
 
           if (r->type() == TypeTrait)
           {
+            if (!l->type().in({Class, TypeTrait}))
+              return false;
+
             // TODO: check that all methods are present and have the correct
-            // type. Add an assumption that (l < r) for each method.
-            auto body = r->node->at(wf / TypeTrait / ClassBody);
+            // type. Add an assumption that (l < r).
+            auto rbody = r->node->at(wf / TypeTrait / ClassBody);
+
+            for (auto rmember : *rbody)
+            {
+              if (rmember->type() != Function)
+                continue;
+
+              auto id = rmember->at(wf / Function / Ident)->location();
+              auto lmembers = l->node->lookdown(id);
+
+              // Function names are distinguished by arity at this point.
+              if (lmembers.size() != 1)
+                return false;
+
+              auto lmember = lmembers.front();
+
+              if (lmember->type() != Function)
+                return false;
+
+              // TODO: function subtyping
+            }
+
+            // TODO: pop the assumption that (l < r)
             return false;
           }
 
