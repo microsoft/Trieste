@@ -58,7 +58,8 @@ namespace verona
         }
         else if (node->type() == TypeView)
         {
-          reduce_view();
+          if (!reduce_view())
+            return;
         }
         else
         {
@@ -87,7 +88,7 @@ namespace verona
       return node->type();
     }
 
-    void reduce_view()
+    bool reduce_view()
     {
       assert(type() == TypeView);
       auto l = make(wf / TypeView / Lhs);
@@ -96,7 +97,7 @@ namespace verona
             {TypeTuple, TypeList, Package, Class, TypeTrait, TypeUnit}))
       {
         node = TypeTrue;
-        return;
+        return true;
       }
 
       if (l->type().in({TypeUnion, TypeIsect}))
@@ -109,7 +110,7 @@ namespace verona
         for (auto& t : *l->node)
           node << (TypeView << -t << -r);
 
-        return;
+        return true;
       }
 
       if (l->type() == TypeAlias)
@@ -119,13 +120,13 @@ namespace verona
         l->bindings.insert(bindings.begin(), bindings.end());
         bindings.swap(l->bindings);
         node = TypeView << -l->node << -node->at(wf / TypeView / Rhs);
-        return;
+        return true;
       }
 
       if (l->type().in({TypeTrue, TypeFalse}))
       {
         node = l->node;
-        return;
+        return true;
       }
 
       auto r = make(wf / TypeView / Rhs);
@@ -141,7 +142,7 @@ namespace verona
         for (auto& t : *r->node)
           node << (TypeView << -l->node << -t);
 
-        return;
+        return true;
       }
 
       if (r->type() == TypeAlias)
@@ -151,7 +152,7 @@ namespace verona
         r->bindings.insert(bindings.begin(), bindings.end());
         bindings.swap(r->bindings);
         node = TypeView << -l->node << -r->node;
-        return;
+        return true;
       }
 
       if (r->type().in(
@@ -159,7 +160,7 @@ namespace verona
       {
         node = r->node;
         bindings = r->bindings;
-        return;
+        return true;
       }
 
       if ((l->type() == Const) || (r->type() == Const))
@@ -167,34 +168,35 @@ namespace verona
         // Const.* = Const
         // *.Const = Const
         node = Const;
-        return;
+        return true;
       }
 
       if (l->type().in({Lin, In_}) && (r->type() == Lin))
       {
         // (Lin | In).Lin = False
         node = TypeFalse;
-        return;
+        return true;
       }
 
       if (l->type().in({Lin, In_}) && (r->type().in({In_, Out})))
       {
         // (Lin | In).(In | Out) = In
         node = In_;
-        return;
+        return true;
       }
 
       if ((l->type() == Out) && (r->type().in({Lin, In_, Out})))
       {
         // Out.(Lin | In | Out) = Out
         node = l->node;
-        return;
+        return true;
       }
 
       // TODO: TypeView on LHS or RHS?
 
       // At this point, the TypeView has a TypeParam or a TypeVar on either the
       // LHS or RHS, and the other side is a TypeParam, TypeVar, or K.
+      return false;
     }
   };
 
