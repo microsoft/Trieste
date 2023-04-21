@@ -481,8 +481,7 @@ namespace verona
             return false;
           }
 
-          // Shouldn't get here.
-          assert(false);
+          // Shouldn't get here in non-testing code.
           return false;
         });
       });
