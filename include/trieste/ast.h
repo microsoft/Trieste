@@ -257,6 +257,15 @@ namespace trieste
         push_back(it);
     }
 
+    void push_back_ephemeral(Node node)
+    {
+      if (!node)
+        return;
+
+      // Don't set the parent of the new child node to `this`.
+      children.push_back(node);
+    }
+
     Node pop_back()
     {
       if (children.empty())
@@ -477,11 +486,12 @@ namespace trieste
 
     bool equals(Node& node)
     {
-      return (type_ == node->type()) && (children.size() == node->size()) &&
+      return (type_ == node->type()) &&
         (std::equal(
           children.begin(),
           children.end(),
           node->children.begin(),
+          node->children.end(),
           [](auto& a, auto& b) { return a->equals(b); }));
     }
 

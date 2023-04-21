@@ -527,7 +527,7 @@ namespace verona
   inline const auto TypeElem = T(Type) / TypeName / T(TypeTuple) / T(Lin) /
     T(In_) / T(Out) / T(Const) / T(TypeList) / T(TypeView) / T(TypeFunc) /
     T(TypeIsect) / T(TypeUnion) / T(TypeVar) / T(TypeUnit) / T(Package) /
-    T(TypeEmpty) / T(TypeSubtype) / T(TypeTrue) / T(TypeFalse);
+    T(TypeSubtype) / T(TypeTrue) / T(TypeFalse);
 
   Node
   makename(const Lookups& defs, Node lhs, Node id, Node ta, bool func = false)
@@ -686,6 +686,14 @@ namespace verona
       In(TypeIsect) * T(TypeIsect)[Lhs] >>
         [](Match& _) { return Seq << *_[Lhs]; },
 
+      // T1.(T2.T3) = (T1.T2).T3
+      T(TypeView)
+          << (TypeElem[Op] *
+              (T(TypeView) << (TypeElem[Lhs] * TypeElem[Rhs]))) >>
+        [](Match& _) {
+          return TypeView << (TypeView << _(Op) << _(Lhs)) << _(Rhs);
+        },
+
       // Tuples of arity 1 are scalar types, tuples of arity 0 are the unit
       // type.
       T(TypeTuple) << (TypeElem[Op] * End) >> [](Match& _) { return _(Op); },
@@ -695,7 +703,7 @@ namespace verona
       TypeStruct * T(Type) << (TypeElem[Op] * End) >>
         [](Match& _) { return _(Op); },
 
-      T(Type)[Type] << End >> [](Match&) { return Type << TypeEmpty; },
+      T(Type)[Type] << End >> [](Match&) { return Type << TypeUnit; },
 
       T(Type)[Type] << (Any * Any) >>
         [](Match& _) {
@@ -722,121 +730,6 @@ namespace verona
 
           return NoChange;
         }),
-      }};
-  }
-
-  // PassDef typeabs()
-  // {
-  //   return {
-  //     (T(TypeClassName) / T(TypeTraitName) / T(TypeAliasName) /
-  //      T(TypeParamName))[Type]
-  //         << (T(TypeUnit) * T(Ident)[Id] * T(TypeArgs)[TypeArgs]) >>
-  //       [](Match& _) {
-  //         auto def = lookup_name(_(Id), _(TypeArgs)).defs.front();
-  //         auto parent = def.def->parent({Top, Class, TypeTrait, Function})
-  //                         ->shared_from_this();
-
-  //         if (parent->type() == Top)
-  //           return NoChange;
-  //       },
-  //   };
-  // }
-
-  PassDef typeviewdnf()
-  {
-    return {
-      dir::bottomup,
-      {
-        // (A | B).C -> (A.C) | (B.C)
-        // (A & B).C -> (A.C) & (B.C)
-        T(TypeView) << ((T(TypeUnion) / T(TypeIsect))[Lhs] * Any[Rhs]) >>
-          [](Match& _) {
-            auto lhs = _(Lhs);
-            Node r = lhs->type();
-            for (auto& child : *lhs)
-              r << (TypeView << child << clone(_[Rhs]));
-            return r;
-          },
-
-        // A.(B | C) -> A.B | B.C
-        // A.(B & C) -> A.B & B.C
-        // A.(B, C) -> A.B, B.C
-        T(TypeView)
-            << (Any[Lhs] * (T(TypeUnion) / T(TypeIsect) / T(TypeTuple))[Rhs]) >>
-          [](Match& _) {
-            auto rhs = _(Rhs);
-            Node r = rhs->type();
-            for (auto& child : *rhs)
-              r << (TypeView << clone(_[Lhs]) << child);
-            return r;
-          },
-
-        // C.T = Empty
-        T(TypeView)
-            << ((T(TypeEmpty) / T(TypeUnit) / T(TypeTuple) / T(Package) /
-                 T(TypeClassName) / T(TypeTraitName) / T(TypeList) /
-                 T(TypeFunc) / T(TypeSubtype) / T(TypeTrue) / T(TypeFalse)) *
-                Any) >>
-          ([](Match&) -> Node { return TypeEmpty; }),
-
-        // (Lin | In).Lin = Empty
-        T(TypeView) << ((T(Lin) / T(In_)) * T(Lin)) >>
-          ([](Match&) -> Node { return TypeEmpty; }),
-
-        // (Lin | In).(In | Out) = In
-        T(TypeView) << ((T(Lin) / T(In_)) * (T(In_) / T(Out))) >>
-          ([](Match&) -> Node { return In_; }),
-
-        // Out.(Lin | In | Out) = Out
-        T(TypeView) << (T(Out) * (T(Lin) / T(In_) / T(Out))) >>
-          ([](Match&) -> Node { return Out; }),
-
-        // Const.K = Const
-        T(TypeView) << (T(Const) * (T(Lin) / T(In_) / T(Out) / T(Const))) >>
-          ([](Match&) -> Node { return Const; }),
-
-        // K.Const = Const
-        T(TypeView) << ((T(Lin) / T(In_) / T(Out) / T(Const)) * T(Const)) >>
-          ([](Match&) -> Node { return Const; }),
-
-        // T.C = C
-        T(TypeView)
-            << (Any *
-                (T(TypeEmpty) / T(TypeUnit) / T(Package) / T(TypeClassName) /
-                 T(TypeTraitName) / T(TypeList) / T(TypeFunc) / T(TypeSubtype) /
-                 T(TypeTrue) / T(TypeFalse))[Rhs]) >>
-          [](Match& _) { return _(Rhs); },
-
-        // Re-flatten algebraic types, as DNF can produce them.
-        In(TypeUnion) * T(TypeUnion)[Lhs] >>
-          [](Match& _) { return Seq << *_[Lhs]; },
-        In(TypeIsect) * T(TypeIsect)[Lhs] >>
-          [](Match& _) { return Seq << *_[Lhs]; },
-      }};
-  }
-
-  PassDef typednf()
-  {
-    return {
-      dir::bottomup,
-      {
-        // (A | B) & C -> (A & C) | (B & C)
-        T(TypeIsect)
-            << (((!T(TypeUnion))++)[Lhs] * T(TypeUnion)[Op] * (Any++)[Rhs]) >>
-          [](Match& _) {
-            Node r = TypeUnion;
-            for (auto& child : *_(Op))
-              r
-                << (TypeIsect << clone(_[Lhs]) << clone(child)
-                              << clone(_[Rhs]));
-            return r;
-          },
-
-        // Re-flatten algebraic types, as DNF can produce them.
-        In(TypeUnion) * T(TypeUnion)[Lhs] >>
-          [](Match& _) { return Seq << *_[Lhs]; },
-        In(TypeIsect) * T(TypeIsect)[Lhs] >>
-          [](Match& _) { return Seq << *_[Lhs]; },
       }};
   }
 
@@ -2364,11 +2257,13 @@ namespace verona
   PassDef typesubtype()
   {
     return {
-      T(TypeSubtype) << (TypeElem[Lhs] * TypeElem[Rhs]) >>
-        ([](Match& _) -> Node {
-          return subtype(_(Lhs), _(Rhs)) ? TypeTrue : TypeFalse;
-        }),
-    };
+      dir::bottomup,
+      {
+        T(TypeSubtype) << (TypeElem[Lhs] * TypeElem[Rhs]) >>
+          ([](Match& _) -> Node {
+            return subtype(_(Lhs), _(Rhs)) ? TypeTrue : TypeFalse;
+          }),
+      }};
   }
 
   Driver& driver()
@@ -2387,8 +2282,6 @@ namespace verona
         {"typealg", typealg(), wfPassTypeAlg()},
         {"typeflat", typeflat(), wfPassTypeFlat()},
         {"typerec", typerec(), wfPassTypeFlat()},
-        {"typeviewdnf", typeviewdnf(), wfPassTypeViewDNF()},
-        {"typednf", typednf(), wfPassTypeDNF()},
         {"conditionals", conditionals(), wfPassConditionals()},
         {"reference", reference(), wfPassReference()},
         {"reverseapp", reverseapp(), wfPassReverseApp()},

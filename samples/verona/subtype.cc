@@ -6,220 +6,492 @@
 
 namespace verona
 {
-  bool invariant_ta(Btype& sub, Btype& sup)
+  struct BtypeDef;
+  using Btype = std::shared_ptr<BtypeDef>;
+
+  struct BtypeDef
   {
-    (void)sub;
-    (void)sup;
-    // TODO: this is an infinite loop
-    // because l and r are also in lhs and rhs, so it will be called again
-    // assume l <: r, r <: l ?
-    // what about unbound type parameters? should we be using the default?
-    // only relevant type arguments need to be checked
+    Node node;
+    NodeMap<Node> bindings;
 
-    // Invariant type arguments.
-    return true;
-    // return (sub.bindings.size() == sup.bindings.size()) &&
-    //   std::all_of(sub.bindings.begin(), sub.bindings.end(), [&](auto& l) {
-    //          auto r = sup.bindings.find(l.first);
-    //          return (r != sup.bindings.end()) &&
-    //            subtype(sub(l.second), sup(r->second)) &&
-    //            subtype(sup(r->second), sub(l.second));
-    //        });
-  }
-
-  bool x_sub_union(Btype& sub, Btype& sup)
-  {
-    // Any satisfied disjunction is sufficient.
-    assert(sup() == TypeUnion);
-    for (auto& t : *sup.type)
-      if (subtype(sub, sup(t)))
-        return true;
-
-    return false;
-  }
-
-  bool union_sub_x(Btype& sub, Btype& sup)
-  {
-    // Skip over empty types in the disjunction.
-    assert(sub() == TypeUnion);
-    for (auto& t : *sub.type)
-      if (!(t->type() == TypeEmpty) && !subtype(sub(t), sup))
-        return false;
-
-    return true;
-  }
-
-  bool x_sub_isect(Btype& sub, Btype& sup)
-  {
-    // Skip over empty types in the conjunction.
-    assert(sup() == TypeIsect);
-    for (auto& t : *sup.type)
-      if (!(t->type() == TypeEmpty) && !subtype(sub, sup(t)))
-        return false;
-
-    return true;
-  }
-
-  bool isect_sub_x(Btype& sub, Btype& sup)
-  {
-    // Any satisfied conjunction is sufficient.
-    assert(sub() == TypeIsect);
-    for (auto& t : *sub.type)
-      if (subtype(sub(t), sup))
-        return true;
-
-    return false;
-  }
-
-  bool x_sub_alias(Btype& sub, Btype& sup)
-  {
-    assert(sup() == TypeAlias);
-    return ((sub() == TypeAlias) && (sub.type == sup.type) &&
-            invariant_ta(sub, sup)) ||
-      subtype(sub, sup(wf / TypeAlias / Type));
-  }
-
-  bool alias_sub_x(Btype& sub, Btype& sup)
-  {
-    assert(sub() == TypeAlias);
-    return ((sup() == TypeAlias) && (sub.type == sup.type) &&
-            invariant_ta(sub, sup)) ||
-      subtype(sub(wf / TypeAlias / Type), sup);
-  }
-
-  bool x_sub_tuple(Btype& sub, Btype& sup)
-  {
-    assert(sup() == TypeTuple);
-    if ((sub() != TypeTuple) || (sub.type->size() != sup.type->size()))
-      return false;
-
-    for (size_t i = 0; i < sub.type->size(); i++)
+    BtypeDef(Node t, NodeMap<Node> b = {}) : node(t), bindings(b)
     {
-      if (!subtype(sub(i), sup(i)))
-        return false;
+      // Keep unwinding until done.
+      NodeSet set;
+
+      while (true)
+      {
+        if (node->type() == Type)
+        {
+          node = node->at(wf / Type / Type);
+        }
+        else if (node->type().in(
+                   {TypeClassName,
+                    TypeTraitName,
+                    TypeAliasName,
+                    TypeParamName}))
+        {
+          auto defs = lookup_scopedname(node);
+
+          // This won't be empty in non-testing code.
+          if (defs.defs.empty())
+            return;
+
+          auto& def = defs.defs.front();
+          node = def.def;
+          def.bindings.insert(bindings.begin(), bindings.end());
+          bindings.swap(def.bindings);
+
+          // Check for cycles.
+          if (set.contains(node))
+            return;
+        }
+        else if (node->type() == TypeParam)
+        {
+          // An unbound typeparam effectively binds to itself.
+          set.insert(node);
+          auto it = bindings.find(node);
+          if (it == bindings.end())
+            return;
+
+          node = it->second;
+        }
+        else if (node->type() == TypeView)
+        {
+          if (!reduce_view())
+            return;
+        }
+        else
+        {
+          return;
+        }
+      }
     }
 
-    return true;
-  }
+    static Btype make(Node t, NodeMap<Node> b)
+    {
+      return std::make_shared<BtypeDef>(t, b);
+    }
 
-  bool x_sub_class(Btype& sub, Btype& sup)
-  {
-    // Must be the same class.
-    assert(sup() == Class);
-    return (sub() == Class) && (sub.type == sup.type) && invariant_ta(sub, sup);
-  }
+    Btype make(Node& t)
+    {
+      return make(t, bindings);
+    }
 
-  bool x_sub_trait(Btype& sub, Btype& sup)
-  {
-    // TODO: could satisfy a trait with different parts of an isect. Could also
-    // do this by separating a trait into an isect of each member.
-    // Will need to assume success to avoid infinite recursion.
-    assert(sup() == TypeTrait);
-    (void)sub;
-    (void)sup;
-    return false;
-  }
+    Btype make(const Index& index)
+    {
+      return make(node->at(index), bindings);
+    }
 
-  bool x_sub_typeparam(Btype& sub, Btype& sup)
-  {
-    // Must be the same type parameter.
-    assert(sup() == TypeParam);
-    return (sub() == TypeParam) && (sub.type == sup.type) &&
-      invariant_ta(sub, sup);
-  }
+    const Token& type() const
+    {
+      return node->type();
+    }
 
-  bool x_sub_view(Btype& sub, Btype& sup)
-  {
-    // TODO:
-    assert(sup() == TypeView);
-    (void)sub;
-    (void)sup;
-    return false;
-  }
+    bool reduce_view()
+    {
+      assert(type() == TypeView);
+      auto l = make(wf / TypeView / Lhs);
 
-  bool x_sub_list(Btype&, Btype&)
-  {
-    // Nothing is a subtype of a TypeList. Two TypeLists may have different
-    // instantiated arity, even if they have the same bounds. Use a TypeParam
-    // with a TypeList upper bounds to get subtyping.
-    return false;
-  }
+      if (l->type().in(
+            {TypeTuple, TypeList, Package, Class, TypeTrait, TypeUnit}))
+      {
+        node = TypeTrue;
+        return true;
+      }
 
-  bool x_sub_func(Btype& sub, Btype& sup)
-  {
-    // The sub function must accept all of the arguments of the sup function
-    // (lhs(sup) <: lhs(sub)), and the sub function must return a subtype of the
-    // sup result (rhs(sub) <: rhs(sup)).
-    assert(sup() == TypeFunc);
-    return (sub() == TypeFunc) &&
-      subtype(
-             {sup.type->at(wf / TypeFunc / Lhs), sup.bindings},
-             {sub.type->at(wf / TypeFunc / Lhs), sub.bindings}) &&
-      subtype(
-             {sub.type->at(wf / TypeFunc / Rhs), sub.bindings},
-             {sup.type->at(wf / TypeFunc / Rhs), sup.bindings});
-  }
+      if (l->type().in({TypeUnion, TypeIsect}))
+      {
+        // (A | B).C = A.C | B.C
+        // (A & B).C = A.C & B.C
+        auto r = node->at(wf / TypeView / Rhs);
+        node = l->type();
 
-  bool x_sub_var(Btype& sub, Btype& sup)
-  {
-    // Must be the same type variable.
-    assert(sup() == TypeVar);
-    return (sub() == TypeVar) && (sub.type->location() == sup.type->location());
-  }
+        for (auto& t : *l->node)
+          node << (TypeView << -t << -r);
 
-  bool x_sub_package(Btype& sub, Btype& sup)
-  {
-    // A package resolves to a class. Once we have package resolution, compare
-    // the classes, as different strings could resolve to the same package.
-    assert(sup() == Package);
-    return (sub() == Package) &&
-      (sub.type->at(wf / Package / Id)->location() ==
-       sup.type->at(wf / Package / Id)->location()) &&
-      invariant_ta(sub, sup);
-  }
+        return true;
+      }
 
-  bool subtype(Btype sub, Btype sup)
-  {
-    // TODO: replace this with sequent calculus.
-    // Empty types have no subtype relationship.
-    if ((sub() == TypeEmpty) || (sup() == TypeEmpty))
+      if (l->type() == TypeAlias)
+      {
+        // This TypeView will itself be reduced.
+        l = l->make(wf / TypeAlias / Type);
+        l->bindings.insert(bindings.begin(), bindings.end());
+        bindings.swap(l->bindings);
+        node = TypeView << -l->node << -node->at(wf / TypeView / Rhs);
+        return true;
+      }
+
+      if (l->type().in({TypeTrue, TypeFalse}))
+      {
+        node = l->node;
+        return true;
+      }
+
+      auto r = make(wf / TypeView / Rhs);
+
+      if (r->type().in({TypeUnion, TypeIsect, TypeTuple, TypeList}))
+      {
+        // A.(B & C) = A.B & A.C
+        // A.(B | C) = A.B | A.C
+        // A.(B, C) = A.B, A.C
+        // A.(B...) = (A.B)...
+        node = r->type();
+
+        for (auto& t : *r->node)
+          node << (TypeView << -l->node << -t);
+
+        return true;
+      }
+
+      if (r->type() == TypeAlias)
+      {
+        // This TypeView will itself be reduced.
+        r = r->make(wf / TypeAlias / Type);
+        r->bindings.insert(bindings.begin(), bindings.end());
+        bindings.swap(r->bindings);
+        node = TypeView << -l->node << -r->node;
+        return true;
+      }
+
+      if (r->type().in(
+            {Package, Class, TypeTrait, TypeUnit, TypeTrue, TypeFalse}))
+      {
+        node = r->node;
+        bindings = r->bindings;
+        return true;
+      }
+
+      if ((l->type() == Const) || (r->type() == Const))
+      {
+        // Const.* = Const
+        // *.Const = Const
+        node = Const;
+        return true;
+      }
+
+      if (l->type().in({Lin, In_}) && (r->type() == Lin))
+      {
+        // (Lin | In).Lin = False
+        node = TypeFalse;
+        return true;
+      }
+
+      if (l->type().in({Lin, In_}) && (r->type().in({In_, Out})))
+      {
+        // (Lin | In).(In | Out) = In
+        node = In_;
+        return true;
+      }
+
+      if ((l->type() == Out) && (r->type().in({Lin, In_, Out})))
+      {
+        // Out.(Lin | In | Out) = Out
+        node = l->node;
+        return true;
+      }
+
+      // TODO: TypeView on LHS or RHS?
+
+      // At this point, the TypeView has a TypeParam or a TypeVar on either the
+      // LHS or RHS, and the other side is a TypeParam, TypeVar, or K.
       return false;
+    }
+  };
 
-    if ((sub() == TypeUnion) && union_sub_x(sub, sup))
-      return true;
-    if ((sub() == TypeIsect) && isect_sub_x(sub, sup))
-      return true;
-    if ((sub() == TypeAlias) && alias_sub_x(sub, sup))
-      return true;
-    if ((sub() == TypeParam) && subtype(sub(wf / TypeParam / Bound), sup))
-      return true;
-    if ((sup() == TypeUnion) && x_sub_union(sub, sup))
-      return true;
-    if ((sup() == TypeIsect) && x_sub_isect(sub, sup))
-      return true;
-    if ((sup() == TypeAlias) && x_sub_alias(sub, sup))
-      return true;
-    if ((sup() == TypeTrait) && x_sub_trait(sub, sup))
-      return true;
-    if ((sup() == TypeParam) && x_sub_typeparam(sub, sup))
-      return true;
-    if ((sup() == TypeTuple) && x_sub_tuple(sub, sup))
-      return true;
-    if ((sup() == Class) && x_sub_class(sub, sup))
-      return true;
-    if ((sup() == TypeView) && x_sub_view(sub, sup))
-      return true;
-    if ((sup() == TypeList) && x_sub_list(sub, sup))
-      return true;
-    if ((sup() == TypeFunc) && x_sub_func(sub, sup))
-      return true;
-    if ((sup() == TypeVar) && x_sub_var(sub, sup))
-      return true;
-    if ((sup() == Package) && x_sub_package(sub, sup))
-      return true;
-    if ((sup().in({TypeUnit, Lin, In_, Out, Const})) && (sub() == sup()))
-      return true;
+  Btype make(Node t, NodeMap<Node> b = {})
+  {
+    return BtypeDef::make(t, b);
+  }
 
-    return false;
+  struct Sequent
+  {
+    std::vector<Btype> lhs_pending;
+    std::vector<Btype> rhs_pending;
+    std::vector<Btype> lhs_atomic;
+    std::vector<Btype> rhs_atomic;
+
+    Sequent() = default;
+
+    Sequent(Sequent& rhs)
+    : lhs_pending(rhs.lhs_pending),
+      rhs_pending(rhs.rhs_pending),
+      lhs_atomic(rhs.lhs_atomic),
+      rhs_atomic(rhs.rhs_atomic)
+    {}
+
+    static bool reduce(Btype l, Btype r)
+    {
+      Sequent seq;
+      seq.lhs_pending.push_back(l);
+      seq.rhs_pending.push_back(r);
+      return seq.reduce();
+    }
+
+    bool reduce()
+    {
+      while (!rhs_pending.empty())
+      {
+        auto r = rhs_pending.back();
+        rhs_pending.pop_back();
+
+        if (r->type() == TypeUnion)
+        {
+          // G |- D, A, B
+          // ---
+          // G |- D, (A | B)
+
+          // RHS union becomes RHS formulae.
+          for (auto& t : *r->node)
+            rhs_pending.push_back(r->make(t));
+        }
+        else if (r->type() == TypeIsect)
+        {
+          // G |- D, A
+          // G |- D, B
+          // ---
+          // G |- D, (A & B)
+
+          // G |- A < B
+          // G |- A < C
+          // ---
+          // G |- A < (B & C)
+
+          // A |- (B & C)
+          // (A |- B), (A |- C)
+
+          // RHS isect is a sequent split.
+          for (auto& t : *r->node)
+          {
+            Sequent seq(*this);
+            seq.rhs_pending.push_back(r->make(t));
+
+            if (!seq.reduce())
+              return false;
+          }
+
+          return true;
+        }
+        else if (r->type() == TypeAlias)
+        {
+          // Try both the typealias and the underlying type.
+          rhs_pending.push_back(r->make(wf / TypeAlias / Type));
+          rhs_atomic.push_back(r);
+        }
+        else
+        {
+          rhs_atomic.push_back(r);
+        }
+      }
+
+      while (!lhs_pending.empty())
+      {
+        auto l = lhs_pending.back();
+        lhs_pending.pop_back();
+
+        if (l->type() == TypeIsect)
+        {
+          // G, A, B |- D
+          // ---
+          // G, (A & B) |- D
+
+          // LHS isect becomes LHS formulae.
+          for (auto& t : *l->node)
+            lhs_pending.push_back(l->make(t));
+        }
+        else if (l->type() == TypeUnion)
+        {
+          // G, A |- D
+          // G, B |- D
+          // ---
+          // G, (A | B) |- D
+
+          // LHS union is a sequent split.
+          for (auto& t : *l->node)
+          {
+            Sequent seq(*this);
+            seq.lhs_pending.push_back(l->make(t));
+
+            if (!seq.reduce())
+              return false;
+          }
+
+          return true;
+        }
+        else if (l->type() == TypeAlias)
+        {
+          // Try both the typealias and the underlying type.
+          lhs_pending.push_back(l->make(wf / TypeAlias / Type));
+          lhs_atomic.push_back(l);
+        }
+        else if (l->type() == TypeParam)
+        {
+          // Try both the typeparam and the upper bound.
+          lhs_pending.push_back(l->make(wf / TypeParam / Bound));
+          lhs_atomic.push_back(l);
+        }
+        else
+        {
+          lhs_atomic.push_back(l);
+        }
+      }
+
+      // If either side is empty, the sequent is trivially true.
+      if (lhs_atomic.empty() || rhs_atomic.empty())
+        return true;
+
+      // G, A |- D, A
+      return std::any_of(lhs_atomic.begin(), lhs_atomic.end(), [&](Btype& l) {
+        return std::any_of(rhs_atomic.begin(), rhs_atomic.end(), [&](Btype& r) {
+          if (l->type() == TypeVar)
+          {
+            // TODO: Accumulate upper bounds.
+            if (r->type() == TypeVar)
+            {
+              // TODO: Accumulate lower bounds.
+            }
+
+            return true;
+          }
+
+          if (r->type() == TypeVar)
+          {
+            // TODO: Accumulate lower bounds.
+            return true;
+          }
+
+          // These must be an exact match.
+          if (r->type().in({TypeUnit, Lin, In_, Out, Const}))
+            return l->type() == r->type();
+
+          if (r->type() == TypeTuple)
+          {
+            // Tuples must be the same arity and each element must be a subtype.
+            // TODO: carry trait assumptions into tuple elements
+            return (l->type() == TypeTuple) &&
+              std::equal(
+                     l->node->begin(),
+                     l->node->end(),
+                     r->node->begin(),
+                     r->node->end(),
+                     [&](auto& t, auto& u) {
+                       return reduce(l->make(t), r->make(u));
+                     });
+          }
+
+          // Nothing is a subtype of a TypeList. Two TypeLists may have
+          // different instantiated arity, even if they have the same bounds.
+          // Use a TypeParam with a TypeList upper bounds to get subtyping.
+          if (r->type() == TypeList)
+            return false;
+
+          // Check for an exact match.
+          if (r->type() == TypeParam)
+            return (l->type() == TypeParam) && (l->node == r->node);
+
+          if (r->type().in({TypeAlias, Class}))
+          {
+            // Check for an exact match.
+            if ((l->type() != r->type()) || (l->node != r->node))
+              return false;
+
+            // Check for invariant type arguments in all enclosing scopes.
+            auto node = r->node;
+
+            while (node)
+            {
+              auto tps = node->at(
+                wf / Class / TypeParams,
+                wf / TypeAlias / TypeParams,
+                wf / Function / TypeParams);
+
+              for (auto& tp : *tps)
+              {
+                auto la = l->make(tp);
+                auto ra = r->make(tp);
+
+                // TODO: carry trait assumptions into type arguments
+                if (!reduce(la, ra) || !reduce(ra, la))
+                  return false;
+              }
+
+              node = node->parent({Class, TypeAlias, Function});
+            }
+
+            return true;
+          }
+
+          if (r->type() == TypeFunc)
+          {
+            // The LHS must accept all the arguments of the RHS and return a
+            // result that is a subtype of the RHS's result.
+            // TODO: carry trait assumptions into function types
+            return (l->type() == TypeFunc) &&
+              reduce(r->make(wf / TypeFunc / Lhs),
+                     l->make(wf / TypeFunc / Lhs)) &&
+              reduce(l->make(wf / TypeFunc / Rhs),
+                     r->make(wf / TypeFunc / Rhs));
+          }
+
+          if (r->type() == Package)
+          {
+            // A package resolves to a class. Once we have package resolution,
+            // compare the classes, as different strings could resolve to the
+            // same package.
+            return (l->type() == Package) &&
+              (l->node->at(wf / Package / Id)->location() ==
+               r->node->at(wf / Package / Id)->location());
+          }
+
+          if (r->type() == TypeTrait)
+          {
+            if (!l->type().in({Class, TypeTrait}))
+              return false;
+
+            // TODO: check that all methods are present and have the correct
+            // type. Add an assumption that (l < r).
+            auto rbody = r->node->at(wf / TypeTrait / ClassBody);
+
+            for (auto rmember : *rbody)
+            {
+              if (rmember->type() != Function)
+                continue;
+
+              auto id = rmember->at(wf / Function / Ident)->location();
+              auto lmembers = l->node->lookdown(id);
+
+              // Function names are distinguished by arity at this point.
+              if (lmembers.size() != 1)
+                return false;
+
+              auto lmember = lmembers.front();
+
+              if (lmember->type() != Function)
+                return false;
+
+              // TODO: function subtyping
+            }
+
+            // TODO: pop the assumption that (l < r)
+            return false;
+          }
+
+          if (r->type() == TypeView)
+          {
+            // TODO: handle viewpoint adaptation
+            return false;
+          }
+
+          // Shouldn't get here in non-testing code.
+          return false;
+        });
+      });
+    }
+  };
+
+  bool subtype(Node sub, Node sup)
+  {
+    return Sequent::reduce(make(sub), make(sup));
   }
 }

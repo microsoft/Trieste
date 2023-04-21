@@ -9,6 +9,7 @@ add_executable(verona
   )
 
 target_link_libraries(verona
+  snmallocshim-static
   Threads::Threads
   re2::re2
   CLI11::CLI11

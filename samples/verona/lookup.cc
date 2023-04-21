@@ -33,11 +33,6 @@ namespace verona
       return;
     }
 
-    // TODO: which stuff in `bindings` do we keep?
-    // only the stuff that shows up in typeparams - all going back to root?
-    // bind parent typeparams to themselves?
-    // or just keep it all
-
     // Bind all typeparams to their corresponding typeargs.
     std::transform(
       ta->begin(),
@@ -127,7 +122,7 @@ namespace verona
         return {};
       }
       else if (lookup.def->type().in(
-                 {TypeUnit, TypeList, TypeTuple, TypeFunc, TypeVar, TypeEmpty}))
+                 {TypeUnit, TypeList, TypeTuple, TypeFunc, TypeVar}))
       {
         // Nothing to do here.
         return {};
@@ -168,7 +163,6 @@ namespace verona
       }
       else
       {
-        // TODO: typeparams to Top here?
         lookups.add(Lookup(def, ta));
       }
     }
@@ -248,7 +242,8 @@ namespace verona
             return true;
 
           set.insert(def.def);
-          bindings.insert(def.bindings.begin(), def.bindings.end());
+          def.bindings.insert(bindings.begin(), bindings.end());
+          bindings.swap(def.bindings);
           worklist.emplace_back(
             set, Lookup(def.def->at(wf / TypeAlias / Type), bindings));
         }
@@ -272,7 +267,8 @@ namespace verona
               return true;
 
             set.insert(def.def);
-            bindings.insert(def.bindings.begin(), def.bindings.end());
+            def.bindings.insert(bindings.begin(), bindings.end());
+            bindings.swap(def.bindings);
             worklist.emplace_back(
               set, Lookup(def.def->at(wf / TypeParam / Bound), bindings));
           }

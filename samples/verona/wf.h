@@ -165,9 +165,9 @@ namespace verona
     ;
   // clang-format on
 
-  inline constexpr auto wfTypeNoAlg = TypeEmpty | TypeUnit | TypeTuple |
-    TypeVar | Package | Lin | In_ | Out | Const | wfTypeName | TypeView |
-    TypeList | TypeFunc | TypeSubtype | TypeTrue | TypeFalse;
+  inline constexpr auto wfTypeNoAlg = TypeUnit | TypeTuple | TypeVar | Package |
+    Lin | In_ | Out | Const | wfTypeName | TypeView | TypeList | TypeFunc |
+    TypeSubtype | TypeTrue | TypeFalse;
 
   inline constexpr auto wfType = wfTypeNoAlg | TypeUnion | TypeIsect;
 
@@ -193,25 +193,8 @@ namespace verona
     TypeAliasName | TypeView | TypeVar;
 
   // clang-format off
-  inline constexpr auto wfPassTypeViewDNF =
-      wfPassTypeFlat
-
-    // Simplified form.
-    | (TypeView <<= (Lhs >>= wfTypeView) * (Rhs >>= wfTypeView))
-    ;
-  // clang-format on
-
-  // clang-format off
-  inline constexpr auto wfPassTypeDNF =
-      wfPassTypeViewDNF
-
-    // Disjunctive normal form.
-    | (TypeIsect <<= wfTypeNoAlg++[2])
-    ;
-  // clang-format on
-  // clang-format off
   inline constexpr auto wfPassConditionals =
-      wfPassTypeDNF
+      wfPassTypeFlat
 
     // Add Conditional, TypeTest, Cast.
     | (Conditional <<= (If >>= Expr) * Block * Block)
