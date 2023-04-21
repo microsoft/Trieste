@@ -166,7 +166,7 @@ namespace verona
       {
         // Const.* = Const
         // *.Const = Const
-        node = r->node;
+        node = Const;
         return;
       }
 
