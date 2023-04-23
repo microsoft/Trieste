@@ -8,15 +8,15 @@ namespace verona
 {
   using namespace wf::ops;
 
-  inline constexpr auto wfRef = Ref >>= Ref | DontCare;
-  inline constexpr auto wfName = Ident >>= Ident | Symbol;
-  inline constexpr auto wfDefault = Default >>= Lambda | DontCare;
+  inline const auto wfRef = Ref >>= Ref | DontCare;
+  inline const auto wfName = Ident >>= Ident | Symbol;
+  inline const auto wfDefault = Default >>= Lambda | DontCare;
 
-  inline constexpr auto wfLiteral =
+  inline const auto wfLiteral =
     Bool | Int | Hex | Bin | Float | HexFloat | Char | Escaped | String | LLVM;
 
   // clang-format off
-  inline constexpr auto wfParser =
+  inline const auto wfParser =
       (Top <<= (Directory | File)++)
     | (Directory <<= (Directory | File)++)
     | (File <<= (Group | List | Equals)++)
@@ -34,13 +34,13 @@ namespace verona
   // clang-format on
 
   // Remove Colon. Add Type.
-  inline constexpr auto wfModulesTokens = wfLiteral | Brace | Paren | Square |
-    List | Equals | Arrow | Use | Class | TypeAlias | Var | Let | Ref | Lin |
-    In_ | Out | Const | If | Else | New | Try | DontCare | Ident | Ellipsis |
-    Dot | DoubleColon | Symbol | Type | LLVMFuncType;
+  inline const auto wfModulesTokens = wfLiteral | Brace | Paren | Square | List |
+    Equals | Arrow | Use | Class | TypeAlias | Var | Let | Ref | Lin | In_ |
+    Out | Const | If | Else | New | Try | DontCare | Ident | Ellipsis | Dot |
+    DoubleColon | Symbol | Type | LLVMFuncType;
 
   // clang-format off
-  inline constexpr auto wfPassModules =
+  inline const auto wfPassModules =
       (Top <<= Group++)
     | (Brace <<= (Group | List | Equals)++)
     | (Paren <<= (Group | List | Equals)++)
@@ -57,7 +57,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassStructure =
+  inline const auto wfPassStructure =
       (Top <<= Class++)
     | (Class <<= Ident * TypeParams * Type * ClassBody)[Ident]
     | (ClassBody <<=
@@ -100,11 +100,11 @@ namespace verona
     ;
   // clang-format on
 
-  inline constexpr auto wfTypeName =
+  inline const auto wfTypeName =
     TypeClassName | TypeTraitName | TypeAliasName | TypeParamName;
 
   // clang-format off
-  inline constexpr auto wfPassTypeNames =
+  inline const auto wfPassTypeNames =
       wfPassStructure
 
     // Add TypeClassName, TypeTraitName, TypeAliasName, TypeParamName, TypeView,
@@ -122,7 +122,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassTypeView =
+  inline const auto wfPassTypeView =
       wfPassTypeNames
 
     // Add TypeView, TypeList.
@@ -137,7 +137,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassTypeFunc =
+  inline const auto wfPassTypeFunc =
       wfPassTypeView
 
     // Add TypeFunc.
@@ -149,7 +149,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassTypeAlg =
+  inline const auto wfPassTypeAlg =
       wfPassTypeFunc
 
     // Add TypeUnion, TypeIsect, TypeSubtype.
@@ -165,14 +165,14 @@ namespace verona
     ;
   // clang-format on
 
-  inline constexpr auto wfTypeNoAlg = TypeUnit | TypeTuple | TypeVar | Package |
+  inline const auto wfTypeNoAlg = TypeUnit | TypeTuple | TypeVar | Package |
     Lin | In_ | Out | Const | wfTypeName | TypeView | TypeList | TypeFunc |
     TypeSubtype | TypeTrue | TypeFalse;
 
-  inline constexpr auto wfType = wfTypeNoAlg | TypeUnion | TypeIsect;
+  inline const auto wfType = wfTypeNoAlg | TypeUnion | TypeIsect;
 
   // clang-format off
-  inline constexpr auto wfPassTypeFlat =
+  inline const auto wfPassTypeFlat =
       wfPassTypeAlg
 
     // No Type nodes inside of type structure.
@@ -189,11 +189,11 @@ namespace verona
     ;
   // clang-format on
 
-  inline constexpr auto wfTypeView = Lin | In_ | Out | Const | TypeParamName |
+  inline const auto wfTypeView = Lin | In_ | Out | Const | TypeParamName |
     TypeAliasName | TypeView | TypeVar;
 
   // clang-format off
-  inline constexpr auto wfPassConditionals =
+  inline const auto wfPassConditionals =
       wfPassTypeFlat
 
     // Add Conditional, TypeTest, Cast.
@@ -211,7 +211,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassReference =
+  inline const auto wfPassReference =
       wfPassConditionals
 
     // Add RefLet, RefVar, Selector, FunctionName.
@@ -231,7 +231,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassReverseApp =
+  inline const auto wfPassReverseApp =
       wfPassReference
 
     // Add Call, Args, NLRCheck.
@@ -249,7 +249,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassApplication =
+  inline const auto wfPassApplication =
       wfPassReverseApp
 
     // Add TupleFlatten, CallLHS, RefVarLHS.
@@ -269,7 +269,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassAssignLHS =
+  inline const auto wfPassAssignLHS =
       wfPassApplication
 
     // Add TupleLHS.
@@ -284,7 +284,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassLocalVar =
+  inline const auto wfPassLocalVar =
       wfPassAssignLHS
 
     // Remove Var, RefVar, RefVarLHS.
@@ -296,7 +296,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassAssignment =
+  inline const auto wfPassAssignment =
       wfPassLocalVar
 
     // Add Bind.
@@ -310,7 +310,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassNLRCheck =
+  inline const auto wfPassNLRCheck =
       wfPassAssignment
 
     // Add Return.
@@ -325,7 +325,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassLambda =
+  inline const auto wfPassLambda =
       wfPassNLRCheck
 
     // Remove Lambda.
@@ -339,7 +339,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassAutoFields =
+  inline const auto wfPassAutoFields =
       wfPassLambda
 
     // Add FieldRef.
@@ -351,7 +351,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassAutoCreate =
+  inline const auto wfPassAutoCreate =
       wfPassAutoFields
     | (FieldLet <<= Ident * Type)[Ident]
     | (FieldVar <<= Ident * Type)[Ident]
@@ -359,14 +359,14 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassDefaultArgs =
+  inline const auto wfPassDefaultArgs =
       wfPassAutoCreate
     | (Param <<= Ident * Type)[Ident]
     ;
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassANF =
+  inline const auto wfPassANF =
       wfPassDefaultArgs
     | (Block <<= (Use | Class | TypeAlias | Bind | RefLet | Return | LLVM)++[1])
     | (Return <<= RefLet)
@@ -384,7 +384,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassDrop =
+  inline const auto wfPassDrop =
       wfPassANF
 
     // Add Copy, Move, Drop. Remove RefLet.
@@ -409,7 +409,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wfPassNameArity =
+  inline const auto wfPassNameArity =
       wfPassDrop
 
     // Remove Symbol from Function, Selector, and FunctionName.
@@ -433,7 +433,7 @@ namespace verona
   // clang-format on
 
   // clang-format off
-  inline constexpr auto wf =
+  inline const auto wf =
       (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * Type)
     | (Use <<= Type)
     | (Class <<= Ident * TypeParams * Type * ClassBody)

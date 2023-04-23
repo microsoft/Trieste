@@ -339,14 +339,14 @@ namespace infix
     static Driver d(
       "infix",
       parser(),
-      wf_parser(),
-      {{"expressions", expressions(), wf_pass_expressions()},
-       {"multiply_divide", multiply_divide(), wf_pass_multiply_divide()},
-       {"add_subtract", add_subtract(), wf_pass_add_subtract()},
-       {"trim", trim(), wf_pass_trim()},
-       {"check_refs", check_refs(), wf_pass_check_refs()},
-       {"maths", maths(), wf_pass_maths()},
-       {"cleanup", cleanup(), wf_pass_cleanup()}});
+      wf_parser,
+      {{"expressions", expressions(), wf_pass_expressions},
+       {"multiply_divide", multiply_divide(), wf_pass_multiply_divide},
+       {"add_subtract", add_subtract(), wf_pass_add_subtract},
+       {"trim", trim(), wf_pass_trim},
+       {"check_refs", check_refs(), wf_pass_check_refs},
+       {"maths", maths(), wf_pass_maths},
+       {"cleanup", cleanup(), wf_pass_cleanup}});
 
     return d;
   }
