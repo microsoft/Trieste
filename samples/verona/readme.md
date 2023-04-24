@@ -1,5 +1,9 @@
 # Todo
 
+WF
+- rvalue Choice: extend in place
+- lvalue Choice: copy
+
 Subtyping
 - `assume` when starting a typetrait check?
 - track `typevar <: x` as upper bounds, `x <: typevar` as lower bounds?

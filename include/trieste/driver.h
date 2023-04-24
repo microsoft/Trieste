@@ -16,31 +16,36 @@ namespace trieste
   {
   private:
     constexpr static auto parse_only = "parse";
-    using PassCheck = std::tuple<std::string, Pass, wf::WellformedF>;
 
     std::string language_name;
     CLI::App app;
     Parse parser;
-    wf::WellformedF wfParser;
-    std::vector<PassCheck> passes;
+    const wf::Wellformed* wfParser;
+    std::vector<std::tuple<std::string, Pass, const wf::Wellformed*>> passes;
     std::vector<std::string> limits;
 
   public:
     Driver(
       const std::string& language_name,
       Parse parser,
-      wf::WellformedF wfParser,
-      std::initializer_list<PassCheck> passes)
+      const wf::Wellformed& wfParser,
+      std::initializer_list<
+        std::tuple<std::string, Pass, const wf::Wellformed&>> passes)
     : language_name(language_name),
       app(language_name),
-      parser(parser),
-      wfParser(wfParser),
-      passes(passes)
+      parser(parser)
     {
+      if (wfParser)
+        this->wfParser = &wfParser;
+
       limits.push_back(parse_only);
 
       for (auto& [name_, pass, wf] : passes)
+      {
+        auto pwf = wf ? &wf : nullptr;
+        this->passes.push_back({name_, pass, pwf});
         limits.push_back(name_);
+      }
     }
 
     int run(int argc, char** argv)
@@ -148,9 +153,9 @@ namespace trieste
 
             // Build the AST, set up the symbol table, check well-formedness,
             // and move on to the next pass.
-            ast = wf.build_ast(source, pos2 + 1, std::cout);
-            auto ok = wf.build_st(ast, std::cout);
-            ok = wf.check(ast, std::cout) && ok;
+            ast = wf->build_ast(source, pos2 + 1, std::cout);
+            auto ok = wf->build_st(ast, std::cout);
+            ok = wf->check(ast, std::cout) && ok;
             start_pass++;
 
             if (!ok)
@@ -170,9 +175,9 @@ namespace trieste
             }
 
             // Build the AST, set up the symbol table, check well-formedness,
-            ast = wfParser.build_ast(source, pos2 + 1, std::cout);
-            auto ok = wfParser.build_st(ast, std::cout);
-            ok = wfParser.check(ast, std::cout) && ok;
+            ast = wfParser->build_ast(source, pos2 + 1, std::cout);
+            auto ok = wfParser->build_st(ast, std::cout);
+            ok = wfParser->check(ast, std::cout) && ok;
 
             if (!ok)
               return -1;
@@ -190,10 +195,10 @@ namespace trieste
 
           if (ok && wfParser)
           {
-            ok = wfParser.build_st(ast, std::cout);
+            ok = wfParser->build_st(ast, std::cout);
 
             if (wfcheck)
-              ok = wfParser.check(ast, std::cout) && ok;
+              ok = wfParser->check(ast, std::cout) && ok;
           }
 
           if (!ok)
@@ -225,10 +230,10 @@ namespace trieste
 
           if (wf)
           {
-            auto ok = wf.build_st(ast, std::cout);
+            auto ok = wf->build_st(ast, std::cout);
 
             if (wfcheck)
-              ok = wf.check(ast, std::cout) && ok;
+              ok = wf->check(ast, std::cout) && ok;
 
             if (!ok)
             {
@@ -294,7 +299,7 @@ namespace trieste
             std::stringstream ss1;
             std::stringstream ss2;
 
-            auto ast = prev.gen(parser.generators(), seed, test_max_depth);
+            auto ast = prev->gen(parser.generators(), seed, test_max_depth);
             ss1 << "============" << std::endl
                 << "Pass: " << pass_name << ", seed: " << seed << std::endl
                 << "------------" << std::endl
@@ -311,8 +316,8 @@ namespace trieste
 
             std::stringstream ss3;
 
-            auto ok = wf.build_st(new_ast, ss3);
-            ok = wf.check(new_ast, ss3) && ok;
+            auto ok = wf->build_st(new_ast, ss3);
+            ok = wf->check(new_ast, ss3) && ok;
 
             if (!ok)
             {

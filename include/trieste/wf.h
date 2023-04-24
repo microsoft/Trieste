@@ -6,7 +6,7 @@
 #include "gen.h"
 
 #include <array>
-#include <tuple>
+#include <variant>
 
 /* Notes on how to use the Well-formedness checker:
  *
@@ -19,15 +19,21 @@ namespace trieste
 {
   namespace wf
   {
+    using Nonterminal = std::function<bool(const Token&)>;
+
     struct Gen
     {
+      Nonterminal nonterminal;
       GenNodeLocationF gloc;
       Rand rand;
       size_t max_depth;
-      std::set<Token> nonterminals;
 
-      Gen(GenNodeLocationF gloc, Seed seed, size_t max_depth)
-      : gloc(gloc), rand(seed), max_depth(max_depth)
+      Gen(
+        Nonterminal nonterminal,
+        GenNodeLocationF gloc,
+        Seed seed,
+        size_t max_depth)
+      : nonterminal(nonterminal), gloc(gloc), rand(seed), max_depth(max_depth)
       {}
 
       Result next()
@@ -41,10 +47,9 @@ namespace trieste
       }
     };
 
-    template<size_t N>
     struct Choice
     {
-      std::array<Token, N> types;
+      std::vector<Token> types;
 
       bool check(Node node, std::ostream& out) const
       {
@@ -67,15 +72,13 @@ namespace trieste
           out << node->location().origin_linecol() << "unexpected "
               << node->type().str() << ", expected a ";
 
-          size_t n = 0;
-          for (auto& type : types)
+          for (size_t i = 0; i < types.size(); ++i)
           {
-            out << type.str();
-            ++n;
+            out << types[i].str();
 
-            if (n <= (N - 1))
+            if (i < (types.size() - 2))
               out << ", ";
-            if (n == (N - 1))
+            if (i == (types.size() - 2))
               out << "or ";
           }
 
@@ -92,23 +95,25 @@ namespace trieste
 
         if (depth < g.max_depth)
         {
-          type = types[g.next() % N];
+          type = types[g.next() % types.size()];
         }
         else
         {
-          std::vector<Token> filtered;
+          auto i = g.next() % types.size();
+          auto wrap = i;
+          type = types[i];
 
-          for (size_t i = 0; i < N; ++i)
+          do
           {
-            auto find = g.nonterminals.find(types[i]);
-            if (find == g.nonterminals.end())
-              filtered.push_back(types[i]);
-          }
+            if (!g.nonterminal(types[i]))
+            {
+              type = types[i];
+              break;
+            }
 
-          if (filtered.size() == 0)
-            type = types[g.next() % N];
-          else
-            type = filtered.at(g.next() % filtered.size());
+            // If all choices are nonterminal, use the initially selected one.
+            i = (i + 1) % types.size();
+          } while (i != wrap);
         }
 
         // We may need a fresh location, so the child needs to be in the AST by
@@ -117,47 +122,28 @@ namespace trieste
         node->push_back(child);
         child->set_location(g.location(child));
       }
-
-      Token find_type(const Location& type) const
-      {
-        for (auto& t : types)
-        {
-          if (t.str() == type.view())
-            return t;
-        }
-
-        return Invalid;
-      }
     };
 
-    struct SequenceBase
-    {};
-
-    template<size_t N>
-    struct Sequence : SequenceBase
+    struct Sequence
     {
-      Choice<N> types;
+      Choice choice;
       size_t minlen;
-      Token binding;
 
-      CONSTEVAL Sequence(const Choice<N>& types)
-      : types(types), minlen(0), binding(Invalid)
-      {}
-      CONSTEVAL Sequence(const Sequence<N>& seq, const Token& binding)
-      : types(seq.types), minlen(seq.minlen), binding(binding)
-      {}
-      CONSTEVAL Sequence(const Choice<N>& types, size_t minlen, Token binding)
-      : types(types), minlen(minlen), binding(binding)
-      {}
-
-      CONSTEVAL auto operator[](size_t new_minlen) const
+      Index index(const Token&, const Token&) const
       {
-        return Sequence<N>(types, new_minlen, binding);
+        return {};
       }
 
-      constexpr bool terminal() const
+      Sequence& operator[](size_t new_minlen)
       {
-        return false;
+        minlen = new_minlen;
+        return *this;
+      }
+
+      Sequence& operator[](const Token&)
+      {
+        // Do nothing.
+        return *this;
       }
 
       bool check(Node node, std::ostream& out) const
@@ -168,7 +154,7 @@ namespace trieste
         for (auto& child : *node)
         {
           has_err = has_err || (child->type() == Error);
-          ok = types.check(child, out) && ok;
+          ok = choice.check(child, out) && ok;
         }
 
         if (!has_err && (node->size() < minlen))
@@ -179,193 +165,135 @@ namespace trieste
           ok = false;
         }
 
-        if (!binding.in({Invalid, Include}))
-        {
-          out << node->location().origin_linecol() << "can't bind a "
-              << node->type().str() << " sequence in the symbol table"
-              << std::endl
-              << node->location().str() << node->str() << std::endl;
-          ok = false;
-        }
-
         return ok;
+      }
+
+      bool build_st(Node, std::ostream&) const
+      {
+        // Do nothing.
+        return true;
       }
 
       void gen(Gen& g, size_t depth, Node node) const
       {
         for (size_t i = 0; i < minlen; ++i)
-          types.gen(g, depth, node);
+          choice.gen(g, depth, node);
 
         while (g.next() % 2)
-          types.gen(g, depth, node);
-      }
-
-      bool build_st(Node node, std::ostream&) const
-      {
-        if (binding == Include)
-          node->include();
-
-        return true;
-      }
-
-      Token find_type(const Location& type) const
-      {
-        return types.find_type(type);
+          choice.gen(g, depth, node);
       }
     };
 
-    template<size_t N>
-    Sequence(const Choice<N>& types) -> Sequence<N>;
-
-    template<size_t N>
-    Sequence(size_t minlen, const Choice<N>& types) -> Sequence<N>;
-
-    struct FieldBase
-    {};
-
-    template<size_t N>
-    struct Field : FieldBase
+    struct Field
     {
       Token name;
-      Choice<N> types;
+      Choice choice;
     };
 
-    struct FieldsBase
-    {};
-
-    template<typename... Ts>
-    struct Fields : FieldsBase
+    struct Fields
     {
-      static_assert(
-        std::conjunction_v<std::is_base_of<FieldBase, Ts>...>, "Not a Field");
-
-      std::tuple<Ts...> fields;
+      std::vector<Field> fields;
       Token binding;
 
-      CONSTEVAL Fields() : fields(), binding(Invalid) {}
-
-      template<size_t N>
-      CONSTEVAL Fields(const Field<N>& field)
-      : fields(std::make_tuple(field)), binding(Invalid)
-      {}
-
-      template<typename... Ts2, typename... Ts3>
-      CONSTEVAL Fields(const Fields<Ts2...>& fst, const Fields<Ts3...>& snd)
-      : fields(std::tuple_cat(fst.fields, snd.fields)), binding(Invalid)
-      {}
-
-      template<typename... Ts2>
-      CONSTEVAL Fields(const Fields<Ts2...>& fields, const Token& binding)
-      : fields(fields.fields), binding(binding)
-      {}
-
-      constexpr bool terminal() const
+      Index index(const Token& type, const Token& field) const
       {
-        return sizeof...(Ts) == 0;
+        auto i = 0;
+
+        for (auto& f : fields)
+        {
+          if (f.name == field)
+            return Index(type, i);
+
+          ++i;
+        }
+
+        return {};
+      }
+
+      Fields& operator[](const Token& type)
+      {
+        this->binding = type;
+        return *this;
       }
 
       bool check(Node node, std::ostream& out) const
       {
-        return check_field<0>(true, node, node->begin(), node->end(), out);
-      }
+        auto field = fields.begin();
+        auto end = fields.end();
+        bool ok = true;
 
-      template<size_t I>
-      bool check_field(
-        bool ok, Node node, NodeIt child, NodeIt end, std::ostream& out) const
-      {
-        if (child == end)
+        for (auto& child : *node)
         {
-          if constexpr (I < sizeof...(Ts))
-          {
-            // Too few child nodes.
-            out << node->location().origin_linecol()
-                << "too few child nodes in " << node->type().str() << std::endl
-                << node->location().str() << node->str() << std::endl;
-            return false;
-          }
-          else
-          {
-            return ok;
-          }
-        }
+          // A node that contains an Error node stops checking well-formedness
+          // from that point.
+          if (child->type() == Error)
+            break;
 
-        // A node that contains an Error node stops checking well-formedness
-        // from that point.
-        if ((*child)->type() == Error)
-          return ok;
+          // If we run out of fields, the node is ill-formed.
+          if (field == end)
+            break;
 
-        if constexpr (I >= sizeof...(Ts))
-        {
-          // Too many child nodes.
-          out << (*child)->location().origin_linecol()
-              << "too many child nodes in " << node->type().str() << std::endl
-              << (*child)->location().str() << node->str() << std::endl;
-          return false;
-        }
-        else
-        {
-          auto& field = std::get<I>(fields);
-          ok = field.types.check(*child, out) && ok;
+          ok = field->choice.check(child, out) && ok;
 
-          if ((binding != Invalid) && (field.name == binding))
+          if ((binding != Invalid) && (field->name == binding))
           {
-            auto defs = node->scope()->look((*child)->location());
+            auto defs = node->scope()->look(child->location());
             auto find = std::find(defs.begin(), defs.end(), node);
 
             if (find == defs.end())
             {
-              out << (*child)->location().origin_linecol()
+              out << child->location().origin_linecol()
                   << "missing symbol table binding for " << node->type().str()
                   << std::endl
-                  << (*child)->location().str() << node->str() << std::endl;
+                  << child->location().str() << node->str() << std::endl;
               ok = false;
             }
           }
 
-          return check_field<I + 1>(ok, node, ++child, end, out);
+          ++field;
         }
+
+        if (node->size() != fields.size())
+        {
+          out << node->location().origin_linecol() << "expected "
+              << fields.size() << " children, found " << node->size()
+              << std::endl
+              << node->location().str() << node->str() << std::endl;
+          return false;
+        }
+
+        return true;
       }
 
       void gen(Gen& g, size_t depth, Node node) const
       {
-        gen_field<0>(g, depth, node);
-      }
-
-      template<size_t I>
-      void gen_field(Gen& g, size_t depth, Node node) const
-      {
-        if constexpr (I < sizeof...(Ts))
+        for (auto& field : fields)
         {
-          auto& field = std::get<I>(fields);
-          field.types.gen(g, depth, node);
+          field.choice.gen(g, depth, node);
 
           if (binding == field.name)
             node->bind(node->back()->location());
-
-          gen_field<I + 1>(g, depth, node);
         }
       }
 
       bool build_st(Node node, std::ostream& out) const
       {
+        if (binding == Invalid)
+          return true;
+
         if (binding == Include)
-          node->include();
-        else if (binding != Invalid)
-          return build_st_i<0>(node, out);
-
-        return true;
-      }
-
-      template<size_t I>
-      bool build_st_i(Node node, std::ostream& out) const
-      {
-        if constexpr (I < sizeof...(Ts))
         {
-          auto& field = std::get<I>(fields);
+          node->include();
+          return true;
+        }
 
-          if (binding == field.name)
+        size_t index = 0;
+
+        for (auto& field : fields)
+        {
+          if (field.name == binding)
           {
-            auto name = node->at(I)->location();
+            auto name = node->at(index)->location();
 
             if (!node->bind(name))
             {
@@ -379,132 +307,106 @@ namespace trieste
 
               return false;
             }
+
             return true;
           }
-          else
-          {
-            return build_st_i<I + 1>(node, out);
-          }
-        }
-        else
-        {
-          out << node->location().origin_linecol() << "no binding found for "
-              << node->type().str() << std::endl
-              << node->location().str() << node->str() << std::endl;
-          return false;
-        }
-      }
 
-      Token find_type(const Location& type) const
-      {
-        return find_type_i<0>(type);
-      }
-
-      template<size_t I>
-      Token find_type_i(const Location& type) const
-      {
-        if constexpr (I < sizeof...(Ts))
-        {
-          auto& field = std::get<I>(fields);
-          auto t = field.types.find_type(type);
-
-          if (t != Invalid)
-            return t;
-          else
-            return find_type_i<I + 1>(type);
+          ++index;
         }
-        else
-        {
-          return Invalid;
-        }
+
+        out << node->location().origin_linecol() << "no binding found for "
+            << node->type().str() << std::endl
+            << node->location().str() << node->str() << std::endl;
+        return false;
       }
     };
 
-    Fields()->Fields<>;
+    using ShapeT = std::variant<Sequence, Fields>;
 
-    template<size_t N>
-    Fields(const Field<N>& field) -> Fields<Field<N>>;
-
-    template<typename... Ts2, typename... Ts3>
-    Fields(const Fields<Ts2...>&, const Fields<Ts3...>&)
-      -> Fields<Ts2..., Ts3...>;
-
-    template<typename... Ts2>
-    Fields(const Fields<Ts2...>&, const Token&) -> Fields<Ts2...>;
-
-    struct ShapeBase
-    {};
-
-    template<typename T>
-    struct Shape : ShapeBase
+    template<class... Ts>
+    struct overload : Ts...
     {
-      static_assert(
-        std::is_base_of_v<FieldsBase, T> || std::is_base_of_v<SequenceBase, T>,
-        "Not Fields or a Sequence");
+      using Ts::operator()...;
+    };
 
+    template<class... Ts>
+    overload(Ts...) -> overload<Ts...>;
+
+    struct Shape
+    {
       Token type;
-      T shape;
+      ShapeT shape;
 
-      CONSTEVAL Shape(Token type, const T& shape) : type(type), shape(shape) {}
-
-      CONSTEVAL auto operator[](const Token& binding) const
+      Shape& operator[](const Token& binding)
       {
-        return Shape<T>(type, T(shape, binding));
+        std::visit([&](auto& s) { s[binding]; }, shape);
+        return *this;
       }
     };
 
-    template<typename T>
-    Shape(Token, const T&) -> Shape<T>;
-
-    struct WellformedBase
-    {};
-
-    struct WellformedF
+    struct Wellformed
     {
-      std::function<bool(Node, std::ostream&)> check;
-      std::function<Node(GenNodeLocationF, Seed, size_t)> gen;
-      std::function<bool(Node, std::ostream&)> build_st;
-      std::function<Node(Source, size_t, std::ostream&)> build_ast;
+      std::map<Token, ShapeT> shapes;
+      Tokens types;
 
       operator bool() const
       {
-        return (check != nullptr) && (gen != nullptr);
+        return !shapes.empty();
       }
-    };
 
-    template<typename... Ts>
-    struct Wellformed : WellformedBase
-    {
-      static_assert(
-        std::conjunction_v<std::is_base_of<ShapeBase, Ts>...>, "Not a Shape");
-
-      std::tuple<Ts...> shapes;
-
-      CONSTEVAL Wellformed() : shapes() {}
-
-      template<typename T>
-      CONSTEVAL Wellformed(const Shape<T>& shape)
-      : shapes(std::make_tuple(shape))
-      {}
-
-      template<typename... Ts1, typename... Ts2>
-      CONSTEVAL
-      Wellformed(const Wellformed<Ts1...>& wf1, const Wellformed<Ts2...>& wf2)
-      : shapes(std::tuple_cat(wf1.shapes, wf2.shapes))
-      {}
-
-      template<size_t I = 0>
-      void nonterminals(std::set<Token>& set) const
+      Index index(const Token& type, const Token& field) const
       {
-        if constexpr (I < sizeof...(Ts))
-        {
-          auto& shape = std::get<I>(shapes);
+        auto find = shapes.find(type);
 
-          if (!shape.shape.terminal())
-            set.insert(shape.type);
+        if (find == shapes.end())
+          return {};
 
-          nonterminals<I + 1>(set);
-        }
+        return std::visit(
+          [&](auto& shape) { return shape.index(type, field); }, find->second);
+
+        return {};
+      }
+
+      void prepend(const Shape& shape)
+      {
+        auto find = shapes.find(shape.type);
+        if (find == shapes.end())
+          append(shape);
+      }
+
+      void prepend(Shape&& shape)
+      {
+        auto find = shapes.find(shape.type);
+        if (find == shapes.end())
+          append(shape);
+      }
+
+      void append(const Shape& shape)
+      {
+        register_shape(shape);
+        shapes[shape.type] = shape.shape;
+      }
+
+      void append(Shape&& shape)
+      {
+        register_shape(shape);
+        shapes[shape.type] = std::move(shape.shape);
+      }
+
+      void register_shape(const Shape& shape)
+      {
+        register_token(types, shape.type);
+
+        std::visit(
+          overload{
+            [&](const Sequence& sequence) {
+              register_tokens(types, sequence.choice.types);
+            },
+            [&](const Fields& fields) {
+              for (auto& field : fields.fields)
+                register_tokens(types, field.choice.types);
+            }},
+          shape.shape);
       }
 
       bool check(Node node, std::ostream& out) const
@@ -515,7 +417,22 @@ namespace trieste
         if (node->type() == Error)
           return true;
 
-        bool ok = check_i(node, out);
+        auto find = shapes.find(node->type());
+
+        if (find == shapes.end())
+        {
+          // If the shape isn't present, assume it should be empty.
+          if (node->empty())
+            return true;
+
+          out << node->location().origin_linecol()
+              << "expected 0 children, found " << node->size() << std::endl
+              << node->location().str() << node->str() << std::endl;
+          return false;
+        }
+
+        bool ok = std::visit(
+          [&](auto& shape) { return shape.check(node, out); }, find->second);
 
         for (auto& child : *node)
         {
@@ -529,8 +446,8 @@ namespace trieste
                 << child->parent()->location().origin_linecol()
                 << "and here:" << std::endl
                 << child->parent()->str() << std::endl
-                << "Implementation needs to explicitly clone nodes if they are "
-                   "duplicated.";
+                << "Your language implementation needs to explicitly clone "
+                   "nodes if they're duplicated.";
             ok = false;
           }
 
@@ -540,95 +457,63 @@ namespace trieste
         return ok;
       }
 
-      template<size_t I = sizeof...(Ts) - 1>
-      bool check_i(Node node, std::ostream& out) const
-      {
-        // Check from the end, such that composition overrides any previous
-        // definition of a shape.
-        if constexpr (I >= sizeof...(Ts))
-        {
-          // If the shape isn't present, assume it should be empty.
-          if (node->empty())
-            return true;
-
-          // Too many child nodes.
-          out << node->location().origin_linecol() << "too many child nodes in "
-              << node->type().str() << std::endl
-              << node->location().str() << node->str() << std::endl;
-          return false;
-        }
-        else
-        {
-          auto& shape = std::get<I>(shapes);
-
-          if (node->type() == shape.type)
-            return shape.shape.check(node, out);
-
-          return check_i<I - 1>(node, out);
-        }
-      }
-
       Node gen(GenNodeLocationF gloc, Seed seed, size_t max_depth) const
       {
-        auto g = Gen(gloc, seed, max_depth);
-        nonterminals(g.nonterminals);
+        auto g = Gen(
+          [this](const Token& type) {
+            return shapes.find(type) != shapes.end();
+          },
+          gloc,
+          seed,
+          max_depth);
+
         auto node = NodeDef::create(Top);
-        gen_i(g, 0, node);
+        gen_node(g, 0, node);
         return node;
       }
 
-      template<size_t I = sizeof...(Ts) - 1>
-      void gen_i(Gen& g, size_t depth, Node node) const
+      void gen_node(Gen& g, size_t depth, Node node) const
       {
-        // Generate from the end, such that composition overrides any previous
-        // definition of a shape. If the shape isn't present, do nothing, as we
-        // assume it should be empty.
-        if constexpr (I < sizeof...(Ts))
-        {
-          auto& shape = std::get<I>(shapes);
+        if (!node)
+          return;
 
-          if (shape.type == node->type())
-          {
-            shape.shape.gen(g, depth, node);
+        // If the shape isn't present, do nothing, as we assume it should be
+        // empty.
+        auto find = shapes.find(node->type());
+        if (find == shapes.end())
+          return;
 
-            for (auto& child : *node)
-              gen_i(g, depth + 1, child);
-          }
-          else
-          {
-            gen_i<I - 1>(g, depth, node);
-          }
-        }
+        std::visit(
+          [&](auto& shape) { shape.gen(g, depth, node); }, find->second);
+
+        for (auto& child : *node)
+          gen_node(g, depth + 1, child);
       }
 
       bool build_st(Node node, std::ostream& out) const
       {
+        if (!node)
+          return false;
+
         if (node->type() == Error)
           return true;
 
         node->clear_symbols();
-        auto ok = build_st_i(node, out);
+
+        bool ok = true;
+        auto find = shapes.find(node->type());
+
+        if (find != shapes.end())
+        {
+          ok = std::visit(
+            [&](auto& shape) { return shape.build_st(node, out); },
+            find->second);
+        }
 
         for (auto& child : *node)
           ok = build_st(child, out) && ok;
 
         return ok;
-      }
-
-      template<size_t I = sizeof...(Ts) - 1>
-      bool build_st_i(Node node, std::ostream& out) const
-      {
-        if constexpr (I < sizeof...(Ts))
-        {
-          auto& shape = std::get<I>(shapes);
-
-          if (shape.type == node->type())
-            return shape.shape.build_st(node, out);
-          else
-            return build_st_i<I - 1>(node, out);
-        }
-
-        return true;
       }
 
       Node build_ast(Source source, size_t pos, std::ostream& out) const
@@ -658,14 +543,16 @@ namespace trieste
 
           // If we don't have a valid node type, it's an error.
           auto type_loc = re_match.at(1);
-          auto type = find_type_i(ast, type_loc);
+          auto find = types.find(type_loc.view());
 
-          if (type == Invalid)
+          if (find == types.end())
           {
             out << type_loc.origin_linecol() << "unknown type" << std::endl
                 << type_loc.str() << std::endl;
             return {};
           }
+
+          auto type = find->second;
 
           // Find the source location of the node as a netstring.
           auto ident_loc = type_loc;
@@ -673,7 +560,8 @@ namespace trieste
           if (re_iterator.consume(id, re_match))
           {
             auto len = re_match.parse<size_t>(1);
-            ident_loc = Location(source, ident_loc.pos + ident_loc.len, len);
+            ident_loc =
+              Location(source, re_match.at().pos + re_match.at().len, len);
             re_iterator.skip(len);
           }
 
@@ -708,283 +596,323 @@ namespace trieste
             << loc.str() << std::endl;
         return {};
       }
-
-      template<size_t I = sizeof...(Ts) - 1>
-      Token find_type_i(Node node, const Location& type) const
-      {
-        if constexpr (I < sizeof...(Ts))
-        {
-          auto& shape = std::get<I>(shapes);
-
-          if (shape.type.str() == type.view())
-            return shape.type;
-
-          if (node && (shape.type == node->type()))
-          {
-            auto t = shape.shape.find_type(type);
-
-            if (t != Invalid)
-              return t;
-          }
-
-          return find_type_i<I - 1>(node, type);
-        }
-        else
-        {
-          return Invalid;
-        }
-      }
-
-      auto operator()() const
-      {
-        return WellformedF{
-          [this](Node node, std::ostream& out) { return check(node, out); },
-          [this](GenNodeLocationF gloc, Seed seed, size_t max_depth) {
-            return gen(gloc, seed, max_depth);
-          },
-          [this](Node node, std::ostream& out) { return build_st(node, out); },
-          [this](Source source, size_t pos, std::ostream& out) {
-            return build_ast(source, pos, out);
-          },
-        };
-      }
     };
-
-    Wellformed()->Wellformed<>;
-
-    template<typename T>
-    Wellformed(const Shape<T>&) -> Wellformed<Shape<T>>;
-
-    template<typename... Ts1, typename... Ts2>
-    Wellformed(const Wellformed<Ts1...>&, const Wellformed<Ts2...>&)
-      -> Wellformed<Ts1..., Ts2...>;
-
-    template<size_t I = 0, typename... Ts>
-    inline constexpr Index index_fields(
-      const Fields<Ts...>& fields, const Token& type, const Token& name)
-    {
-      if constexpr (I < sizeof...(Ts))
-      {
-        if (std::get<I>(fields.fields).name == name)
-          return Index(type, I);
-
-        return index_fields<I + 1>(fields, type, name);
-      }
-      else
-        return {};
-    }
-
-    template<size_t I = 0, typename... Ts>
-    inline constexpr Index index_wellformed(
-      const Wellformed<Ts...>& wf, const Token& type, const Token& name)
-    {
-      if constexpr (I < sizeof...(Ts))
-      {
-        auto& shape = std::get<I>(wf.shapes);
-
-        if (type == shape.type)
-        {
-          // If this shape is for the right type, search it.
-          if constexpr (std::is_base_of_v<FieldsBase, decltype(shape.shape)>)
-            return index_fields<0>(shape.shape, shape.type, name);
-          else
-            // Unless it's a sequence, which doesn't have fields.
-            return {};
-        }
-        else
-          return index_wellformed<I + 1>(wf, type, name);
-      }
-      else
-        return {};
-    }
-
-    template<size_t N>
-    inline CONSTEVAL auto to_wf(const Choice<N>& choice);
 
     namespace ops
     {
-      inline CONSTEVAL auto operator|(const Token& type1, const Token& type2)
+      inline Choice operator|(const Token& type1, const Token& type2)
       {
-        return Choice<2>{type1, type2};
+        return Choice{std::vector<Token>{type1, type2}};
       }
 
-      template<size_t N>
-      inline CONSTEVAL auto
-      operator|(const Token& type, const Choice<N>& choice)
+      inline Choice operator|(const Token& type, const Choice& choice)
       {
-        Choice<N + 1> result;
-        result.types[0] = type;
-        std::copy_n(choice.types.begin(), N, result.types.begin() + 1);
+        Choice result{choice.types};
+        result.types.push_back(type);
         return result;
       }
 
-      template<size_t N>
-      inline CONSTEVAL auto
-      operator|(const Choice<N>& choice, const Token& type)
+      inline Choice operator|(const Token& type, Choice&& choice)
       {
-        Choice<N + 1> result;
-        std::copy_n(choice.types.begin(), N, result.types.begin());
-        result.types[N] = type;
+        choice.types.push_back(type);
+        return choice;
+      }
+
+      inline Choice operator|(const Choice& choice1, const Choice& choice2)
+      {
+        Choice result{choice1.types};
+        result.types.insert(
+          result.types.end(), choice2.types.begin(), choice2.types.end());
         return result;
       }
 
-      template<size_t N1, size_t N2>
-      inline CONSTEVAL auto
-      operator|(const Choice<N1>& choice1, const Choice<N2>& choice2)
+      inline Choice operator|(const Choice& choice1, Choice&& choice2)
       {
-        Choice<N1 + N2> result;
-        std::copy_n(choice1.types.begin(), N1, result.types.begin());
-        std::copy_n(choice2.types.begin(), N2, result.types.begin() + N1);
-        return result;
+        choice2.types.insert(
+          choice2.types.end(), choice1.types.begin(), choice1.types.end());
+        return choice2;
       }
 
-      inline CONSTEVAL auto operator++(const Token& type, int)
+      inline Choice operator|(const Choice& choice, const Token& type)
       {
-        return Sequence<1>(Choice<1>{type});
+        return type | choice;
       }
 
-      template<size_t N>
-      inline CONSTEVAL auto operator++(const Choice<N>& choice, int)
+      inline Choice operator|(Choice&& choice, const Token& type)
       {
-        return Sequence<N>(choice);
+        return type | choice;
       }
 
-      template<size_t N>
-      inline CONSTEVAL auto
-      operator>>=(const Token& name, const Choice<N>& choice)
+      inline Choice operator|(Choice&& choice1, const Choice& choice2)
       {
-        return Fields(Field<N>{{}, name, choice});
+        return choice2 | choice1;
       }
 
-      inline CONSTEVAL auto operator>>=(const Token& name, const Token& type)
+      inline Sequence operator++(const Token& type, int)
       {
-        return Fields(Field<1>{{}, name, Choice<1>{type}});
+        return Sequence{Choice{std::vector<Token>{type}}, 0};
       }
 
-      template<typename... Ts1, typename... Ts2>
-      inline CONSTEVAL auto
-      operator*(const Fields<Ts1...>& fst, const Fields<Ts2...>& snd)
+      inline Sequence operator++(const Choice& choice, int)
       {
-        return Fields(fst, snd);
+        return Sequence{choice, 0};
       }
 
-      template<typename... Ts>
-      inline CONSTEVAL auto
-      operator*(const Fields<Ts...>& fst, const Token& snd)
+      inline Sequence operator++(Choice&& choice, int)
       {
-        return fst * (snd >>= snd);
+        return Sequence{choice, 0};
       }
 
-      template<typename... Ts>
-      inline CONSTEVAL auto
-      operator*(const Token& fst, const Fields<Ts...>& snd)
+      inline Field operator>>=(const Token& name, const Token& type)
       {
-        return (fst >>= fst) * snd;
+        return Field{name, Choice{std::vector<Token>{type}}};
       }
 
-      inline CONSTEVAL auto operator*(const Token& fst, const Token& snd)
+      inline Field operator>>=(const Token& name, const Choice& choice)
+      {
+        return Field{name, choice};
+      }
+
+      inline Field operator>>=(const Token& name, Choice&& choice)
+      {
+        return Field{name, choice};
+      }
+
+      inline Fields operator*(const Field& fst, const Field& snd)
+      {
+        return Fields{std::vector<Field>{fst, snd}, Invalid};
+      }
+
+      inline Fields operator*(const Field& fst, Field&& snd)
+      {
+        return Fields{std::vector<Field>{fst, snd}, Invalid};
+      }
+
+      inline Fields operator*(Field&& fst, const Field& snd)
+      {
+        return Fields{std::vector<Field>{fst, snd}, Invalid};
+      }
+
+      inline Fields operator*(Field&& fst, Field&& snd)
+      {
+        return Fields{std::vector<Field>{fst, snd}, Invalid};
+      }
+
+      inline Fields operator*(const Token& fst, const Token& snd)
       {
         return (fst >>= fst) * (snd >>= snd);
       }
 
-      template<size_t N>
-      inline CONSTEVAL auto
-      operator<<=(const Token& type, const Sequence<N>& seq)
+      inline Fields operator*(const Field& fst, const Token& snd)
       {
-        return Shape(type, seq);
+        return fst * (snd >>= snd);
       }
 
-      template<typename... Ts>
-      inline CONSTEVAL auto
-      operator<<=(const Token& type, const Fields<Ts...>& fields)
+      inline Fields operator*(Field&& fst, const Token& snd)
       {
-        return Shape(type, fields);
+        return fst * (snd >>= snd);
       }
 
-      template<size_t N>
-      inline CONSTEVAL auto
-      operator<<=(const Token& type, const Choice<N>& choice)
+      inline Fields operator*(const Token& fst, const Field& snd)
+      {
+        return (fst >>= fst) * snd;
+      }
+
+      inline Fields operator*(const Token& fst, Field&& snd)
+      {
+        return (fst >>= fst) * snd;
+      }
+
+      inline Fields operator*(const Fields& fst, const Field& snd)
+      {
+        auto fields = Fields{fst.fields, Invalid};
+        fields.fields.push_back(snd);
+        return fields;
+      }
+
+      inline Fields operator*(Fields&& fst, const Field& snd)
+      {
+        fst.fields.push_back(snd);
+        return fst;
+      }
+
+      inline Fields operator*(Fields&& fst, const Token& snd)
+      {
+        return fst * (snd >>= snd);
+      }
+
+      inline Shape operator<<=(const Token& type, const Fields& fields)
+      {
+        return Shape{type, fields};
+      }
+
+      inline Shape operator<<=(const Token& type, const Sequence& seq)
+      {
+        return Shape{type, seq};
+      }
+
+      inline Shape operator<<=(const Token& type, const Field& field)
+      {
+        return type <<= Fields{std::vector<Field>{field}, Invalid};
+      }
+
+      inline Shape operator<<=(const Token& type, Field&& field)
+      {
+        return type <<= Fields{std::vector<Field>{field}, Invalid};
+      }
+
+      inline Shape operator<<=(const Token& type, const Choice& choice)
       {
         return type <<= (type >>= choice);
       }
 
-      inline CONSTEVAL auto operator<<=(const Token& type1, const Token& type2)
+      inline Shape operator<<=(const Token& type, Choice&& choice)
+      {
+        return type <<= (type >>= choice);
+      }
+
+      inline Shape operator<<=(const Token& type1, const Token& type2)
       {
         return type1 <<= (type2 >>= type2);
       }
 
-      template<typename... Ts1, typename... Ts2>
-      inline CONSTEVAL auto
-      operator|(const Wellformed<Ts1...>& wf1, const Wellformed<Ts2...>& wf2)
+      inline Wellformed operator|(const Wellformed& wf1, const Wellformed& wf2)
       {
-        return Wellformed(wf1, wf2);
-      }
-
-      template<typename... Ts, typename T>
-      inline CONSTEVAL auto
-      operator|(const Wellformed<Ts...>& wf, const Shape<T>& shape)
-      {
-        return wf | Wellformed(shape);
-      }
-
-      template<typename T, typename... Ts>
-      inline CONSTEVAL auto
-      operator|(const Shape<T>& shape, const Wellformed<Ts...>& wf)
-      {
-        return Wellformed(shape) | wf;
-      }
-
-      template<typename T1, typename T2>
-      inline CONSTEVAL auto
-      operator|(const Shape<T1>& shape1, const Shape<T2>& shape2)
-      {
-        return Wellformed(shape1) | Wellformed(shape2);
-      }
-    }
-
-    template<typename T>
-    inline CONSTEVAL auto to_wf(const Shape<T>& shape)
-    {
-      using namespace ops;
-      return Wellformed() | shape;
-    }
-
-    template<size_t I, size_t N, typename... Ts>
-    inline CONSTEVAL auto
-    to_wf(const Choice<N>& choice, const Wellformed<Ts...>& wf)
-    {
-      using namespace ops;
-
-      if constexpr (I >= N)
+        Wellformed wf;
+        wf.shapes.insert(wf2.shapes.begin(), wf2.shapes.end());
+        wf.types.insert(wf2.types.begin(), wf2.types.end());
+        wf.shapes.insert(wf1.shapes.begin(), wf1.shapes.end());
+        wf.types.insert(wf1.types.begin(), wf1.types.end());
         return wf;
-      else
-        return to_wf<I + 1>(choice, wf | choice.types[I]);
-    }
+      }
 
-    template<size_t N>
-    inline CONSTEVAL auto to_wf(const Choice<N>& choice)
-    {
-      return to_wf<0>(choice, Wellformed());
-    }
+      inline Wellformed operator|(Wellformed&& wf1, const Wellformed& wf2)
+      {
+        std::for_each(
+          wf2.shapes.begin(), wf2.shapes.end(), [&](const auto& shape) {
+            wf1.shapes.insert_or_assign(shape.first, shape.second);
+          });
 
-    inline CONSTEVAL auto to_wf(const Token& type)
-    {
-      using namespace ops;
-      return Wellformed(type <<= type);
+        std::for_each(
+          wf2.types.begin(), wf2.types.end(), [&](const auto& type) {
+            wf1.types.insert_or_assign(type.first, type.second);
+          });
+
+        return wf1;
+      }
+
+      inline Wellformed operator|(const Wellformed& wf1, Wellformed&& wf2)
+      {
+        wf2.shapes.insert(wf1.shapes.begin(), wf1.shapes.end());
+        wf2.types.insert(wf1.types.begin(), wf1.types.end());
+        return wf2;
+      }
+
+      inline Wellformed operator|(Wellformed&& wf1, Wellformed&& wf2)
+      {
+        wf2.shapes.merge(wf1.shapes);
+        wf2.types.merge(wf1.types);
+        return wf2;
+      }
+
+      inline Wellformed operator|(const Wellformed& wf, const Shape& shape)
+      {
+        Wellformed wf2;
+        wf2.append(shape);
+        wf2.shapes.insert(wf.shapes.begin(), wf.shapes.end());
+        wf2.types.insert(wf.types.begin(), wf.types.end());
+        return wf2;
+      }
+
+      inline Wellformed operator|(const Wellformed& wf, Shape&& shape)
+      {
+        Wellformed wf2;
+        wf2.append(shape);
+        wf2.shapes.insert(wf.shapes.begin(), wf.shapes.end());
+        wf2.types.insert(wf.types.begin(), wf.types.end());
+        return wf2;
+      }
+
+      inline Wellformed operator|(Wellformed&& wf, const Shape& shape)
+      {
+        wf.append(shape);
+        return wf;
+      }
+
+      inline Wellformed operator|(Wellformed&& wf, Shape&& shape)
+      {
+        wf.append(shape);
+        return wf;
+      }
+
+      inline Wellformed operator|(const Shape& shape, const Wellformed& wf)
+      {
+        Wellformed wf2;
+        wf2.append(shape);
+        return wf2 | wf;
+      }
+
+      inline Wellformed operator|(Shape&& shape, const Wellformed& wf)
+      {
+        Wellformed wf2;
+        wf2.append(shape);
+        return wf2 | wf;
+      }
+
+      inline Wellformed operator|(const Shape& shape, Wellformed&& wf)
+      {
+        wf.prepend(shape);
+        return wf;
+      }
+
+      inline Wellformed operator|(Shape&& shape, Wellformed&& wf)
+      {
+        wf.prepend(shape);
+        return wf;
+      }
+
+      inline Wellformed operator|(const Shape& shape1, const Shape& shape2)
+      {
+        Wellformed wf;
+        wf.append(shape1);
+        wf.append(shape2);
+        return wf;
+      }
+
+      inline Wellformed operator|(const Shape& shape1, Shape&& shape2)
+      {
+        Wellformed wf;
+        wf.append(shape1);
+        wf.append(shape2);
+        return wf;
+      }
+
+      inline Wellformed operator|(Shape&& shape1, const Shape& shape2)
+      {
+        Wellformed wf;
+        wf.append(shape1);
+        wf.append(shape2);
+        return wf;
+      }
+
+      inline Wellformed operator|(Shape&& shape1, Shape&& shape2)
+      {
+        Wellformed wf;
+        wf.append(shape1);
+        wf.append(shape2);
+        return wf;
+      }
     }
   }
 
-  template<typename... Ts>
-  inline CONSTEVAL auto
-  operator/(const wf::Wellformed<Ts...>& wf, const Token& type)
+  inline auto operator/(const wf::Wellformed& wf, const Token& type)
   {
-    return std::make_pair(wf, type);
+    return std::make_pair(&wf, type);
   }
 
-  template<typename... Ts>
-  inline CONSTEVAL Index operator/(
-    const std::pair<wf::Wellformed<Ts...>, Token>& pair, const Token& name)
+  inline Index operator/(
+    const std::pair<const wf::Wellformed*, Token>& pair, const Token& name)
   {
-    return wf::index_wellformed(pair.first, pair.second, name);
+    return pair.first->index(pair.second, name);
   }
 }

@@ -4,6 +4,8 @@
 
 #include "source.h"
 
+#include <map>
+
 namespace trieste
 {
   struct Token;
@@ -81,6 +83,19 @@ namespace trieste
       return def->name;
     }
   };
+
+  using Tokens = std::map<std::string_view, Token>;
+
+  inline void register_token(Tokens& tokens, const Token& token)
+  {
+    tokens[token.str()] = token;
+  }
+
+  inline void register_tokens(Tokens& tokens, const std::vector<Token>& list)
+  {
+    for (const auto& token : list)
+      register_token(tokens, token);
+  }
 
   namespace flag
   {
