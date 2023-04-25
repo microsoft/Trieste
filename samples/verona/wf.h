@@ -34,10 +34,10 @@ namespace verona
   // clang-format on
 
   // Remove Colon. Add Type.
-  inline const auto wfModulesTokens = wfLiteral | Brace | Paren | Square | List |
-    Equals | Arrow | Use | Class | TypeAlias | Var | Let | Ref | Lin | In_ |
-    Out | Const | If | Else | New | Try | DontCare | Ident | Ellipsis | Dot |
-    DoubleColon | Symbol | Type | LLVMFuncType;
+  inline const auto wfModulesTokens = wfLiteral | Brace | Paren | Square |
+    List | Equals | Arrow | Use | Class | TypeAlias | Var | Let | Ref | Lin |
+    In_ | Out | Const | If | Else | New | Try | DontCare | Ident | Ellipsis |
+    Dot | DoubleColon | Symbol | Type | LLVMFuncType;
 
   // clang-format off
   inline const auto wfPassModules =
@@ -61,8 +61,7 @@ namespace verona
       (Top <<= Class++)
     | (Class <<= Ident * TypeParams * Type * ClassBody)[Ident]
     | (ClassBody <<=
-        (Use | Class | TypeAlias | TypeTrait | FieldLet | FieldVar |
-         Function)++)
+        (Use | Class | TypeAlias | FieldLet | FieldVar | Function)++)
     | (Use <<= Type)[Include]
     | (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * Type)[Ident]
     | (TypeTrait <<= Ident * ClassBody)[Ident]
@@ -91,8 +90,9 @@ namespace verona
         (Args >>= LLVMList) * (Return >>= LLVM | Ident))
     | (LLVMList <<= (LLVM | Ident)++)
     | (Type <<=
-        (Type | TypeTuple | TypeVar | TypeArgs | Package | Lin | In_ | Out |
-         Const | DontCare | Ellipsis | Ident | Symbol | Dot | DoubleColon)++)
+        (Type | TypeTrait | TypeTuple | TypeVar | TypeArgs | Package | Lin |
+         In_ | Out | Const | DontCare | Ellipsis | Ident | Symbol | Dot |
+         DoubleColon)++)
     | (Expr <<=
         (Expr | ExprSeq | Unit | Tuple | Assign | TypeArgs | If | Else |
          Lambda | Let | Var | New | Try | Ref | DontCare | Ellipsis | Dot |
@@ -116,8 +116,9 @@ namespace verona
 
     // Remove DontCare, Ident.
     | (Type <<=
-        (Type | TypeTuple | TypeVar | TypeArgs | Package | Lin | In_ | Out |
-         Const | Ellipsis | Dot | DoubleColon | Symbol | wfTypeName)++)
+        (Type | TypeTrait | TypeTuple | TypeVar | TypeArgs | Package | Lin |
+         In_ | Out | Const | Ellipsis | Dot | DoubleColon | Symbol |
+         wfTypeName)++)
     ;
   // clang-format on
 
@@ -131,8 +132,8 @@ namespace verona
 
     // Remove DoubleColon, Dot, Ellipsis, TypeArgs.
     | (Type <<=
-        (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
-         Symbol | wfTypeName | TypeView | TypeList)++)
+        (Type | TypeTrait | TypeTuple | TypeVar | Package | Lin | In_ | Out |
+         Const | Symbol | wfTypeName | TypeView | TypeList)++)
     ;
   // clang-format on
 
@@ -143,8 +144,8 @@ namespace verona
     // Add TypeFunc.
     | (TypeFunc <<= (Lhs >>= Type) * (Rhs >>= Type))
     | (Type <<=
-        (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
-         Symbol | wfTypeName | TypeView | TypeList | TypeFunc)++)
+        (Type | TypeTrait | TypeTuple | TypeVar | Package | Lin | In_ | Out |
+         Const | Symbol | wfTypeName | TypeView | TypeList | TypeFunc)++)
     ;
   // clang-format on
 
@@ -159,15 +160,15 @@ namespace verona
 
     // Remove Symbol. Add TypeUnion, TypeIsect, TypeSubtype.
     | (Type <<=
-        (Type | TypeTuple | TypeVar | Package | Lin | In_ | Out | Const |
-         wfTypeName | TypeView | TypeList | TypeFunc | TypeUnion | TypeIsect |
-         TypeSubtype)++)
+        (Type | TypeTrait | TypeTuple | TypeVar | Package | Lin | In_ | Out |
+         Const | wfTypeName | TypeView | TypeList | TypeFunc | TypeUnion |
+         TypeIsect | TypeSubtype)++)
     ;
   // clang-format on
 
-  inline const auto wfTypeNoAlg = TypeUnit | TypeTuple | TypeVar | Package |
-    Lin | In_ | Out | Const | wfTypeName | TypeView | TypeList | TypeFunc |
-    TypeSubtype | TypeTrue | TypeFalse;
+  inline const auto wfTypeNoAlg = TypeTrait | TypeUnit | TypeTuple | TypeVar |
+    Package | Lin | In_ | Out | Const | wfTypeName | TypeView | TypeList |
+    TypeFunc | TypeSubtype | TypeTrue | TypeFalse;
 
   inline const auto wfType = wfTypeNoAlg | TypeUnion | TypeIsect;
 
@@ -419,7 +420,7 @@ namespace verona
     // Remove LHS/RHS function distinction.
     | (Function <<=
         Ident * TypeParams * Params * Type *
-        (LLVMFuncType >>= LLVMFuncType | DontCare) * Block)
+        (LLVMFuncType >>= LLVMFuncType | DontCare) * Block)[Ident]
 
     // Turn New into a function.
     | (Call <<= (Selector >>= (Selector | FunctionName)) * Args)

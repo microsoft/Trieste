@@ -270,14 +270,11 @@ namespace verona
       TypeStruct * (T(List) / T(Paren))[TypeTuple] >>
         [](Match& _) { return TypeTuple << *_[TypeTuple]; },
 
-      // Lift anonymous structural types.
+      // Anonymous structural types.
       TypeStruct * T(Brace)[ClassBody] >>
         [](Match& _) {
           auto id = _(ClassBody)->parent(ClassBody)->fresh();
-          return Seq << (Lift << ClassBody
-                              << (TypeTrait << (Ident ^ id)
-                                            << (ClassBody << *_[ClassBody])))
-                     << (Ident ^ id);
+          return TypeTrait << (Ident ^ id) << (ClassBody << *_[ClassBody]);
         },
 
       // Strings in types are package descriptors.
