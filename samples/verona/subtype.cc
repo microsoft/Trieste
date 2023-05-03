@@ -509,6 +509,25 @@ namespace verona
                 break;
               }
 
+              // rmember.typeparams.upper <: lmember.typeparams.upper
+              auto rtparams = rmember->at(wfsub::Function_TypeParams);
+              auto ltparams = lmember->at(wfsub::Function_TypeParams);
+
+              if (!std::equal(
+                    rtparams->begin(),
+                    rtparams->end(),
+                    ltparams->begin(),
+                    ltparams->end(),
+                    [&](auto& rtparam, auto& ltparam) {
+                      return reduce(
+                        r->make(rtparam->at(wfsub::TypeParam_Bound)),
+                        l->make(ltparam->at(wfsub::TypeParam_Bound)));
+                    }))
+              {
+                ok = false;
+                break;
+              }
+
               // rmember.params <: lmember.params
               auto rparams = rmember->at(wfsub::Function_Params);
               auto lparams = lmember->at(wfsub::Function_Params);

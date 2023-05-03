@@ -7,6 +7,10 @@ Mangling
   - encode type arguments as fields (classes) or arguments (functions)
 
 Subtyping
+- method subtyping: treat first parameter differently
+  - works with `T1->T2` expansion as a union type due to implicit `self`
+- `Self` type
+  - not a type parameter, as `rhs.Self <: lhs.Self` isn't required
 - track `typevar <: x` as upper bounds, `x <: typevar` as lower bounds?
 - typealg: `!`, `A ? B : C`
 

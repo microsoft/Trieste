@@ -159,14 +159,16 @@ namespace verona
 
       // TypeParam: (group ident type)
       In(TypeParams) * T(Group) << (T(Ident)[Id] * ~T(Type)[Type] * End) >>
-        [](Match& _) { return TypeParam << _(Id) << typevar(_, Type) << Type; },
+        [](Match& _) {
+          return TypeParam << _(Id) << (_(Type) / (Type << Brace)) << Type;
+        },
 
       // TypeParam: (equals (group ident type) group)
       In(TypeParams) * T(Equals)
           << ((T(Group) << (T(Ident)[Id] * ~T(Type)[Type] * End)) *
               T(Group)++[Rhs]) >>
         [](Match& _) {
-          return TypeParam << _(Id) << typevar(_, Type)
+          return TypeParam << _(Id) << (_(Type) / (Type << Brace))
                            << (Type << (Default << _[Rhs]));
         },
 
