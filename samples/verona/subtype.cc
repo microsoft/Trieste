@@ -385,9 +385,12 @@ namespace verona
         }
       }
 
-      // If either side is empty, the sequent is trivially true.
+      // If either side is empty, the sequent is trivially false.
+      // TODO: should this be an assert?
       if (lhs_atomic.empty() || rhs_atomic.empty())
-        return true;
+        return false;
+
+      // TODO: if we can succeed without checking TypeVars, we should do so.
 
       // G, A |- D, A
       return std::any_of(lhs_atomic.begin(), lhs_atomic.end(), [&](Btype& l) {
@@ -469,6 +472,7 @@ namespace verona
             // If any assumption is true, the trait is satisfied.
             if (std::any_of(
                   assumptions.begin(), assumptions.end(), [&](auto& assume) {
+                    // Effectively: (l <: assume.sub) && (assume.sup <: r)
                     return exact_match(r, assume.sup) &&
                       exact_match(l, assume.sub) &&
                       invariant_typeargs(r, assume.sup) &&
@@ -487,7 +491,6 @@ namespace verona
               if (rmember->type() != Function)
                 continue;
 
-              // TODO: we're using the wfPassNameArity definition of Function
               auto id = rmember->at(wfsub::Function_Ident)->location();
               auto lmembers = l->node->lookdown(id);
 

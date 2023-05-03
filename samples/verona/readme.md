@@ -1,11 +1,12 @@
 # Todo
 
-WF
-- rvalue Choice: extend in place
-- lvalue Choice: copy
+Mangling
+- need reachability to do precise flattening
+- for dynamic execution:
+  - use polymorphic versions of types and functions
+  - encode type arguments as fields (classes) or arguments (functions)
 
 Subtyping
-- `assume` when starting a typetrait check?
 - track `typevar <: x` as upper bounds, `x <: typevar` as lower bounds?
 - typealg: `!`, `A ? B : C`
 
@@ -31,9 +32,7 @@ LLVM lowering
   - insert type tests (for both args and typeargs) as function prologues?
 - mangling
   - flatten all names, use fully-qualified names
-- `new`, `fieldref`
-  - autocreate ignores field initializers if there's already a `create` method. this seems wrong
-  - default field values as arguments to `new`?
+- `fieldref`
 - Ptr, Ref[T], primitive types need a way to find their type descriptor
 - `typetest`
   - every type needs an entry for every `typetest` type
@@ -63,13 +62,6 @@ LLVM lowering
 - package schemes
 - list inside TypeParams, Params, TypeArgs along with groups or other lists
 
-## Future Passes
-
-- type checking
-- reachability
-- selector coloring
-- monomorphization
-
 ## Key Words
 
 get rid of capabilities as keywords
@@ -83,42 +75,6 @@ type of the lambda:
 - any `lin` captures = `lin`, `self: lin`
 - 0 `lin`, 1 or more `in`, 0 or more `const` = `lin`, `self: in`
 - don't know if any `out` captures
-
-## Destructuring Binds and `lin`
-
-if a tuple field is `lin`, it's not `lin` in the destructuring bind
-if the tuple itself is also `lin`, can we make this work?
-the same thing happens with lambda captures
-
-## Type Inference
-
-T0 <: T1 => T0.upper += T1, T1.lower += T0
-
-`bind $0 $T0 (reflet $1)`
-- '$1 <: $T0
-`bind $0 $T0 (tuple (reflet $1) (reflet $2))`
-- ('$1, '$2) <: $T0
-- *tuple flatten?*
-`bind $0 $T0 (lambda ...)`
-- 'lambda <: $T0
-- *free variables? problem is moving `lin`*
-`bind $0 $T0 (call (functionname f[$T1]) (args (reflet $1) (reflet $2)))`
-- ('f[$T1] <: '$1->'$2->$T0)
-`bind $0 $T0 (call (selector f[$T1]) (args (reflet $1) (reflet $2)))`
-- ('f[$T1] <: '$1->'$2->$T0) ∨ ('$1 <: { f[$T1]: '$1->'$2->$T0 })
-`bind $0 $T0 (conditional (reflet $1) lambda1 lambda2)`
-- 'lambda1 <: ()->$T1
-- 'lambda2 <: ()->$T2
-- ($T1 | $T2) <: $T0
-`typeassert $0 $T0`
-- '$0 <: $T0
-
-typeof (reflet $0) =
-- dup(node->lookup()->at(wf / Bind / Type)) // dup drops `lin`?
-typeof (move $0) =
-- node->lookup()->at(wf / Bind / Type) // no dup
-
-A `var` field has both a `ref` accessor function and a non-`ref` accessor function. A `let` field has only a non-`ref` accessor field. This means a `var x: T1` field is a subtype of a `let x: T2` field if `T1 <: T2`. However, a `var x: T1` field is only a subtype of a `var x: T2` field if `(T1 <: T2) ∧ (T2 <: T1)`, because the `ref` accessors return `ref[T1]` and `ref[T2]` respectively.
 
 ## Lowering
 

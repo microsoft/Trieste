@@ -1542,20 +1542,8 @@ namespace verona
         In(Class) * T(ClassBody)[ClassBody] >> ([](Match& _) -> Node {
           // If we already have a create function, do nothing.
           auto class_body = _(ClassBody);
-
-          if (!class_body->parent()->lookdown(create).empty())
-            return NoChange;
-
-          // Create the create function.
-          Node create_params = Params;
+          Node new_params = Params;
           Node new_args = Args;
-          auto create_func = Function
-            << DontCare << (Ident ^ create) << TypeParams << create_params
-            << typevar(_) << DontCare
-            << (Block << (Expr << (Call << New << new_args)));
-
-          Nodes no_def;
-          Nodes def;
 
           for (auto& node : *class_body)
           {
@@ -1566,23 +1554,31 @@ namespace verona
               auto def_arg =
                 node->at(wf / FieldLet / Default, wf / FieldVar / Default);
 
-              // Add each field in order to the call to `new`.
+              // Add each field in order to the call to `new` and the create
+              // function parameters.
               new_args << (Expr << (RefLet << clone(id)));
-
-              // Order the parameters to the create function.
-              auto param = Param << clone(id) << clone(ty) << def_arg;
-
-              if (def_arg->type() == DontCare)
-                no_def.push_back(param);
-              else
-                def.push_back(param);
+              new_params
+                << ((Param ^ def_arg) << clone(id) << clone(ty) << def_arg);
             }
           }
 
-          // Add the parameters to the create function, sorting parameters
-          // without a default value first.
-          create_params << no_def << def;
-          return ClassBody << *_[ClassBody] << create_func;
+          // Create the `new` function.
+          auto body = ClassBody
+            << *_[ClassBody]
+            << (Function << DontCare << (Ident ^ new_) << TypeParams
+                         << clone(new_params) << typevar(_) << DontCare
+                         << (Block << (Expr << Unit)));
+
+          if (class_body->parent()->lookdown(create).empty())
+          {
+            // Create the `create` function.
+            body
+              << (Function << DontCare << (Ident ^ create) << TypeParams
+                           << new_params << typevar(_) << DontCare
+                           << (Block << (Expr << (Call << New << new_args))));
+          }
+
+          return body;
         }),
 
         // Strip the default field values.
@@ -1681,7 +1677,9 @@ namespace verona
 
         T(Param)[Param] << (T(Ident) * T(Type) * T(Call)) >>
           [](Match& _) {
-            return err(_[Param], "can't put a default argument here");
+            return err(
+              _[Param],
+              "can't put a default value before a non-defaulted value");
           },
       }};
   }
@@ -2240,7 +2238,7 @@ namespace verona
         T(Call) << (T(New) * T(Args)[Args]) >>
           [](Match& _) {
             auto arity = _(Args)->size();
-            auto name = std::string("$new.") + std::to_string(arity);
+            auto name = std::string("new.") + std::to_string(arity);
             return Call << (FunctionName << TypeUnit << (Ident ^ name)
                                          << TypeArgs)
                         << _(Args);
