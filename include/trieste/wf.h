@@ -259,10 +259,10 @@ namespace trieste
               << fields.size() << " children, found " << node->size()
               << std::endl
               << node->location().str() << node->str() << std::endl;
-          return false;
+          ok = false;
         }
 
-        return true;
+        return ok;
       }
 
       void gen(Gen& g, size_t depth, Node node) const
