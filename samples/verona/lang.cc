@@ -430,7 +430,7 @@ namespace verona
         },
 
       In(Expr) *
-          (T(Lin) / T(In_) / T(Out) / T(Const) / T(Arrow) /
+          (T(Lin) / T(In_) / T(Out) / T(Const) / T(Self) / T(Arrow) /
            T(LLVMFuncType))[Expr] >>
         [](Match& _) {
           return err(_[Expr], "can't put this in an expression");
@@ -523,10 +523,10 @@ namespace verona
   inline const auto TypeName =
     T(TypeClassName) / T(TypeAliasName) / T(TypeParamName) / T(TypeTraitName);
 
-  inline const auto TypeElem = T(Type) / TypeName / T(TypeTuple) / T(Lin) /
-    T(In_) / T(Out) / T(Const) / T(TypeList) / T(TypeView) / T(TypeFunc) /
-    T(TypeIsect) / T(TypeUnion) / T(TypeVar) / T(TypeUnit) / T(Package) /
-    T(TypeSubtype) / T(TypeTrue) / T(TypeFalse);
+  inline const auto TypeElem = T(Type) / TypeName / T(TypeTrait) /
+    T(TypeTuple) / T(Lin) / T(In_) / T(Out) / T(Const) / T(Self) / T(TypeList) /
+    T(TypeView) / T(TypeFunc) / T(TypeIsect) / T(TypeUnion) / T(TypeVar) /
+    T(TypeUnit) / T(Package) / T(TypeSubtype) / T(TypeTrue) / T(TypeFalse);
 
   Node
   makename(const Lookups& defs, Node lhs, Node id, Node ta, bool func = false)
@@ -559,11 +559,14 @@ namespace verona
 
       for (auto& def : defs.defs)
       {
-        err << clone(def.def->at(
-          wf / Class / Ident,
-          wf / TypeAlias / Ident,
-          wf / TypeParam / Ident,
-          wf / TypeTrait / Ident));
+        err
+          << (ErrorAst ^
+              def.def->at(
+                wf / Class / Ident,
+                wf / TypeAlias / Ident,
+                wf / TypeParam / Ident,
+                wf / TypeTrait / Ident,
+                wf / Param / Ident));
       }
 
       return err;
@@ -586,8 +589,15 @@ namespace verona
     if (defs.one({TypeTrait}))
       return TypeTraitName << lhs << id << ta;
 
-    return Error << (ErrorMsg ^ "can't resolve type name")
-                 << ((ErrorAst ^ id) << lhs << id << ta);
+    return Error << (ErrorMsg ^ "not a type name")
+                 << ((ErrorAst ^ id) << lhs << id << ta)
+                 << (ErrorAst ^
+                     defs.defs.front().def->at(
+                       wf / Class / Ident,
+                       wf / TypeAlias / Ident,
+                       wf / TypeParam / Ident,
+                       wf / TypeTrait / Ident,
+                       wf / Param / Ident));
   }
 
   PassDef typenames()

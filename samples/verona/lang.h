@@ -50,6 +50,7 @@ namespace verona
   inline constexpr auto In_ = TokenDef("in");
   inline constexpr auto Out = TokenDef("out");
   inline constexpr auto Const = TokenDef("const");
+  inline constexpr auto Self = TokenDef("self");
   inline constexpr auto If = TokenDef("if");
   inline constexpr auto Else = TokenDef("else");
   inline constexpr auto New = TokenDef("new");

@@ -7,10 +7,13 @@ Mangling
   - encode type arguments as fields (classes) or arguments (functions)
 
 Subtyping
-- method subtyping: treat first parameter differently
-  - works with `T1->T2` expansion as a union type due to implicit `self`
-- `Self` type
-  - not a type parameter, as `rhs.Self <: lhs.Self` isn't required
+- type inference might not work with typeparameter bounds checking
+```ts
+  x: T1, y: T2, z: T3
+  x.f(y, z)
+  T1 <: { f[](T1, T2, T3) }
+  // but what if T1::f[X](T1, T2, X) ?
+```
 - track `typevar <: x` as upper bounds, `x <: typevar` as lower bounds?
 - typealg: `!`, `A ? B : C`
 

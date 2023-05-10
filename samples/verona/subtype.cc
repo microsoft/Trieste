@@ -35,9 +35,9 @@ namespace verona
   struct BtypeDef
   {
     Node node;
-    NodeMap<Node> bindings;
+    NodeMap<Btype> bindings;
 
-    BtypeDef(Node t, NodeMap<Node> b = {}) : node(t), bindings(b)
+    BtypeDef(Node t, NodeMap<Btype> b = {}) : node(t), bindings(b)
     {
       // Keep unwinding until done.
       NodeSet set;
@@ -60,10 +60,12 @@ namespace verona
           if (defs.defs.empty())
             return;
 
+          // Use existing bindings if they haven't been specified here.
           auto& def = defs.defs.front();
           node = def.def;
-          def.bindings.insert(bindings.begin(), bindings.end());
-          bindings.swap(def.bindings);
+
+          for (auto& bind : def.bindings)
+            bindings[bind.first] = make(bind.second, b);
 
           // Check for cycles.
           if (set.contains(node))
@@ -77,7 +79,7 @@ namespace verona
           if (it == bindings.end())
             return;
 
-          node = it->second;
+          *this = *it->second;
         }
         else if (node->type() == TypeView)
         {
@@ -91,7 +93,7 @@ namespace verona
       }
     }
 
-    static Btype make(Node t, NodeMap<Node> b)
+    static Btype make(Node t, NodeMap<Btype> b)
     {
       return std::make_shared<BtypeDef>(t, b);
     }
@@ -181,8 +183,7 @@ namespace verona
       if (r->type().in(
             {Package, Class, TypeTrait, TypeUnit, TypeTrue, TypeFalse}))
       {
-        node = r->node;
-        bindings = r->bindings;
+        *this = *r;
         return true;
       }
 
@@ -223,7 +224,7 @@ namespace verona
     }
   };
 
-  Btype make(Node t, NodeMap<Node> b = {})
+  Btype make(Node t, NodeMap<Btype> b = {})
   {
     return BtypeDef::make(t, b);
   }
@@ -247,6 +248,7 @@ namespace verona
     std::vector<Btype> lhs_atomic;
     std::vector<Btype> rhs_atomic;
     std::vector<Assume> assumptions;
+    std::vector<Btype> self;
 
     Sequent() = default;
 
@@ -255,7 +257,8 @@ namespace verona
       rhs_pending(rhs.rhs_pending),
       lhs_atomic(rhs.lhs_atomic),
       rhs_atomic(rhs.rhs_atomic),
-      assumptions(rhs.assumptions)
+      assumptions(rhs.assumptions),
+      self(rhs.self)
     {}
 
     void push_assume(Btype sub, Btype sup)
@@ -268,12 +271,24 @@ namespace verona
       assumptions.pop_back();
     }
 
+    void push_self(Btype s)
+    {
+      assert(s->type() == Class);
+      self.push_back(s);
+    }
+
+    void pop_self()
+    {
+      self.pop_back();
+    }
+
     bool reduce(Btype l, Btype r)
     {
       Sequent seq;
       seq.lhs_pending.push_back(l);
       seq.rhs_pending.push_back(r);
       seq.assumptions = assumptions;
+      seq.self = self;
       return seq.reduce();
     }
 
@@ -416,6 +431,12 @@ namespace verona
           if (r->type().in({TypeUnit, Lin, In_, Out, Const}))
             return l->type() == r->type();
 
+          if (l->type() == Self)
+            return self_type(r);
+
+          if (r->type() == Self)
+            return self_type(l);
+
           if (r->type() == TypeTuple)
           {
             // Tuples must be the same arity and each element must be a subtype.
@@ -469,6 +490,8 @@ namespace verona
             if (!l->type().in({Class, TypeTrait}))
               return false;
 
+            // TODO: could memoize successful assumptions
+
             // If any assumption is true, the trait is satisfied.
             if (std::any_of(
                   assumptions.begin(), assumptions.end(), [&](auto& assume) {
@@ -482,8 +505,12 @@ namespace verona
               return true;
             }
 
-            bool ok = true;
             push_assume(l, r);
+
+            if (l->type() == Class)
+              push_self(l);
+
+            bool ok = true;
             auto rbody = r->node->at(wfsub::TypeTrait_ClassBody);
 
             for (auto rmember : *rbody)
@@ -558,6 +585,10 @@ namespace verona
             }
 
             pop_assume();
+
+            if (l->type() == Class)
+              pop_self();
+
             return ok;
           }
 
@@ -579,7 +610,7 @@ namespace verona
       return (l->type() == r->type()) && (l->node == r->node);
     }
 
-    bool invariant_typeargs(Btype& r, Btype& l)
+    bool invariant_typeargs(Btype& l, Btype& r)
     {
       // Check for invariant type arguments in all enclosing scopes.
       auto node = r->node;
@@ -607,6 +638,13 @@ namespace verona
       }
 
       return true;
+    }
+
+    bool self_type(Btype& t)
+    {
+      return (t->type() == Self) ||
+        (!self.empty() && exact_match(t, self.back()) &&
+         invariant_typeargs(t, self.back()));
     }
   };
 
