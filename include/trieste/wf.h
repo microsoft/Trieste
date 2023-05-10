@@ -221,13 +221,17 @@ namespace trieste
         auto field = fields.begin();
         auto end = fields.end();
         bool ok = true;
+        bool has_error = false;
 
         for (auto& child : *node)
         {
           // A node that contains an Error node stops checking well-formedness
           // from that point.
           if (child->type() == Error)
+          {
+            has_error = true;
             break;
+          }
 
           // If we run out of fields, the node is ill-formed.
           if (field == end)
@@ -253,7 +257,7 @@ namespace trieste
           ++field;
         }
 
-        if (node->size() != fields.size())
+        if (!has_error && (node->size() != fields.size()))
         {
           out << node->location().origin_linecol() << "expected "
               << fields.size() << " children, found " << node->size()
