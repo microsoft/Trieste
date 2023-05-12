@@ -159,14 +159,16 @@ namespace verona
 
       // TypeParam: (group ident type)
       In(TypeParams) * T(Group) << (T(Ident)[Id] * ~T(Type)[Type] * End) >>
-        [](Match& _) { return TypeParam << _(Id) << typevar(_, Type) << Type; },
+        [](Match& _) {
+          return TypeParam << _(Id) << (_(Type) / (Type << Brace)) << Type;
+        },
 
       // TypeParam: (equals (group ident type) group)
       In(TypeParams) * T(Equals)
           << ((T(Group) << (T(Ident)[Id] * ~T(Type)[Type] * End)) *
               T(Group)++[Rhs]) >>
         [](Match& _) {
-          return TypeParam << _(Id) << typevar(_, Type)
+          return TypeParam << _(Id) << (_(Type) / (Type << Brace))
                            << (Type << (Default << _[Rhs]));
         },
 
@@ -270,14 +272,11 @@ namespace verona
       TypeStruct * (T(List) / T(Paren))[TypeTuple] >>
         [](Match& _) { return TypeTuple << *_[TypeTuple]; },
 
-      // Lift anonymous structural types.
+      // Anonymous structural types.
       TypeStruct * T(Brace)[ClassBody] >>
         [](Match& _) {
           auto id = _(ClassBody)->parent(ClassBody)->fresh();
-          return Seq << (Lift << ClassBody
-                              << (TypeTrait << (Ident ^ id)
-                                            << (ClassBody << *_[ClassBody])))
-                     << (Ident ^ id);
+          return TypeTrait << (Ident ^ id) << (ClassBody << *_[ClassBody]);
         },
 
       // Strings in types are package descriptors.
@@ -431,7 +430,7 @@ namespace verona
         },
 
       In(Expr) *
-          (T(Lin) / T(In_) / T(Out) / T(Const) / T(Arrow) /
+          (T(Lin) / T(In_) / T(Out) / T(Const) / T(Self) / T(Arrow) /
            T(LLVMFuncType))[Expr] >>
         [](Match& _) {
           return err(_[Expr], "can't put this in an expression");
@@ -524,10 +523,10 @@ namespace verona
   inline const auto TypeName =
     T(TypeClassName) / T(TypeAliasName) / T(TypeParamName) / T(TypeTraitName);
 
-  inline const auto TypeElem = T(Type) / TypeName / T(TypeTuple) / T(Lin) /
-    T(In_) / T(Out) / T(Const) / T(TypeList) / T(TypeView) / T(TypeFunc) /
-    T(TypeIsect) / T(TypeUnion) / T(TypeVar) / T(TypeUnit) / T(Package) /
-    T(TypeSubtype) / T(TypeTrue) / T(TypeFalse);
+  inline const auto TypeElem = T(Type) / TypeName / T(TypeTrait) /
+    T(TypeTuple) / T(Lin) / T(In_) / T(Out) / T(Const) / T(Self) / T(TypeList) /
+    T(TypeView) / T(TypeFunc) / T(TypeIsect) / T(TypeUnion) / T(TypeVar) /
+    T(TypeUnit) / T(Package) / T(TypeSubtype) / T(TypeTrue) / T(TypeFalse);
 
   Node
   makename(const Lookups& defs, Node lhs, Node id, Node ta, bool func = false)
@@ -560,11 +559,14 @@ namespace verona
 
       for (auto& def : defs.defs)
       {
-        err << clone(def.def->at(
-          wf / Class / Ident,
-          wf / TypeAlias / Ident,
-          wf / TypeParam / Ident,
-          wf / TypeTrait / Ident));
+        err
+          << (ErrorAst ^
+              def.def->at(
+                wf / Class / Ident,
+                wf / TypeAlias / Ident,
+                wf / TypeParam / Ident,
+                wf / TypeTrait / Ident,
+                wf / Param / Ident));
       }
 
       return err;
@@ -587,8 +589,15 @@ namespace verona
     if (defs.one({TypeTrait}))
       return TypeTraitName << lhs << id << ta;
 
-    return Error << (ErrorMsg ^ "can't resolve type name")
-                 << ((ErrorAst ^ id) << lhs << id << ta);
+    return Error << (ErrorMsg ^ "not a type name")
+                 << ((ErrorAst ^ id) << lhs << id << ta)
+                 << (ErrorAst ^
+                     defs.defs.front().def->at(
+                       wf / Class / Ident,
+                       wf / TypeAlias / Ident,
+                       wf / TypeParam / Ident,
+                       wf / TypeTrait / Ident,
+                       wf / Param / Ident));
   }
 
   PassDef typenames()
@@ -1545,20 +1554,8 @@ namespace verona
         In(Class) * T(ClassBody)[ClassBody] >> ([](Match& _) -> Node {
           // If we already have a create function, do nothing.
           auto class_body = _(ClassBody);
-
-          if (!class_body->parent()->lookdown(create).empty())
-            return NoChange;
-
-          // Create the create function.
-          Node create_params = Params;
+          Node new_params = Params;
           Node new_args = Args;
-          auto create_func = Function
-            << DontCare << (Ident ^ create) << TypeParams << create_params
-            << typevar(_) << DontCare
-            << (Block << (Expr << (Call << New << new_args)));
-
-          Nodes no_def;
-          Nodes def;
 
           for (auto& node : *class_body)
           {
@@ -1569,23 +1566,31 @@ namespace verona
               auto def_arg =
                 node->at(wf / FieldLet / Default, wf / FieldVar / Default);
 
-              // Add each field in order to the call to `new`.
+              // Add each field in order to the call to `new` and the create
+              // function parameters.
               new_args << (Expr << (RefLet << clone(id)));
-
-              // Order the parameters to the create function.
-              auto param = Param << clone(id) << clone(ty) << def_arg;
-
-              if (def_arg->type() == DontCare)
-                no_def.push_back(param);
-              else
-                def.push_back(param);
+              new_params
+                << ((Param ^ def_arg) << clone(id) << clone(ty) << def_arg);
             }
           }
 
-          // Add the parameters to the create function, sorting parameters
-          // without a default value first.
-          create_params << no_def << def;
-          return ClassBody << *_[ClassBody] << create_func;
+          // Create the `new` function.
+          auto body = ClassBody
+            << *_[ClassBody]
+            << (Function << DontCare << (Ident ^ new_) << TypeParams
+                         << clone(new_params) << typevar(_) << DontCare
+                         << (Block << (Expr << Unit)));
+
+          if (class_body->parent()->lookdown(create).empty())
+          {
+            // Create the `create` function.
+            body
+              << (Function << DontCare << (Ident ^ create) << TypeParams
+                           << new_params << typevar(_) << DontCare
+                           << (Block << (Expr << (Call << New << new_args))));
+          }
+
+          return body;
         }),
 
         // Strip the default field values.
@@ -1684,7 +1689,9 @@ namespace verona
 
         T(Param)[Param] << (T(Ident) * T(Type) * T(Call)) >>
           [](Match& _) {
-            return err(_[Param], "can't put a default argument here");
+            return err(
+              _[Param],
+              "can't put a default value before a non-defaulted value");
           },
       }};
   }
@@ -2243,7 +2250,7 @@ namespace verona
         T(Call) << (T(New) * T(Args)[Args]) >>
           [](Match& _) {
             auto arity = _(Args)->size();
-            auto name = std::string("$new.") + std::to_string(arity);
+            auto name = std::string("new.") + std::to_string(arity);
             return Call << (FunctionName << TypeUnit << (Ident ^ name)
                                          << TypeArgs)
                         << _(Args);

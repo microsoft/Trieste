@@ -16,7 +16,7 @@ namespace trieste
     const char* name;
     flag fl;
 
-    CONSTEVAL TokenDef(const char* name, flag fl = 0) : name(name), fl(fl) {}
+    constexpr TokenDef(const char* name, flag fl = 0) : name(name), fl(fl) {}
 
     TokenDef() = delete;
     TokenDef(const TokenDef&) = delete;
