@@ -619,7 +619,7 @@ namespace trieste
       inline Choice operator|(const Token& type, Choice&& choice)
       {
         choice.types.push_back(type);
-        return choice;
+        return std::move(choice);
       }
 
       inline Choice operator|(const Choice& choice1, const Choice& choice2)
@@ -634,7 +634,7 @@ namespace trieste
       {
         choice2.types.insert(
           choice2.types.end(), choice1.types.begin(), choice1.types.end());
-        return choice2;
+        return std::move(choice2);
       }
 
       inline Choice operator|(const Choice& choice, const Token& type)
@@ -737,7 +737,7 @@ namespace trieste
       inline Fields operator*(Fields&& fst, const Field& snd)
       {
         fst.fields.push_back(snd);
-        return fst;
+        return std::move(fst);
       }
 
       inline Fields operator*(Fields&& fst, const Token& snd)
@@ -802,21 +802,21 @@ namespace trieste
             wf1.types.insert_or_assign(type.first, type.second);
           });
 
-        return wf1;
+        return std::move(wf1);
       }
 
       inline Wellformed operator|(const Wellformed& wf1, Wellformed&& wf2)
       {
         wf2.shapes.insert(wf1.shapes.begin(), wf1.shapes.end());
         wf2.types.insert(wf1.types.begin(), wf1.types.end());
-        return wf2;
+        return std::move(wf2);
       }
 
       inline Wellformed operator|(Wellformed&& wf1, Wellformed&& wf2)
       {
         wf2.shapes.merge(wf1.shapes);
         wf2.types.merge(wf1.types);
-        return wf2;
+        return std::move(wf2);
       }
 
       inline Wellformed operator|(const Wellformed& wf, const Shape& shape)
@@ -840,13 +840,13 @@ namespace trieste
       inline Wellformed operator|(Wellformed&& wf, const Shape& shape)
       {
         wf.append(shape);
-        return wf;
+        return std::move(wf);
       }
 
       inline Wellformed operator|(Wellformed&& wf, Shape&& shape)
       {
         wf.append(shape);
-        return wf;
+        return std::move(wf);
       }
 
       inline Wellformed operator|(const Shape& shape, const Wellformed& wf)
@@ -866,13 +866,13 @@ namespace trieste
       inline Wellformed operator|(const Shape& shape, Wellformed&& wf)
       {
         wf.prepend(shape);
-        return wf;
+        return std::move(wf);
       }
 
       inline Wellformed operator|(Shape&& shape, Wellformed&& wf)
       {
         wf.prepend(shape);
-        return wf;
+        return std::move(wf);
       }
 
       inline Wellformed operator|(const Shape& shape1, const Shape& shape2)
