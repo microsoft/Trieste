@@ -85,7 +85,6 @@ namespace verona
   inline constexpr auto TypeTraitName = TokenDef("typetraitname");
   inline constexpr auto TypeTuple = TokenDef("typetuple");
   inline constexpr auto TypeView = TokenDef("typeview");
-  inline constexpr auto TypeFunc = TokenDef("typefunc");
   inline constexpr auto TypeIsect = TokenDef("typeisect");
   inline constexpr auto TypeUnion = TokenDef("typeunion");
   inline constexpr auto TypeVar = TokenDef("typevar", flag::print);

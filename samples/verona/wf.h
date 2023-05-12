@@ -141,11 +141,14 @@ namespace verona
   inline const auto wfPassTypeFunc =
       wfPassTypeView
 
-    // Add TypeFunc.
-    | (TypeFunc <<= (Lhs >>= Type) * (Rhs >>= Type))
+    // Add TypeUnion, TypeIsect.
+    | (TypeUnion <<= Type++[2])
+    | (TypeIsect <<= Type++[2])
+
     | (Type <<=
         (Type | TypeTrait | TypeTuple | TypeVar | Package | Lin | In_ | Out |
-         Const | Self | Symbol | wfTypeName | TypeView | TypeList | TypeFunc)++)
+         Const | Self | Symbol | wfTypeName | TypeView | TypeList | TypeUnion |
+         TypeIsect)++)
     ;
   // clang-format on
 
@@ -153,22 +156,20 @@ namespace verona
   inline const auto wfPassTypeAlg =
       wfPassTypeFunc
 
-    // Add TypeUnion, TypeIsect, TypeSubtype.
-    | (TypeUnion <<= Type++[2])
-    | (TypeIsect <<= Type++[2])
+    // Add TypeSubtype.
     | (TypeSubtype <<= (Lhs >>= Type) * (Rhs >>= Type))
 
-    // Remove Symbol. Add TypeUnion, TypeIsect, TypeSubtype.
+    // Remove Symbol. Add TypeSubtype.
     | (Type <<=
         (Type | TypeTrait | TypeTuple | TypeVar | Package | Lin | In_ | Out |
-         Const | Self | wfTypeName | TypeView | TypeList | TypeFunc |
-         TypeUnion | TypeIsect | TypeSubtype)++)
+         Const | Self | wfTypeName | TypeView | TypeList | TypeUnion |
+         TypeIsect | TypeSubtype)++)
     ;
   // clang-format on
 
   inline const auto wfTypeNoAlg = TypeTrait | TypeUnit | TypeTuple | TypeVar |
     Package | Lin | In_ | Out | Const | Self | wfTypeName | TypeView |
-    TypeList | TypeFunc | TypeSubtype | TypeTrue | TypeFalse;
+    TypeList | TypeSubtype | TypeTrue | TypeFalse;
 
   inline const auto wfType = wfTypeNoAlg | TypeUnion | TypeIsect;
 
@@ -180,7 +181,6 @@ namespace verona
     | (TypeList <<= wfType)
     | (TypeTuple <<= wfType++[2])
     | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))
-    | (TypeFunc <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeSubtype <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeUnion <<= (wfTypeNoAlg | TypeIsect)++[2])
     | (TypeIsect <<= (wfTypeNoAlg | TypeUnion)++[2])
@@ -450,7 +450,6 @@ namespace verona
     | (TypeAliasName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeParamName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))
-    | (TypeFunc <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeTrait <<= Ident * ClassBody)
     | (Package <<= (Id >>= String | Escaped))
     | (Var <<= Ident * Type)

@@ -121,8 +121,7 @@ namespace verona
         // TODO: return only things that are identical in all disjunctions
         return {};
       }
-      else if (lookup.def->type().in(
-                 {TypeUnit, TypeList, TypeTuple, TypeFunc, TypeVar}))
+      else if (lookup.def->type().in({TypeUnit, TypeList, TypeTuple, TypeVar}))
       {
         // Nothing to do here.
         return {};
@@ -221,14 +220,12 @@ namespace verona
         for (auto& t : *type)
           worklist.emplace_back(set, Lookup(t, bindings));
       }
-      else if (type->type().in({TypeView, TypeFunc}))
+      else if (type->type() == TypeView)
       {
         worklist.emplace_back(
-          set,
-          Lookup(type->at(wf / TypeView / Lhs, wf / TypeFunc / Lhs), bindings));
+          set, Lookup(type->at(wf / TypeView / Lhs), bindings));
         worklist.emplace_back(
-          set,
-          Lookup(type->at(wf / TypeView / Rhs, wf / TypeFunc / Rhs), bindings));
+          set, Lookup(type->at(wf / TypeView / Rhs), bindings));
       }
       else if (type->type() == TypeAliasName)
       {

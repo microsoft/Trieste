@@ -16,8 +16,6 @@ namespace verona
     inline const auto TypeView_Rhs = wfPassNameArity / TypeView / Rhs;
     inline const auto TypeAlias_Type = wfPassNameArity / TypeAlias / Type;
     inline const auto TypeParam_Bound = wfPassNameArity / TypeParam / Bound;
-    inline const auto TypeFunc_Lhs = wfPassNameArity / TypeFunc / Lhs;
-    inline const auto TypeFunc_Rhs = wfPassNameArity / TypeFunc / Rhs;
     inline const auto Package_Id = wfPassNameArity / Package / Id;
     inline const auto TypeTrait_ClassBody =
       wfPassNameArity / TypeTrait / ClassBody;
@@ -473,17 +471,6 @@ namespace verona
 
           if (r->type().in({TypeAlias, Class}))
             return exact_match(l, r) && invariant_typeargs(l, r);
-
-          if (r->type() == TypeFunc)
-          {
-            // The LHS must accept all the arguments of the RHS and return a
-            // result that is a subtype of the RHS's result.
-            return (l->type() == TypeFunc) &&
-              reduce(r->make(wfsub::TypeFunc_Lhs),
-                     l->make(wfsub::TypeFunc_Lhs)) &&
-              reduce(l->make(wfsub::TypeFunc_Rhs),
-                     r->make(wfsub::TypeFunc_Rhs));
-          }
 
           if (r->type() == Package)
           {
