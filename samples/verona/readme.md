@@ -7,6 +7,7 @@ Mangling
   - encode type arguments as fields (classes) or arguments (functions)
 
 Subtyping
+- function types as aliases of unions of traits
 - type inference might not work with typeparameter bounds checking
 ```ts
   x: T1, y: T2, z: T3
@@ -16,6 +17,11 @@ Subtyping
 ```
 - track `typevar <: x` as upper bounds, `x <: typevar` as lower bounds?
 - typealg: `!`, `A ? B : C`
+
+Pattern Matching
+- values as arguments
+- exhaustiveness
+- backtracking?
 
 Type Descriptor
 - sizeof: encode it as a function?
@@ -106,8 +112,8 @@ mul[n: {*(n, n): n}, a: n...](x: n, y: a): a
 {
   match y
   {
-    { _: () -> () }
-    { y, ys -> x * y, mul(x, ys)... }
+    { _: () => () }
+    { y, ys => x * y, mul(x, ys)... }
   }
 }
 

@@ -342,6 +342,14 @@ namespace verona
           rhs_pending.push_back(r->make(wfsub::TypeAlias_Type));
           rhs_atomic.push_back(r);
         }
+        else if (r->type() == Self)
+        {
+          // Try both Self and the current self type.
+          rhs_atomic.push_back(r);
+
+          if (!self.empty())
+            rhs_atomic.push_back(self.back());
+        }
         else
         {
           rhs_atomic.push_back(r);
@@ -394,6 +402,14 @@ namespace verona
           lhs_pending.push_back(l->make(wfsub::TypeParam_Bound));
           lhs_atomic.push_back(l);
         }
+        else if (l->type() == Self)
+        {
+          // Try both Self and the current self type.
+          lhs_atomic.push_back(l);
+
+          if (!self.empty())
+            lhs_atomic.push_back(self.back());
+        }
         else
         {
           lhs_atomic.push_back(l);
@@ -428,14 +444,8 @@ namespace verona
           }
 
           // These must be an exact match.
-          if (r->type().in({TypeUnit, Lin, In_, Out, Const}))
+          if (r->type().in({TypeUnit, Lin, In_, Out, Const, Self}))
             return l->type() == r->type();
-
-          if (l->type() == Self)
-            return self_type(r);
-
-          if (r->type() == Self)
-            return self_type(l);
 
           if (r->type() == TypeTuple)
           {
@@ -638,13 +648,6 @@ namespace verona
       }
 
       return true;
-    }
-
-    bool self_type(Btype& t)
-    {
-      return (t->type() == Self) ||
-        (!self.empty() && exact_match(t, self.back()) &&
-         invariant_typeargs(t, self.back()));
     }
   };
 
