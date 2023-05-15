@@ -116,10 +116,18 @@ namespace verona
       assert(type() == TypeView);
       auto l = make(wfsub::TypeView_Lhs);
 
+      if (l->type().in({TypeTrue, TypeFalse}))
+      {
+        node = l->node;
+        bindings.clear();
+        return true;
+      }
+
       if (l->type().in(
             {TypeTuple, TypeList, Package, Class, TypeTrait, TypeUnit}))
       {
         node = TypeTrue;
+        bindings.clear();
         return true;
       }
 
@@ -139,16 +147,9 @@ namespace verona
       if (l->type() == TypeAlias)
       {
         // This TypeView will itself be reduced.
+        // TODO: probably wrong, LHS and RHS bindings are different
         l = l->make(wfsub::TypeAlias_Type);
-        l->bindings.insert(bindings.begin(), bindings.end());
-        bindings.swap(l->bindings);
         node = TypeView << -l->node << -node->at(wfsub::TypeView_Rhs);
-        return true;
-      }
-
-      if (l->type().in({TypeTrue, TypeFalse}))
-      {
-        node = l->node;
         return true;
       }
 
@@ -171,9 +172,8 @@ namespace verona
       if (r->type() == TypeAlias)
       {
         // This TypeView will itself be reduced.
+        // TODO: probably wrong, LHS and RHS bindings are different
         r = r->make(wfsub::TypeAlias_Type);
-        r->bindings.insert(bindings.begin(), bindings.end());
-        bindings.swap(r->bindings);
         node = TypeView << -l->node << -r->node;
         return true;
       }
@@ -190,6 +190,7 @@ namespace verona
         // Const.* = Const
         // *.Const = Const
         node = Const;
+        bindings.clear();
         return true;
       }
 
@@ -197,6 +198,7 @@ namespace verona
       {
         // (Lin | In).Lin = False
         node = TypeFalse;
+        bindings.clear();
         return true;
       }
 
@@ -204,20 +206,20 @@ namespace verona
       {
         // (Lin | In).(In | Out) = In
         node = In_;
+        bindings.clear();
         return true;
       }
 
       if ((l->type() == Out) && (r->type().in({Lin, In_, Out})))
       {
         // Out.(Lin | In | Out) = Out
-        node = l->node;
+        node = Out;
+        bindings.clear();
         return true;
       }
 
-      // TODO: TypeView on LHS or RHS?
-
-      // At this point, the TypeView has a TypeParam or a TypeVar on either the
-      // LHS or RHS, and the other side is a TypeParam, TypeVar, or K.
+      // The TypeView has a TypeParam, a TypeVar, or a non-reducible TypeView on
+      // at least one side. It's not possible to reduce further.
       return false;
     }
   };

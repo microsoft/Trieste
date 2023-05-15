@@ -1466,8 +1466,7 @@ namespace verona
             // parameter with a fresh name to the lambda parameters.
             auto apply_func = Function
               << DontCare << (Ident ^ apply) << _(TypeParams)
-              << (Params << (Param << (Ident ^ self_id)
-                                   << (Type << (TypeVar ^ _.fresh()))
+              << (Params << (Param << (Ident ^ self_id) << (Type << Self)
                                    << DontCare)
                          << *_[Params])
               << (Type << (TypeVar ^ _.fresh())) << DontCare
@@ -1512,8 +1511,8 @@ namespace verona
 
             auto f = Function << is_ref << clone(id) << TypeParams
                               << (Params
-                                  << (Param << (Ident ^ self_id) << typevar(_)
-                                            << DontCare))
+                                  << (Param << (Ident ^ self_id)
+                                            << (Type << Self) << DontCare))
                               << clone(_(Type)) << DontCare << (Block << expr);
 
             return Seq << field << f;
@@ -1840,7 +1839,7 @@ namespace verona
            for (auto i = arity + 1; i <= end_arity; ++i)
            {
              auto self_id = Ident ^ _.fresh();
-             Node apply_params = Params << (Param << self_id << typevar(_));
+             Node apply_params = Params << (Param << self_id << (Type << Self));
              Node fwd_args = Args;
 
              for (size_t j = 0; j < arity; ++j)
