@@ -7,7 +7,6 @@ Mangling
   - encode type arguments as fields (classes) or arguments (functions)
 
 Subtyping
-- function types as aliases of unions of traits
 - type inference might not work with typeparameter bounds checking
 ```ts
   x: T1, y: T2, z: T3

@@ -415,190 +415,212 @@ namespace verona
       }
 
       // If either side is empty, the sequent is trivially false.
-      // TODO: should this be an assert?
       if (lhs_atomic.empty() || rhs_atomic.empty())
         return false;
 
-      // TODO: if we can succeed without checking TypeVars, we should do so.
-
+      // First try without checking any TypeVars.
       // G, A |- D, A
+      if (std::any_of(lhs_atomic.begin(), lhs_atomic.end(), [&](Btype& l) {
+            return std::any_of(
+              rhs_atomic.begin(), rhs_atomic.end(), [&](Btype& r) {
+                return subtype_one(l, r);
+              });
+          }))
+      {
+        return true;
+      }
+
+      // TODO: accumulate bounds on TypeVars. This isn't right, yet.
       return std::any_of(lhs_atomic.begin(), lhs_atomic.end(), [&](Btype& l) {
         return std::any_of(rhs_atomic.begin(), rhs_atomic.end(), [&](Btype& r) {
-          if (l->type() == TypeVar)
-          {
-            // TODO: Accumulate upper bounds.
-            if (r->type() == TypeVar)
-            {
-              // TODO: Accumulate lower bounds.
-            }
-
-            return true;
-          }
-
-          if (r->type() == TypeVar)
-          {
-            // TODO: Accumulate lower bounds.
-            return true;
-          }
-
-          // These must be an exact match.
-          if (r->type().in({TypeUnit, Lin, In_, Out, Const, Self}))
-            return l->type() == r->type();
-
-          if (r->type() == TypeTuple)
-          {
-            // Tuples must be the same arity and each element must be a subtype.
-            return (l->type() == TypeTuple) &&
-              std::equal(
-                     l->node->begin(),
-                     l->node->end(),
-                     r->node->begin(),
-                     r->node->end(),
-                     [&](auto& t, auto& u) {
-                       return reduce(l->make(t), r->make(u));
-                     });
-          }
-
-          // Nothing is a subtype of a TypeList. Two TypeLists may have
-          // different instantiated arity, even if they have the same bounds.
-          // Use a TypeParam with a TypeList upper bounds to get subtyping.
-          if (r->type() == TypeList)
-            return false;
-
-          // Check for an exact match.
-          if (r->type() == TypeParam)
-            return exact_match(l, r);
-
-          if (r->type().in({TypeAlias, Class}))
-            return exact_match(l, r) && invariant_typeargs(l, r);
-
-          if (r->type() == Package)
-          {
-            // A package resolves to a class. Once we have package resolution,
-            // compare the classes, as different strings could resolve to the
-            // same package.
-            return (l->type() == Package) &&
-              (l->node->at(wfsub::Package_Id)->location() ==
-               r->node->at(wfsub::Package_Id)->location());
-          }
-
-          if (r->type() == TypeTrait)
-          {
-            if (!l->type().in({Class, TypeTrait}))
-              return false;
-
-            // TODO: could memoize successful assumptions
-
-            // If any assumption is true, the trait is satisfied.
-            if (std::any_of(
-                  assumptions.begin(), assumptions.end(), [&](auto& assume) {
-                    // Effectively: (l <: assume.sub) && (assume.sup <: r)
-                    return exact_match(r, assume.sup) &&
-                      exact_match(l, assume.sub) &&
-                      invariant_typeargs(r, assume.sup) &&
-                      invariant_typeargs(l, assume.sub);
-                  }))
-            {
-              return true;
-            }
-
-            push_assume(l, r);
-
-            if (l->type() == Class)
-              push_self(l);
-
-            bool ok = true;
-            auto rbody = r->node->at(wfsub::TypeTrait_ClassBody);
-
-            for (auto rmember : *rbody)
-            {
-              if (rmember->type() != Function)
-                continue;
-
-              auto id = rmember->at(wfsub::Function_Ident)->location();
-              auto lmembers = l->node->lookdown(id);
-
-              // Function names are distinguished by arity at this point.
-              if (lmembers.size() != 1)
-              {
-                ok = false;
-                break;
-              }
-
-              auto lmember = lmembers.front();
-
-              if (lmember->type() != Function)
-              {
-                ok = false;
-                break;
-              }
-
-              // rmember.typeparams.upper <: lmember.typeparams.upper
-              auto rtparams = rmember->at(wfsub::Function_TypeParams);
-              auto ltparams = lmember->at(wfsub::Function_TypeParams);
-
-              if (!std::equal(
-                    rtparams->begin(),
-                    rtparams->end(),
-                    ltparams->begin(),
-                    ltparams->end(),
-                    [&](auto& rtparam, auto& ltparam) {
-                      return reduce(
-                        r->make(rtparam->at(wfsub::TypeParam_Bound)),
-                        l->make(ltparam->at(wfsub::TypeParam_Bound)));
-                    }))
-              {
-                ok = false;
-                break;
-              }
-
-              // rmember.params <: lmember.params
-              auto rparams = rmember->at(wfsub::Function_Params);
-              auto lparams = lmember->at(wfsub::Function_Params);
-
-              if (!std::equal(
-                    rparams->begin(),
-                    rparams->end(),
-                    lparams->begin(),
-                    lparams->end(),
-                    [&](auto& rparam, auto& lparam) {
-                      return reduce(
-                        r->make(rparam->at(wfsub::Param_Type)),
-                        l->make(lparam->at(wfsub::Param_Type)));
-                    }))
-              {
-                ok = false;
-                break;
-              }
-
-              // lmember.result <: rmember.result
-              if (!reduce(
-                    l->make(lmember->at(wfsub::Function_Type)),
-                    r->make(rmember->at(wfsub::Function_Type))))
-              {
-                ok = false;
-                break;
-              }
-            }
-
-            pop_assume();
-
-            if (l->type() == Class)
-              pop_self();
-
-            return ok;
-          }
-
-          if (r->type() == TypeView)
-          {
-            // TODO: handle viewpoint adaptation
-            return false;
-          }
-
-          // Shouldn't get here in non-testing code.
-          return false;
+          return typevar_bounds(l, r);
         });
       });
+    }
+
+    bool subtype_one(Btype& l, Btype& r)
+    {
+      // Skip TypeVar on either side.
+      if ((l->type() == TypeVar) || (r->type() == TypeVar))
+        return false;
+
+      // These must be the same type.
+      if (r->type().in({TypeUnit, Lin, In_, Out, Const, Self}))
+        return l->type() == r->type();
+
+      // Tuples must be the same arity and each element must be a subtype.
+      if (r->type() == TypeTuple)
+      {
+        return (l->type() == TypeTuple) &&
+          std::equal(
+                 l->node->begin(),
+                 l->node->end(),
+                 r->node->begin(),
+                 r->node->end(),
+                 [&](auto& t, auto& u) {
+                   return reduce(l->make(t), r->make(u));
+                 });
+      }
+
+      // Nothing is a subtype of a TypeList. Two TypeLists may have
+      // different instantiated arity, even if they have the same bounds.
+      // Use a TypeParam with a TypeList upper bounds to get subtyping.
+      if (r->type() == TypeList)
+        return false;
+
+      // Check for an exact match.
+      if (r->type() == TypeParam)
+        return exact_match(l, r);
+
+      // Check for an exact match with invariant type arguments.
+      if (r->type().in({TypeAlias, Class}))
+        return exact_match(l, r) && invariant_typeargs(l, r);
+
+      // A package resolves to a class. Once we have package resolution,
+      // compare the classes, as different strings could resolve to the
+      // same package.
+      if (r->type() == Package)
+      {
+        return (l->type() == Package) &&
+          (l->node->at(wfsub::Package_Id)->location() ==
+           r->node->at(wfsub::Package_Id)->location());
+      }
+
+      // Check structural subtyping.
+      if (r->type() == TypeTrait)
+      {
+        if (!l->type().in({Class, TypeTrait}))
+          return false;
+
+        // If any assumption is true, the trait is satisfied.
+        if (std::any_of(
+              assumptions.begin(), assumptions.end(), [&](auto& assume) {
+                // Effectively: (l <: assume.sub) && (assume.sup <: r)
+                return exact_match(r, assume.sup) &&
+                  exact_match(l, assume.sub) &&
+                  invariant_typeargs(r, assume.sup) &&
+                  invariant_typeargs(l, assume.sub);
+              }))
+        {
+          return true;
+        }
+
+        push_assume(l, r);
+
+        if (l->type() == Class)
+          push_self(l);
+
+        bool ok = true;
+        auto rbody = r->node->at(wfsub::TypeTrait_ClassBody);
+
+        for (auto rmember : *rbody)
+        {
+          if (rmember->type() != Function)
+            continue;
+
+          auto id = rmember->at(wfsub::Function_Ident)->location();
+          auto lmembers = l->node->lookdown(id);
+
+          // Function names are distinguished by arity at this point.
+          if (lmembers.size() != 1)
+          {
+            ok = false;
+            break;
+          }
+
+          auto lmember = lmembers.front();
+
+          if (lmember->type() != Function)
+          {
+            ok = false;
+            break;
+          }
+
+          // rmember.typeparams.upper <: lmember.typeparams.upper
+          auto rtparams = rmember->at(wfsub::Function_TypeParams);
+          auto ltparams = lmember->at(wfsub::Function_TypeParams);
+
+          if (!std::equal(
+                rtparams->begin(),
+                rtparams->end(),
+                ltparams->begin(),
+                ltparams->end(),
+                [&](auto& rtparam, auto& ltparam) {
+                  return reduce(
+                    r->make(rtparam->at(wfsub::TypeParam_Bound)),
+                    l->make(ltparam->at(wfsub::TypeParam_Bound)));
+                }))
+          {
+            ok = false;
+            break;
+          }
+
+          // rmember.params <: lmember.params
+          auto rparams = rmember->at(wfsub::Function_Params);
+          auto lparams = lmember->at(wfsub::Function_Params);
+
+          if (!std::equal(
+                rparams->begin(),
+                rparams->end(),
+                lparams->begin(),
+                lparams->end(),
+                [&](auto& rparam, auto& lparam) {
+                  return reduce(
+                    r->make(rparam->at(wfsub::Param_Type)),
+                    l->make(lparam->at(wfsub::Param_Type)));
+                }))
+          {
+            ok = false;
+            break;
+          }
+
+          // lmember.result <: rmember.result
+          if (!reduce(
+                l->make(lmember->at(wfsub::Function_Type)),
+                r->make(rmember->at(wfsub::Function_Type))))
+          {
+            ok = false;
+            break;
+          }
+        }
+
+        // If the check succeeded, memoize the assumption by not popping.
+        if (!ok)
+          pop_assume();
+
+        if (l->type() == Class)
+          pop_self();
+
+        return ok;
+      }
+
+      // TODO: handle viewpoint adaptation
+      if (r->type() == TypeView)
+      {
+        return false;
+      }
+
+      // Shouldn't get here in non-testing code.
+      return false;
+    }
+
+    bool typevar_bounds(Btype& l, Btype& r)
+    {
+      bool ok = false;
+
+      if (l->type() == TypeVar)
+      {
+        // TODO: l.upper += r
+        ok = true;
+      }
+
+      if (r->type() == TypeVar)
+      {
+        // TODO: r.lower += l
+        ok = true;
+      }
+
+      return ok;
     }
 
     bool exact_match(Btype& l, Btype& r)
