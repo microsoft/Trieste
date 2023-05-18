@@ -194,9 +194,9 @@ namespace verona
         return true;
       }
 
-      if (l->type().in({Lin, In_}) && (r->type() == Lin))
+      if (l->type().in({Lin, In_, Out}) && (r->type() == Lin))
       {
-        // (Lin | In).Lin = False
+        // (Lin | In | Out).Lin = False
         node = TypeFalse;
         bindings.clear();
         return true;
@@ -210,9 +210,9 @@ namespace verona
         return true;
       }
 
-      if ((l->type() == Out) && (r->type().in({Lin, In_, Out})))
+      if ((l->type() == Out) && (r->type().in({In_, Out})))
       {
-        // Out.(Lin | In | Out) = Out
+        // Out.(In | Out) = Out
         node = Out;
         bindings.clear();
         return true;

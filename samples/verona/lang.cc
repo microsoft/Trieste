@@ -119,13 +119,34 @@ namespace verona
           return FieldVar << _(Id) << typevar(_, Type) << DontCare;
         },
 
+      // Function: (equals (group name square parens type brace ...) group)
+      In(ClassBody) *
+          (T(Equals)
+           << ((T(Group)
+                << (~T(Ref)[Ref] * ~Name[Id] * ~T(Square)[TypeParams] *
+                    T(Paren)[Params] * ~T(Type)[Type] *
+                    ~T(LLVMFuncType)[LLVMFuncType] * T(Brace)[Block] *
+                    (Any++)[Lhs])) *
+               T(Group)++[Rhs])) >>
+        [](Match& _) {
+          _.def(Id, Ident ^ apply);
+          return Seq << (Lift << ClassBody
+                              << (Function << (_(Ref) / DontCare) << _(Id)
+                                           << (TypeParams << *_[TypeParams])
+                                           << (Params << *_[Params])
+                                           << typevar(_, Type)
+                                           << (_(LLVMFuncType) / DontCare)
+                                           << (Block << *_[Block])))
+                     << (Equals << (Group << _[Lhs]) << _[Rhs]);
+        },
+
       // Function: (equals (group name square parens type) group)
       In(ClassBody) *
           (T(Equals)
            << ((T(Group)
                 << (~T(Ref)[Ref] * ~Name[Id] * ~T(Square)[TypeParams] *
                     T(Paren)[Params] * ~T(Type)[Type] *
-                    ~T(LLVMFuncType)[LLVMFuncType])) *
+                    ~T(LLVMFuncType)[LLVMFuncType] * End)) *
                T(Group)++[Rhs])) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
@@ -452,71 +473,73 @@ namespace verona
   {
     return {
       dir::topdown | dir::once,
-      {(T(FieldLet) / T(FieldVar))[Op] << (T(Ident)[Id]) >>
-         ([](Match& _) -> Node {
-           auto field = _(Op);
-           auto defs = field->scope()->lookdown(_(Id)->location());
+      {
+        (T(FieldLet) / T(FieldVar))[Op] << (T(Ident)[Id]) >>
+          ([](Match& _) -> Node {
+            auto field = _(Op);
+            auto defs = field->scope()->lookdown(_(Id)->location());
 
-           for (auto& def : defs)
-           {
-             if (def == field)
-               continue;
+            for (auto& def : defs)
+            {
+              if (def == field)
+                continue;
 
-             if (def->type().in({FieldLet, FieldVar}))
-               return err(field, "duplicate field name");
-           }
+              if (def->type().in({FieldLet, FieldVar}))
+                return err(field, "duplicate field name");
+            }
 
-           return NoChange;
-         }),
+            return NoChange;
+          }),
 
-       (T(Class) / T(TypeAlias) / T(TypeTrait))[Class] << (T(Ident)[Id]) >>
-         ([](Match& _) -> Node {
-           auto cls = _(Class);
-           auto defs = cls->scope()->lookdown(_(Id)->location());
+        (T(Class) / T(TypeAlias) / T(TypeTrait))[Class] << (T(Ident)[Id]) >>
+          ([](Match& _) -> Node {
+            auto cls = _(Class);
+            auto defs = cls->scope()->lookdown(_(Id)->location());
 
-           for (auto& def : defs)
-           {
-             if (def == cls)
-               continue;
+            for (auto& def : defs)
+            {
+              if (def == cls)
+                continue;
 
-             if (def->type().in({Class, TypeAlias, TypeTrait}))
-               return err(cls, "duplicate type name");
-             else if (def->type() == Function)
-               return err(cls, "this type has the same name as a function");
-           }
+              if (def->type().in({Class, TypeAlias, TypeTrait}))
+                return err(cls, "duplicate type name");
+              else if (def->type() == Function)
+                return err(cls, "this type has the same name as a function");
+            }
 
-           return NoChange;
-         }),
+            return NoChange;
+          }),
 
-       T(Function)[Function]
-           << ((T(Ref) / T(DontCare))[Ref] * Name[Id] * T(TypeParams) *
-               T(Params)[Params]) >>
-         ([](Match& _) -> Node {
-           auto func = _(Function);
-           auto ref = _(Ref);
-           auto defs = func->scope()->lookdown(_(Id)->location());
+        T(Function)[Function]
+            << ((T(Ref) / T(DontCare))[Ref] * Name[Id] * T(TypeParams) *
+                T(Params)[Params]) >>
+          ([](Match& _) -> Node {
+            auto func = _(Function);
+            auto ref = _(Ref);
+            auto defs = func->scope()->lookdown(_(Id)->location());
 
-           for (auto& def : defs)
-           {
-             if (def == func)
-               continue;
+            for (auto& def : defs)
+            {
+              if (def == func)
+                continue;
 
-             if (def->type().in({Class, TypeAlias, TypeTrait}))
-               return err(func, "this function has the same name as a type");
-             else if (
-               (def->type() == Function) &&
-               (def->at(wf / Function / Ref)->type() == ref->type()) &&
-               (def->at(wf / Function / Params)->size() == _(Params)->size()))
-             {
-               return err(
-                 func,
-                 "this function has the same name, arity, and handedness as "
-                 "another function");
-             }
-           }
+              if (def->type().in({Class, TypeAlias, TypeTrait}))
+                return err(func, "this function has the same name as a type");
+              else if (
+                (def->type() == Function) &&
+                (def->at(wf / Function / Ref)->type() == ref->type()) &&
+                (def->at(wf / Function / Params)->size() == _(Params)->size()))
+              {
+                return err(
+                  func,
+                  "this function has the same name, arity, and handedness as "
+                  "another function");
+              }
+            }
 
-           return NoChange;
-         })}};
+            return NoChange;
+          }),
+      }};
   }
 
   inline const auto TypeName =
@@ -1080,7 +1103,7 @@ namespace verona
       In(Tuple) * T(Expr) << (Object[Lhs] * T(Ellipsis) * End) >>
         [](Match& _) { return TupleFlatten << (Expr << _(Lhs)); },
 
-      // Use DontCare for partial application of arbitrary arguments.
+      // Use `_` (DontCare) for partial application of arbitrary arguments.
       T(Call)
           << (Operator[Op] *
               (T(Args)
@@ -1464,6 +1487,7 @@ namespace verona
 
             // The apply function is the original lambda. Prepend a `self`-like
             // parameter with a fresh name to the lambda parameters.
+            // TODO: capability for Self
             auto apply_func = Function
               << DontCare << (Ident ^ apply) << _(TypeParams)
               << (Params << (Param << (Ident ^ self_id) << (Type << Self)
@@ -1509,6 +1533,7 @@ namespace verona
             if (is_ref == DontCare)
               expr = Expr << (Call << clone(Load) << (Args << expr));
 
+            // TODO: capability for Self, return type is self.T
             auto f = Function << is_ref << clone(id) << TypeParams
                               << (Params
                                   << (Param << (Ident ^ self_id)
@@ -1615,10 +1640,11 @@ namespace verona
           }
 
           // Create the `new` function.
+          // TODO: return Self & K?
           auto body = ClassBody
             << *_[ClassBody]
             << (Function << DontCare << (Ident ^ new_) << TypeParams
-                         << clone(new_params) << typevar(_) << DontCare
+                         << new_params << typevar(_) << DontCare
                          << (Block << (Expr << Unit)));
 
           if (class_body->parent()->lookdown(create).empty())
@@ -1626,7 +1652,7 @@ namespace verona
             // Create the `create` function.
             body
               << (Function << DontCare << (Ident ^ create) << TypeParams
-                           << new_params << typevar(_) << DontCare
+                           << clone(new_params) << typevar(_) << DontCare
                            << (Block << (Expr << (Call << New << new_args))));
           }
 
@@ -1838,6 +1864,7 @@ namespace verona
            // for the final arity.
            for (auto i = arity + 1; i <= end_arity; ++i)
            {
+             // TODO: capability for Self, depends on captured param types
              auto self_id = Ident ^ _.fresh();
              Node apply_params = Params << (Param << self_id << (Type << Self));
              Node fwd_args = Args;

@@ -217,9 +217,24 @@ namespace verona
           },
 
         // Keywords.
-        "use\\b" >> [](auto& m) { m.add(Use); },
-        "type\\b" >> [](auto& m) { m.add(TypeAlias); },
-        "class\\b" >> [](auto& m) { m.add(Class); },
+        "use\\b" >>
+          [](auto& m) {
+            m.term(terminators);
+            m.add(Use);
+          },
+
+        "type\\b" >>
+          [](auto& m) {
+            m.term(terminators);
+            m.add(TypeAlias);
+          },
+
+        "class\\b" >>
+          [](auto& m) {
+            m.term(terminators);
+            m.add(Class);
+          },
+
         "var\\b" >> [](auto& m) { m.add(Var); },
         "let\\b" >> [](auto& m) { m.add(Let); },
         "ref\\b" >> [](auto& m) { m.add(Ref); },

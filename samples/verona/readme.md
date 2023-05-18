@@ -1,6 +1,7 @@
 # Todo
 
 Mangling
+- automatically insert `use std::builtin` in `Top`?
 - need reachability to do precise flattening
 - for dynamic execution:
   - use polymorphic versions of types and functions
@@ -21,6 +22,10 @@ Pattern Matching
 - values as arguments
 - exhaustiveness
 - backtracking?
+
+Late loads of code that's been through some passes
+- delay name lookup
+- only tricky part is `create` sugar
 
 Type Descriptor
 - sizeof: encode it as a function?
