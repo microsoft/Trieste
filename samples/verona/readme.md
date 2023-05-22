@@ -1,5 +1,26 @@
 # Todo
 
+Tuples are traits, `()` is a synonym for `std::Unit`
+```ts
+type Tuple[T, U] =
+{
+  rest(self): self.U
+  head(self: Self & (in | out | const)): self.T
+}
+
+class Unit: Tuple[(), ()]
+{
+  head(self): () = ()
+  rest(self): () = ()
+}
+
+(): Tuple[(), ()]
+T1: Tuple[T1, ()]
+(T1, T2): Tuple[T1, Tuple[T2, ()]]
+(T1, T2, T3): Tuple[T1, Tuple[T2, Tuple[T3, ()]]]
+(T1, T2, T3, T4): Tuple[T1, Tuple[T2, Tuple[T3, Tuple[T4, ()]]]]
+```
+
 Mangling
 - automatically insert `use std::builtin` in `Top`?
 - need reachability to do precise flattening

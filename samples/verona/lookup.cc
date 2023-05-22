@@ -109,7 +109,7 @@ namespace verona
       else if (lookup.def->type() == TypeView)
       {
         // Replace the def with the rhs of the view and try again.
-        lookup.def = lookup.def->at(wf / TypeView / Rhs);
+        lookup.def = lookup.def->back();
       }
       else if (lookup.def->type() == TypeIsect)
       {
@@ -215,17 +215,10 @@ namespace verona
         worklist.emplace_back(
           set, Lookup(type->at(wf / Type / Type), bindings));
       }
-      else if (type->type().in({TypeTuple, TypeUnion, TypeIsect}))
+      else if (type->type().in({TypeTuple, TypeUnion, TypeIsect, TypeView}))
       {
         for (auto& t : *type)
           worklist.emplace_back(set, Lookup(t, bindings));
-      }
-      else if (type->type() == TypeView)
-      {
-        worklist.emplace_back(
-          set, Lookup(type->at(wf / TypeView / Lhs), bindings));
-        worklist.emplace_back(
-          set, Lookup(type->at(wf / TypeView / Rhs), bindings));
       }
       else if (type->type() == TypeAliasName)
       {

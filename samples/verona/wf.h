@@ -127,7 +127,7 @@ namespace verona
       wfPassTypeNames
 
     // Add TypeView, TypeList.
-    | (TypeView <<= (Lhs >>= Type) * (Rhs >>= Type))
+    | (TypeView <<= Type++[2])
     | (TypeList <<= Type)
 
     // Remove DoubleColon, Dot, Ellipsis, TypeArgs.
@@ -180,7 +180,7 @@ namespace verona
     // No Type nodes inside of type structure.
     | (TypeList <<= wfType)
     | (TypeTuple <<= wfType++[2])
-    | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))
+    | (TypeView <<= wfType++[2])
     | (TypeSubtype <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeUnion <<= (wfTypeNoAlg | TypeIsect)++[2])
     | (TypeIsect <<= (wfTypeNoAlg | TypeUnion)++[2])
@@ -449,7 +449,6 @@ namespace verona
     | (TypeTraitName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeAliasName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
     | (TypeParamName <<= (Lhs >>= (wfTypeName | TypeUnit)) * Ident * TypeArgs)
-    | (TypeView <<= (Lhs >>= wfType) * (Rhs >>= wfType))
     | (TypeTrait <<= Ident * ClassBody)
     | (Package <<= (Id >>= String | Escaped))
     | (Var <<= Ident * Type)

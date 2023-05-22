@@ -12,8 +12,6 @@ namespace verona
   namespace wfsub
   {
     inline const auto Type_Type = wfPassNameArity / Type / Type;
-    inline const auto TypeView_Lhs = wfPassNameArity / TypeView / Lhs;
-    inline const auto TypeView_Rhs = wfPassNameArity / TypeView / Rhs;
     inline const auto TypeAlias_Type = wfPassNameArity / TypeAlias / Type;
     inline const auto TypeParam_Bound = wfPassNameArity / TypeParam / Bound;
     inline const auto Package_Id = wfPassNameArity / Package / Id;
@@ -79,11 +77,6 @@ namespace verona
 
           *this = *it->second;
         }
-        else if (node->type() == TypeView)
-        {
-          if (!reduce_view())
-            return;
-        }
         else
         {
           return;
@@ -109,118 +102,6 @@ namespace verona
     const Token& type() const
     {
       return node->type();
-    }
-
-    bool reduce_view()
-    {
-      assert(type() == TypeView);
-      auto l = make(wfsub::TypeView_Lhs);
-
-      if (l->type().in({TypeTrue, TypeFalse}))
-      {
-        node = l->node;
-        bindings.clear();
-        return true;
-      }
-
-      if (l->type().in(
-            {TypeTuple, TypeList, Package, Class, TypeTrait, TypeUnit}))
-      {
-        node = TypeTrue;
-        bindings.clear();
-        return true;
-      }
-
-      if (l->type().in({TypeUnion, TypeIsect}))
-      {
-        // (A | B).C = A.C | B.C
-        // (A & B).C = A.C & B.C
-        auto r = node->at(wfsub::TypeView_Rhs);
-        node = l->type();
-
-        for (auto& t : *l->node)
-          node << (TypeView << -t << -r);
-
-        return true;
-      }
-
-      if (l->type() == TypeAlias)
-      {
-        // This TypeView will itself be reduced.
-        // TODO: probably wrong, LHS and RHS bindings are different
-        l = l->make(wfsub::TypeAlias_Type);
-        node = TypeView << -l->node << -node->at(wfsub::TypeView_Rhs);
-        return true;
-      }
-
-      auto r = make(wfsub::TypeView_Rhs);
-
-      if (r->type().in({TypeUnion, TypeIsect, TypeTuple, TypeList}))
-      {
-        // A.(B & C) = A.B & A.C
-        // A.(B | C) = A.B | A.C
-        // A.(B, C) = A.B, A.C
-        // A.(B...) = (A.B)...
-        node = r->type();
-
-        for (auto& t : *r->node)
-          node << (TypeView << -l->node << -t);
-
-        return true;
-      }
-
-      if (r->type() == TypeAlias)
-      {
-        // This TypeView will itself be reduced.
-        // TODO: probably wrong, LHS and RHS bindings are different
-        r = r->make(wfsub::TypeAlias_Type);
-        node = TypeView << -l->node << -r->node;
-        return true;
-      }
-
-      if (r->type().in(
-            {Package, Class, TypeTrait, TypeUnit, TypeTrue, TypeFalse}))
-      {
-        *this = *r;
-        return true;
-      }
-
-      if ((l->type() == Const) || (r->type() == Const))
-      {
-        // Const.* = Const
-        // *.Const = Const
-        node = Const;
-        bindings.clear();
-        return true;
-      }
-
-      if (l->type().in({Lin, In_, Out}) && (r->type() == Lin))
-      {
-        // (Lin | In | Out).Lin = False
-        node = TypeFalse;
-        bindings.clear();
-        return true;
-      }
-
-      if (l->type().in({Lin, In_}) && (r->type().in({In_, Out})))
-      {
-        // (Lin | In).(In | Out) = In
-        node = In_;
-        bindings.clear();
-        return true;
-      }
-
-      if ((l->type() == Out) && (r->type().in({In_, Out})))
-      {
-        // Out.(In | Out) = Out
-        node = Out;
-        bindings.clear();
-        return true;
-      }
-
-      // The TypeView has a TypeParam, a TypeVar, or a non-reducible TypeView on
-      // at least one side. It's not possible to reduce further.
-      return false;
     }
   };
 
@@ -659,6 +540,50 @@ namespace verona
       }
 
       return true;
+    }
+
+    Btype reduce_view(Btype& t)
+    {
+      assert(t->type() == TypeView);
+      auto r = t->make(t->node->back());
+
+      if (r->type().in(
+            {Package,
+             Class,
+             TypeTrait,
+             TypeTuple,
+             TypeUnit,
+             TypeList,
+             TypeTrue,
+             TypeFalse}))
+      {
+        return r;
+      }
+
+      if (r->type().in({TypeUnion, TypeIsect, TypeList}))
+      {
+        // A.(B & C) = A.B & A.C
+        // A.(B | C) = A.B | A.C
+        // A.(B...) = (A.B)...
+        Node node = r->type();
+
+        // TODO: replace lhs with [front, back - 1]
+        for (auto& rr : *r->node)
+          node << (TypeView << -lhs << -rr);
+
+        return t->make(node);
+      }
+
+      if (r->type() == TypeAlias)
+      {
+        // TODO: replace lhs with [front, back - 1]
+        return r->make(wfsub::TypeAlias_Type)
+          ->make(TypeView << -lhs << -r->node);
+      }
+
+      // TODO: TypeParam on rhs
+
+      return t;
     }
   };
 
