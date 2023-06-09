@@ -66,6 +66,7 @@ namespace verona
 
   inline const auto TypeStruct = In(Type) / In(TypeList) / In(TypeTuple) /
     In(TypeView) / In(TypeUnion) / In(TypeIsect) / In(TypeSubtype);
+  inline const auto TypeCaps = T(Iso) / T(Mut) / T(Imm);
   inline const auto Name = T(Ident) / T(Symbol);
   inline const auto Literal = T(String) / T(Escaped) / T(Char) / T(Bool) /
     T(Hex) / T(Bin) / T(Int) / T(Float) / T(HexFloat) / T(LLVM);
@@ -449,9 +450,7 @@ namespace verona
           return Expr << (TypeAssert << (Expr << _[Expr]) << _(Type));
         },
 
-      In(Expr) *
-          (T(Lin) / T(In_) / T(Out) / T(Const) / T(Self) / T(Arrow) /
-           T(LLVMFuncType))[Expr] >>
+      In(Expr) * (TypeCaps / T(Self) / T(Arrow) / T(LLVMFuncType))[Expr] >>
         [](Match& _) {
           return err(_[Expr], "can't put this in an expression");
         },
@@ -545,10 +544,10 @@ namespace verona
   inline const auto TypeName =
     T(TypeClassName) / T(TypeAliasName) / T(TypeParamName) / T(TypeTraitName);
 
-  inline const auto TypeElem = T(Type) / TypeName / T(TypeTrait) /
-    T(TypeTuple) / T(Lin) / T(In_) / T(Out) / T(Const) / T(Self) / T(TypeList) /
-    T(TypeView) / T(TypeIsect) / T(TypeUnion) / T(TypeVar) / T(TypeUnit) /
-    T(Package) / T(TypeSubtype) / T(TypeTrue) / T(TypeFalse);
+  inline const auto TypeElem = T(Type) / TypeCaps / TypeName / T(TypeTrait) /
+    T(TypeTuple) / T(Self) / T(TypeList) / T(TypeView) / T(TypeIsect) /
+    T(TypeUnion) / T(TypeVar) / T(TypeUnit) / T(Package) / T(TypeSubtype) /
+    T(TypeTrue) / T(TypeFalse);
 
   Node
   makename(const Lookups& defs, Node lhs, Node id, Node ta, bool func = false)
@@ -678,11 +677,10 @@ namespace verona
           (TypeElem * T(Symbol, "->"))++[Op] * TypeElem[Rhs] >>
         [](Match& _) {
           // T1...->T2 =
-          //   ({ (Self & in, T1...): T2 } & in)
-          // | ({ (Self & out, T1...): T2 } & out)
-          // | ({ (Self & const, T1...): T2 } & const)
+          //   ({ (Self & mut, T1...): T2 } & mut)
+          // | ({ (Self & imm, T1...): T2 } & imm)
           Node r = TypeUnion;
-          std::initializer_list<Token> caps = {In_, Out, Const};
+          std::initializer_list<Token> caps = {Mut, Imm};
 
           for (auto& cap : caps)
           {

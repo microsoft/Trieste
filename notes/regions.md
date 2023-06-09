@@ -128,48 +128,16 @@ k.C = C
 (T1, T2).T = ∅
 C.T = ∅
 
-```
+// K, TP, C, I, A, V, tuple, |, &, list, (), true, false
+T*.{C, I, tuple, (), true, false} = rhs
+T*.(T1 | T2) = T*.T1 | T*.T2
+T*.(T1 & T2) = T*.T1 | T*.T2
+T*.(T1...) = (T*.T1)...
+T*.A = T*.(def A)
 
-## Self Types
-
-The `self` parameter has a type `Self` that's an implicit type parameter. `Self` has an upper bound of the enclosing type intersected with either any bound specified on the parameter, or with `in | out | const` if no bound is specified.
-
-Note that `lin` isn't included by default. Should it be?
-
-## Function Types
-
-Can solve it with a union type:
-
-```ts
-T1...->T2 =
-  ({ (Self & in, T1...): T2 } & in)
-| ({ (Self & out, T1...): T2 } & out)
-| ({ (Self & const, T1...): T2 } & const)
-// and maybe lin as well?
-
-(T1->T2) & const
-~~~>
-( ({ (Self & in, T1...): T2 } & in)
-| ({ (Self & out, T1...): T2 } & out)
-| ({ (Self & const, T1...): T2 } & const))
-& const
-~~~>
-false | false | ({ (Self & const, T1...): T2 } & const)
-
-// could also do:
-C ~~~> C & (in | out | const)
-// ie use the same approach as the implicit capability union on Self
+// rhs = K, TP
 
 ```
-
-What about `{ (Self & (in | const), T1...): T2 } & (in | const)`? It's ok, it's a subtype of `T1...->T2`.
-
-```ts
-(A | C)->(B & D) <: (A->B | C->D) <: (A & C)->(B | D)
-(A | C)->(B & D) <: (A & C)->(B | D)
-```
-
-What about C-style function pointers? It's ok, wrap them in an immutable stateless lambda.
 
 ## Ref[T]
 
@@ -180,16 +148,17 @@ class Ref[T]
   var val: T
 
   // we lose any disjunction that is `lin` when loading
-  load(self): Self.T = self.val
+  load(self): self.T = self.val
 
   // T is unadapted, so if T is `lin`, we accept and return it as `lin`
+  // TODO: has to be adapted, eg T: String & out should yield String & in
   store(self: in, val: T): T = (self.val = val)
 
   // fully specified
-  load[Self: Ref[T] & (in | out | const)](self: Self): Self.T = self.val
+  load[$self: Ref[T] & (in | out | const)](self: $self): $self.T = self.val
 
-  store[Self: Ref[T] & (in | out | count)](self: Self & in, val: Self.T):
-    Self.T = (self.val = val)
+  store[$self: Ref[T] & (in | out | count) & in](self: $self, val: $self.T):
+    $self.T = (self.val = val)
 }
 ```
 

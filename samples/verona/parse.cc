@@ -238,15 +238,14 @@ namespace verona
         "var\\b" >> [](auto& m) { m.add(Var); },
         "let\\b" >> [](auto& m) { m.add(Let); },
         "ref\\b" >> [](auto& m) { m.add(Ref); },
-        "lin\\b" >> [](auto& m) { m.add(Lin); },
-        "in\\b" >> [](auto& m) { m.add(In_); },
-        "out\\b" >> [](auto& m) { m.add(Out); },
-        "const\\b" >> [](auto& m) { m.add(Const); },
         "Self\\b" >> [](auto& m) { m.add(Self); },
         "if\\b" >> [](auto& m) { m.add(If); },
         "else\\b" >> [](auto& m) { m.add(Else); },
         "new\\b" >> [](auto& m) { m.add(New); },
         "try\\b" >> [](auto& m) { m.add(Try); },
+        "iso\\b" >> [](auto& m) { m.add(Iso); },
+        "mut\\b" >> [](auto& m) { m.add(Mut); },
+        "imm\\b" >> [](auto& m) { m.add(Imm); },
 
         // Don't care.
         "_\\b" >> [](auto& m) { m.add(DontCare); },

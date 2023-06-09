@@ -4,8 +4,8 @@ Tuples are traits, `()` is a synonym for `std::Unit`
 ```ts
 type Tuple[T, U] =
 {
-  rest(self): self.U
   head(self: Self & (in | out | const)): self.T
+  rest(self): self.U
 }
 
 class Unit: Tuple[(), ()]
@@ -29,6 +29,9 @@ Mangling
   - encode type arguments as fields (classes) or arguments (functions)
 
 Subtyping
+- when we see a syntactic type argument, need to check if typearg < bounds
+  - could do `T1[T2] ~> T1[T2] & (T2 < T1.TP[0])`
+- break up traits with >1 requirement into isect of 1 requirement traits
 - type inference might not work with typeparameter bounds checking
 ```ts
   x: T1, y: T2, z: T3

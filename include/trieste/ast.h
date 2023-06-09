@@ -254,7 +254,7 @@ namespace trieste
     void push_back(NodeRange range)
     {
       for (auto it = range.first; it != range.second; ++it)
-        push_back(it);
+        push_back(*it);
     }
 
     void push_back_ephemeral(Node node)
@@ -264,6 +264,12 @@ namespace trieste
 
       // Don't set the parent of the new child node to `this`.
       children.push_back(node);
+    }
+
+    void push_back_ephemeral(NodeRange range)
+    {
+      for (auto it = range.first; it != range.second; ++it)
+        push_back_ephemeral(*it);
     }
 
     Node pop_back()

@@ -89,7 +89,7 @@ namespace verona
       return std::make_shared<BtypeDef>(t, b);
     }
 
-    Btype make(Node& t)
+    Btype make(Node t)
     {
       return make(t, bindings);
     }
@@ -223,6 +223,15 @@ namespace verona
           rhs_pending.push_back(r->make(wfsub::TypeAlias_Type));
           rhs_atomic.push_back(r);
         }
+        else if (r->type() == TypeView)
+        {
+          auto [rr, done] = reduce_view(r);
+
+          if (done)
+            rhs_atomic.push_back(rr);
+          else
+            rhs_pending.push_back(rr);
+        }
         else if (r->type() == Self)
         {
           // Try both Self and the current self type.
@@ -283,6 +292,15 @@ namespace verona
           lhs_pending.push_back(l->make(wfsub::TypeParam_Bound));
           lhs_atomic.push_back(l);
         }
+        else if (l->type() == TypeView)
+        {
+          auto [ll, done] = reduce_view(l);
+
+          if (done)
+            rhs_atomic.push_back(ll);
+          else
+            rhs_pending.push_back(ll);
+        }
         else if (l->type() == Self)
         {
           // Try both Self and the current self type.
@@ -328,10 +346,12 @@ namespace verona
         return false;
 
       // These must be the same type.
-      if (r->type().in({TypeUnit, Lin, In_, Out, Const, Self}))
+      // TODO: region tracking
+      if (r->type().in({TypeUnit, Iso, Mut, Imm, Self}))
         return l->type() == r->type();
 
       // Tuples must be the same arity and each element must be a subtype.
+      // TODO: remove TypeTuple from the language, use a trait
       if (r->type() == TypeTuple)
       {
         return (l->type() == TypeTuple) &&
@@ -351,13 +371,13 @@ namespace verona
       if (r->type() == TypeList)
         return false;
 
-      // Check for an exact match.
+      // Check for the same definition site.
       if (r->type() == TypeParam)
-        return exact_match(l, r);
+        return same_def_site(l, r);
 
-      // Check for an exact match with invariant type arguments.
+      // Check for the same definition site with invariant typeargs.
       if (r->type().in({TypeAlias, Class}))
-        return exact_match(l, r) && invariant_typeargs(l, r);
+        return same_def_site(l, r) && invariant_typeargs(l, r);
 
       // A package resolves to a class. Once we have package resolution,
       // compare the classes, as different strings could resolve to the
@@ -379,8 +399,8 @@ namespace verona
         if (std::any_of(
               assumptions.begin(), assumptions.end(), [&](auto& assume) {
                 // Effectively: (l <: assume.sub) && (assume.sup <: r)
-                return exact_match(r, assume.sup) &&
-                  exact_match(l, assume.sub) &&
+                return same_def_site(r, assume.sup) &&
+                  same_def_site(l, assume.sub) &&
                   invariant_typeargs(r, assume.sup) &&
                   invariant_typeargs(l, assume.sub);
               }))
@@ -467,9 +487,8 @@ namespace verona
           }
         }
 
-        // If the check succeeded, memoize the assumption by not popping.
-        if (!ok)
-          pop_assume();
+        // TODO: If the check succeeded, memoize it.
+        pop_assume();
 
         if (l->type() == Class)
           pop_self();
@@ -480,6 +499,9 @@ namespace verona
       // TODO: handle viewpoint adaptation
       if (r->type() == TypeView)
       {
+        // TODO: the ned of a TypeView can be a TypeParam. If it is, we need to
+        // be able to use that to fulfill Class / Trait / etc if the TypeView is
+        // on the LHS, or to demand it if the TypeView is on the RHS.
         return false;
       }
 
@@ -506,10 +528,10 @@ namespace verona
       return ok;
     }
 
-    bool exact_match(Btype& l, Btype& r)
+    bool same_def_site(Btype& l, Btype& r)
     {
-      // The type and node must match exactly.
-      return (l->type() == r->type()) && (l->node == r->node);
+      // The types must have the same definition site.
+      return (l->node == r->node);
     }
 
     bool invariant_typeargs(Btype& l, Btype& r)
@@ -542,48 +564,93 @@ namespace verona
       return true;
     }
 
-    Btype reduce_view(Btype& t)
+    std::pair<Btype, bool> reduce_view(Btype& t)
     {
       assert(t->type() == TypeView);
-      auto r = t->make(t->node->back());
+      auto start = t->node->begin();
+      auto end = t->node->end();
 
-      if (r->type().in(
-            {Package,
-             Class,
-             TypeTrait,
-             TypeTuple,
-             TypeUnit,
-             TypeList,
-             TypeTrue,
-             TypeFalse}))
+      for (auto it = start; it != end; ++it)
       {
-        return r;
+        auto lhs = NodeRange{start, it};
+        auto rhs = NodeRange{it + 1, end};
+        auto r = t->make(*it);
+
+        if (r->type().in(
+              {Package,
+               Class,
+               TypeTrait,
+               TypeTuple,
+               TypeUnit,
+               TypeTrue,
+               TypeFalse}))
+        {
+          // The viewpoint path can be discarded.
+          if (*it == t->node->back())
+            return {r, false};
+
+          // There is no view through this type, so treat it as true, i.e. top.
+          return {t->make(TypeTrue), false};
+        }
+        else if (r->type() == TypeList)
+        {
+          // A.(B...) = (A.B)...
+          if (*it == t->node->back())
+            return {r->make(TypeView << -lhs << -r->node), false};
+
+          // There is no view through this type, so treat it as true, i.e. top.
+          return {t->make(TypeTrue), false};
+        }
+        else if (r->type().in({TypeUnion, TypeIsect}))
+        {
+          // A.(B | C).D = A.B.D | A.C.D
+          // A.(B & C).D = A.B.D & A.C.D
+          Node node = r->type();
+
+          for (auto& rr : *r->node)
+            node << (TypeView << -lhs << -rr << -rhs);
+
+          return {r->make(node), false};
+        }
+        else if (r->type() == TypeAlias)
+        {
+          return {
+            r->make(wfsub::TypeAlias_Type)
+              ->make(TypeView << -lhs << -r->node << -rhs),
+            false};
+        }
+        else if (r->type() == TypeView)
+        {
+          // A.(B.C).D = A.B.C.D
+          auto node = TypeView << -lhs;
+
+          for (auto& rr : *r->node)
+            node << -rr;
+
+          node << -rhs;
+          return {r->make(node), false};
+        }
       }
 
-      if (r->type().in({TypeUnion, TypeIsect, TypeList}))
+      // The TypeView contains only TypeParams and capabilities.
+      auto t_imm = t->make(Imm);
+
+      for (auto it = start; it != end; ++it)
       {
-        // A.(B & C) = A.B & A.C
-        // A.(B | C) = A.B | A.C
-        // A.(B...) = (A.B)...
-        Node node = r->type();
+        auto r = t->make(*it);
 
-        // TODO: replace lhs with [front, back - 1]
-        for (auto& rr : *r->node)
-          node << (TypeView << -lhs << -rr);
+        // If any step in the view is Imm, the whole view is Imm.
+        if (reduce(r, t_imm))
+        {
+          if (*it == t->node->back())
+            return {r, false};
 
-        return t->make(node);
+          return {t->make(TypeIsect << Imm << -t->node->back()), false};
+        }
       }
 
-      if (r->type() == TypeAlias)
-      {
-        // TODO: replace lhs with [front, back - 1]
-        return r->make(wfsub::TypeAlias_Type)
-          ->make(TypeView << -lhs << -r->node);
-      }
-
-      // TODO: TypeParam on rhs
-
-      return t;
+      // Indicate the TypeView needs no further reduction.
+      return {t, true};
     }
   };
 

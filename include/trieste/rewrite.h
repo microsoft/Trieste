@@ -506,6 +506,11 @@ namespace trieste
     {
       Node node;
     };
+
+    struct EphemeralNodeRange
+    {
+      NodeRange range;
+    };
   }
 
   template<typename F>
@@ -535,6 +540,11 @@ namespace trieste
   }
 
   inline detail::EphemeralNode operator-(Node node)
+  {
+    return {node};
+  }
+
+  inline detail::EphemeralNodeRange operator-(NodeRange node)
   {
     return {node};
   }
@@ -569,6 +579,12 @@ namespace trieste
   inline Node operator<<(Node node, NodeRange range)
   {
     node->push_back(range);
+    return node;
+  }
+
+  inline Node operator<<(Node node, detail::EphemeralNodeRange ephemeral)
+  {
+    node->push_back_ephemeral(ephemeral.range);
     return node;
   }
 
