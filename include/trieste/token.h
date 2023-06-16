@@ -78,6 +78,11 @@ namespace trieste
       return std::find(list.begin(), list.end(), *this) != list.end();
     }
 
+    constexpr bool in(const std::vector<Token>& list) const
+    {
+      return std::find(list.begin(), list.end(), *this) != list.end();
+    }
+
     constexpr const char* str() const
     {
       return def->name;

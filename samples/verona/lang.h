@@ -41,6 +41,7 @@ namespace verona
   inline constexpr auto TypeAlias = TokenDef(
     "typealias",
     flag::symtab | flag::lookup | flag::lookdown | flag::shadowing);
+  inline constexpr auto Where = TokenDef("where");
   inline constexpr auto Use = TokenDef("use");
   inline constexpr auto Package = TokenDef("package");
   inline constexpr auto Var = TokenDef("var", flag::lookup | flag::shadowing);
@@ -68,6 +69,8 @@ namespace verona
   inline constexpr auto TypeParams = TokenDef("typeparams");
   inline constexpr auto TypeParam =
     TokenDef("typeparam", flag::lookup | flag::lookdown | flag::shadowing);
+  inline constexpr auto ValueParam =
+    TokenDef("valueparam", flag::lookup | flag::lookdown | flag::shadowing);
   inline constexpr auto Params = TokenDef("params");
   inline constexpr auto Param =
     TokenDef("param", flag::lookup | flag::shadowing);
@@ -76,6 +79,7 @@ namespace verona
 
   // Type structure.
   inline constexpr auto Type = TokenDef("type");
+  inline constexpr auto TypePred = TokenDef("typepred");
   inline constexpr auto TypeUnit = TokenDef("typeunit");
   inline constexpr auto TypeList = TokenDef("typelist");
   inline constexpr auto TypeClassName = TokenDef("typeclassname");
@@ -128,7 +132,6 @@ namespace verona
   inline constexpr auto LLVMFuncType = TokenDef("llvmfunctype");
 
   // Indexing names.
-  inline constexpr auto Bound = TokenDef("bound");
   inline constexpr auto Default = TokenDef("default");
 
   // Rewrite identifiers.

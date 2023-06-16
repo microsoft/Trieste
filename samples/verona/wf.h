@@ -29,17 +29,17 @@ namespace verona
     | (Equals <<= Group++)
     | (Group <<=
         (wfLiteral | wfCaps | Brace | Paren | Square | List | Equals | Arrow |
-         Use | Class | TypeAlias | Var | Let | Ref | Self | If | Else | New |
-         Try | DontCare | Ident | Ellipsis | Dot | Colon | DoubleColon |
+         Use | Class | TypeAlias | Where | Var | Let | Ref | Self | If | Else |
+         New | Try | DontCare | Ident | Ellipsis | Dot | Colon | DoubleColon |
          TripleColon | Symbol)++)
     ;
   // clang-format on
 
-  // Remove Colon. Add Type.
+  // Remove Colon, Where. Add Type, TypePred, LLVMFuncType.
   inline const auto wfModulesTokens = wfLiteral | wfCaps | Brace | Paren |
     Square | List | Equals | Arrow | Use | Class | TypeAlias | Var | Let | Ref |
     Self | If | Else | New | Try | DontCare | Ident | Ellipsis | Dot |
-    DoubleColon | Symbol | Type | LLVMFuncType;
+    DoubleColon | Symbol | Type | TypePred | LLVMFuncType;
 
   // clang-format off
   inline const auto wfPassModules =
@@ -49,11 +49,10 @@ namespace verona
     | (Square <<= (Group | List | Equals)++)
     | (List <<= (Group | Equals)++)
     | (Equals <<= Group++)
-    | (LLVMFuncType <<=
-        (Lhs >>= LLVM | DontCare) * (Rhs >>= LLVM | DontCare) *
-        (Args >>= LLVMList) * (Return >>= LLVM | Ident))
+    | (LLVMFuncType <<= (Args >>= LLVMList) * (Return >>= LLVM | Ident))
     | (LLVMList <<= (LLVM | Ident)++)
     | (Type <<= wfModulesTokens++)
+    | (TypePred <<= Type)
     | (Group <<= wfModulesTokens++)
     ;
   // clang-format on
@@ -61,19 +60,20 @@ namespace verona
   // clang-format off
   inline const auto wfPassStructure =
       (Top <<= Class++)
-    | (Class <<= Ident * TypeParams * Type * ClassBody)[Ident]
+    | (Class <<= Ident * TypeParams * Type * TypePred * ClassBody)[Ident]
     | (ClassBody <<=
         (Use | Class | TypeAlias | FieldLet | FieldVar | Function)++)
     | (Use <<= Type)[Include]
-    | (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * Type)[Ident]
+    | (TypeAlias <<= Ident * TypeParams * TypePred * Type)[Ident]
     | (TypeTrait <<= Ident * ClassBody)[Ident]
     | (FieldLet <<= Ident * Type * wfDefault)[Ident]
     | (FieldVar <<= Ident * Type * wfDefault)[Ident]
     | (Function <<=
         wfRef * wfName * TypeParams * Params * Type *
-        (LLVMFuncType >>= LLVMFuncType | DontCare) * Block)[Ident]
+        (LLVMFuncType >>= LLVMFuncType | DontCare) * TypePred * Block)[Ident]
     | (TypeParams <<= TypeParam++)
-    | (TypeParam <<= Ident * (Bound >>= Type) * Type)[Ident]
+    | (TypeParam <<= Ident * Type)[Ident]
+    | (ValueParam <<= Ident * Type * Expr)[Ident]
     | (Params <<= Param++)
     | (Param <<= Ident * Type * wfDefault)[Ident]
     | (TypeTuple <<= Type++)
@@ -82,14 +82,12 @@ namespace verona
     | (Tuple <<= Expr++[2])
     | (Assign <<= Expr++[2])
     | (TypeArgs <<= Type++)
-    | (Lambda <<= TypeParams * Params * Block)
+    | (Lambda <<= TypeParams * Params * Type * TypePred * Block)
     | (Let <<= Ident)[Ident]
     | (Var <<= Ident)[Ident]
     | (TypeAssert <<= Expr * Type)
     | (Package <<= (Id >>= String | Escaped))
-    | (LLVMFuncType <<=
-        (Lhs >>= LLVM | DontCare) * (Rhs >>= LLVM | DontCare) *
-        (Args >>= LLVMList) * (Return >>= LLVM | Ident))
+    | (LLVMFuncType <<= (Args >>= LLVMList) * (Return >>= LLVM | Ident))
     | (LLVMList <<= (LLVM | Ident)++)
     | (Type <<=
         (Type | wfCaps | TypeTrait | TypeTuple | TypeVar | TypeArgs | Package |
@@ -416,7 +414,7 @@ namespace verona
     // Remove LHS/RHS function distinction.
     | (Function <<=
         Ident * TypeParams * Params * Type *
-        (LLVMFuncType >>= LLVMFuncType | DontCare) * Block)[Ident]
+        (LLVMFuncType >>= LLVMFuncType | DontCare) * TypePred * Block)[Ident]
 
     // Turn New into a function.
     | (Call <<= (Selector >>= (Selector | FunctionName)) * Args)
@@ -431,15 +429,16 @@ namespace verona
 
   // clang-format off
   inline const auto wf =
-      (TypeAlias <<= Ident * TypeParams * (Bound >>= Type) * Type)
+      (TypeAlias <<= Ident * TypeParams * TypePred * Type)
     | (Use <<= Type)
-    | (Class <<= Ident * TypeParams * Type * ClassBody)
-    | (TypeParam <<= Ident * (Bound >>= Type) * Type)
+    | (Class <<= Ident * TypeParams * Type * TypePred * ClassBody)
+    | (TypeParam <<= Ident * Type)
+    | (ValueParam <<= Ident * Type * Expr)[Ident]
     | (FieldLet <<= Ident * Type * Default)
     | (FieldVar <<= Ident * Type * Default)
     | (Function <<=
         wfRef * wfName * TypeParams * Params * Type *
-        (LLVMFuncType >>= LLVMFuncType | DontCare) * Block)
+        (LLVMFuncType >>= LLVMFuncType | DontCare) * TypePred * Block)
     | (Param <<= Ident * Type * Default)
     | (TypeAssert <<= Expr * Type)
     | (Type <<= wfType)
@@ -453,7 +452,7 @@ namespace verona
     | (Var <<= Ident * Type)
     | (Let <<= Ident * Type)
     | (RefLet <<= Ident)
-    | (Lambda <<= TypeParams * Params * Block)
+    | (Lambda <<= TypeParams * Params * Type * TypePred * Block)
     | (Bind <<= Ident * Type *
         (Rhs >>=
           Unit | Tuple | Call | Conditional | TypeTest | Cast | FieldRef |

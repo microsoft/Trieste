@@ -4,11 +4,11 @@
 
 The result of every call is checked. If it's a `nonlocal[T]`, then it's immediately returned by the function or lambda. A function first unwraps the non-local value by calling `load` on it, whereas a lambda doesn't.
 
-This allows `throw[T]` to be implemented as a `nonlocal[throw[T]]`, such that it propagages upwards until it's explicitly caught, while `return[T]` can be implemented as `nonlocal[T]`, such that it causes the calling function to return a value of type `T`.
+This allows `throw[T]` to be implemented as a `nonlocal[throw[T]]`, such that it propagates upwards until it's explicitly caught, while `return[T]` can be implemented as `nonlocal[T]`, such that it causes the calling function to return a value of type `T`.
 
 If a call is syntactically marked as `try`, then the check for a non-local value is suppressed.
 
-## Altering the default behaviour
+## Altering the default behavior
 
 A function can be made to behave as a lambda with `try`. A lambda can be made to behave like a function as follows:
 
@@ -65,20 +65,23 @@ class throw[T]: non_local[throw[T]]
   let value: T
 
   trait_non_local(): () = ()
-  load(self): Self.throw[T] = self
+  load(self): self.throw[T] = self
 
   create(): throw[()] = throw[()]::create(())
-  create(value: T): throw[T] = new value
+  create(value: T): value.throw[T] = new value
 }
+
+type Break = throw[break & const]
+type Continue = throw[continue & const]
 
 class break
 {
-  create(): throw[break] = throw(new)
+  create(): Break = throw(new const)
 }
 
 class continue
 {
-  create(): throw[continue] = throw(new)
+  create(): Continue = throw(new const)
 }
 
 f()

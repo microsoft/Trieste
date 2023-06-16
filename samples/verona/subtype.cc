@@ -13,7 +13,6 @@ namespace verona
   {
     inline const auto Type_Type = wfPassNameArity / Type / Type;
     inline const auto TypeAlias_Type = wfPassNameArity / TypeAlias / Type;
-    inline const auto TypeParam_Bound = wfPassNameArity / TypeParam / Bound;
     inline const auto Package_Id = wfPassNameArity / Package / Id;
     inline const auto TypeTrait_ClassBody =
       wfPassNameArity / TypeTrait / ClassBody;
@@ -286,12 +285,6 @@ namespace verona
           lhs_pending.push_back(l->make(wfsub::TypeAlias_Type));
           lhs_atomic.push_back(l);
         }
-        else if (l->type() == TypeParam)
-        {
-          // Try both the typeparam and the upper bound.
-          lhs_pending.push_back(l->make(wfsub::TypeParam_Bound));
-          lhs_atomic.push_back(l);
-        }
         else if (l->type() == TypeView)
         {
           auto [ll, done] = reduce_view(l);
@@ -443,20 +436,20 @@ namespace verona
           auto rtparams = rmember->at(wfsub::Function_TypeParams);
           auto ltparams = lmember->at(wfsub::Function_TypeParams);
 
-          if (!std::equal(
-                rtparams->begin(),
-                rtparams->end(),
-                ltparams->begin(),
-                ltparams->end(),
-                [&](auto& rtparam, auto& ltparam) {
-                  return reduce(
-                    r->make(rtparam->at(wfsub::TypeParam_Bound)),
-                    l->make(ltparam->at(wfsub::TypeParam_Bound)));
-                }))
-          {
-            ok = false;
-            break;
-          }
+          // if (!std::equal(
+          //       rtparams->begin(),
+          //       rtparams->end(),
+          //       ltparams->begin(),
+          //       ltparams->end(),
+          //       [&](auto& rtparam, auto& ltparam) {
+          //         return reduce(
+          //           r->make(rtparam->at(wfsub::TypeParam_Bound)),
+          //           l->make(ltparam->at(wfsub::TypeParam_Bound)));
+          //       }))
+          // {
+          //   ok = false;
+          //   break;
+          // }
 
           // rmember.params <: lmember.params
           auto rparams = rmember->at(wfsub::Function_Params);

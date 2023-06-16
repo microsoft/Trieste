@@ -64,6 +64,11 @@ namespace trieste
     public:
       virtual ~PatternDef() = default;
 
+      virtual bool custom_rep()
+      {
+        return false;
+      }
+
       virtual bool match(NodeIt&, NodeIt, Match&) const
       {
         return false;
@@ -179,6 +184,12 @@ namespace trieste
     public:
       Rep(PatternPtr pattern) : pattern(pattern) {}
 
+      bool custom_rep() override
+      {
+        // Rep(Rep(...)) is treated as Rep(...).
+        return true;
+      }
+
       bool match(NodeIt& it, NodeIt end, Match& match) const override
       {
         while ((it != end) && pattern->match(it, end, match))
@@ -278,9 +289,17 @@ namespace trieste
     {
     private:
       Token type;
+      bool any;
 
     public:
-      Inside(const Token& type) : type(type) {}
+      Inside(const Token& type) : type(type), any(false) {}
+
+      bool custom_rep() override
+      {
+        // Rep(Inside) checks for any parent, not just the immediate parent.
+        any = true;
+        return true;
+      }
 
       bool match(NodeIt& it, NodeIt end, Match&) const override
       {
@@ -288,7 +307,57 @@ namespace trieste
           return false;
 
         auto p = (*it)->parent();
-        return p && (p->type() == type);
+
+        while (p)
+        {
+          if (p->type() == type)
+            return true;
+
+          if (!any)
+            break;
+
+          p = p->parent();
+        }
+
+        return false;
+      }
+    };
+
+    class InsideN : public PatternDef
+    {
+    private:
+      std::vector<Token> types;
+      bool any;
+
+    public:
+      InsideN(const std::vector<Token>& types) : types(types), any(false) {}
+
+      bool custom_rep() override
+      {
+        // Rep(InsideN) checks for any parent, not just the immediate parent.
+        any = true;
+        return true;
+      }
+
+      bool match(NodeIt& it, NodeIt end, Match&) const override
+      {
+        if (it == end)
+          return false;
+
+        auto p = (*it)->parent();
+
+        while (p)
+        {
+          if (p->type().in(types))
+            return true;
+
+          if (!any)
+            break;
+
+          p = p->parent();
+        }
+
+        return false;
       }
     };
 
@@ -296,6 +365,12 @@ namespace trieste
     {
     public:
       First() {}
+
+      bool custom_rep() override
+      {
+        // Rep(First) is treated as First.
+        return true;
+      }
 
       bool match(NodeIt& it, NodeIt end, Match&) const override
       {
@@ -311,6 +386,12 @@ namespace trieste
     {
     public:
       Last() {}
+
+      bool custom_rep() override
+      {
+        // Rep(Last) is treated as Last.
+        return true;
+      }
 
       bool match(NodeIt& it, NodeIt end, Match&) const override
       {
@@ -359,6 +440,12 @@ namespace trieste
     public:
       Pred(PatternPtr pattern) : pattern(pattern) {}
 
+      bool custom_rep() override
+      {
+        // Rep(Pred(...)) is treated as Pred(...).
+        return true;
+      }
+
       bool match(NodeIt& it, NodeIt end, Match& match) const override
       {
         auto begin = it;
@@ -376,6 +463,12 @@ namespace trieste
 
     public:
       NegPred(PatternPtr pattern) : pattern(pattern) {}
+
+      bool custom_rep() override
+      {
+        // Rep(NegPred(...)) is treated as NegPred(...).
+        return true;
+      }
 
       bool match(NodeIt& it, NodeIt end, Match& match) const override
       {
@@ -467,6 +560,9 @@ namespace trieste
 
       Pattern operator++(int) const
       {
+        if (pattern->custom_rep())
+          return {pattern};
+
         return {std::make_shared<Rep>(pattern)};
       }
 
@@ -537,6 +633,14 @@ namespace trieste
   inline detail::Pattern In(const Token& type)
   {
     return detail::Pattern(std::make_shared<detail::Inside>(type));
+  }
+
+  template<typename... Ts>
+  inline detail::Pattern
+  In(const Token& type1, const Token& type2, const Ts&... types)
+  {
+    std::vector<Token> t = {type1, type2, types...};
+    return detail::Pattern(std::make_shared<detail::InsideN>(t));
   }
 
   inline detail::EphemeralNode operator-(Node node)

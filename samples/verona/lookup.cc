@@ -83,14 +83,13 @@ namespace verona
       }
       else if (lookup.def->type() == TypeParam)
       {
-        // Replace the typeparam with the bound typearg or, failing that, the
-        // upper bound, and try again.
+        // Replace the typeparam with the bound typearg and try again.
         auto it = lookup.bindings.find(lookup.def);
 
         if ((it != lookup.bindings.end()) && it->second)
           lookup.def = it->second;
         else
-          lookup.def = lookup.def->at(wf / TypeParam / Bound);
+          return {};
       }
       // The remainder of cases arise from a Use, a TypeAlias, or a TypeParam.
       // They will all result in some number of name resolutions.
@@ -195,12 +194,11 @@ namespace verona
 
   bool lookup_recursive(Node node)
   {
-    if (!node->type().in({TypeAlias, TypeParam}))
+    if (node->type() != TypeAlias)
       return false;
 
     std::deque<std::pair<NodeSet, Lookup>> worklist;
-    worklist.emplace_back(
-      NodeSet{node}, node->at(wf / TypeAlias / Type, wf / TypeParam / Bound));
+    worklist.emplace_back(NodeSet{node}, node->at(wf / TypeAlias / Type));
 
     while (!worklist.empty())
     {
@@ -248,22 +246,35 @@ namespace verona
           auto find = bindings.find(def.def);
 
           if (find != bindings.end())
-          {
             worklist.emplace_back(set, Lookup(find->second, bindings));
-          }
-          else
-          {
-            if (set.contains(def.def))
-              return true;
-
-            set.insert(def.def);
-            def.bindings.insert(bindings.begin(), bindings.end());
-            bindings.swap(def.bindings);
-            worklist.emplace_back(
-              set, Lookup(def.def->at(wf / TypeParam / Bound), bindings));
-          }
         }
       }
+    }
+
+    return false;
+  }
+
+  bool lookup_valid_predicate(Node node)
+  {
+    if (node->type() == TypeSubtype)
+    {
+      return true;
+    }
+    else if (node->type().in({TypeUnion, TypeIsect}))
+    {
+      // Check that all children are valid predicates.
+      for (auto& t : *node)
+      {
+        if (!lookup_valid_predicate(t))
+          return false;
+      }
+
+      return true;
+    }
+    else if (node->type() == TypeAlias)
+    {
+      // We know that type aliases aren't recursive, check the definition.
+      return lookup_valid_predicate(node->at(wf / TypeAlias / Type));
     }
 
     return false;

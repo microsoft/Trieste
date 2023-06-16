@@ -88,7 +88,6 @@ namespace verona
         "\n([[:blank:]]*)" >>
           [indent](auto& m) {
             size_t col = m.match(1).len;
-            auto prev = indent->back();
 
             // If following a brace, don't terminate, but reset indentation.
             if (m.previous(Brace))
@@ -100,7 +99,9 @@ namespace verona
             // Don't terminate and don't reset indentation if:
             // * in an equals or list
             // * in a group and indented
-            if (m.in(Equals) || m.in(List) || (m.in(Group) && (col > prev)))
+            if (
+              m.in(Equals) || m.in(List) ||
+              (m.in(Group) && (col > indent->back())))
               return;
 
             // Otherwise, terminate and reset indentation.
@@ -235,6 +236,7 @@ namespace verona
             m.add(Class);
           },
 
+        "where\\b" >> [](auto& m) { m.add(Where); },
         "var\\b" >> [](auto& m) { m.add(Var); },
         "let\\b" >> [](auto& m) { m.add(Let); },
         "ref\\b" >> [](auto& m) { m.add(Ref); },

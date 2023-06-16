@@ -1,6 +1,8 @@
 # Todo
 
-Tuples are traits, `()` is a synonym for `std::Unit`
+`where` clauses on TypeAlias, Class, Function, Lambda.
+
+Tuples are traits, `()` is a synonym for `std::unit`
 ```ts
 type Tuple[T, U] =
 {
@@ -30,7 +32,7 @@ Mangling
 
 Subtyping
 - when we see a syntactic type argument, need to check if typearg < bounds
-  - could do `T1[T2] ~> T1[T2] & (T2 < T1.TP[0])`
+  - could do `T1[T2] ~> T1[T2] & (T2 < T1::TP[0])`
 - break up traits with >1 requirement into isect of 1 requirement traits
 - type inference might not work with typeparameter bounds checking
 ```ts

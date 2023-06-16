@@ -46,4 +46,5 @@ namespace verona
   Lookups lookup_scopedname(Node tn);
   Lookups lookup_scopedname_name(Node tn, Node id, Node ta = {});
   bool lookup_recursive(Node node);
+  bool lookup_valid_predicate(Node node);
 }
