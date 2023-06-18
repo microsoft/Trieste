@@ -4,6 +4,8 @@
 
 #include <trieste/ast.h>
 
+#include "lang.h"
+
 namespace verona
 {
   using namespace trieste;
@@ -49,4 +51,5 @@ namespace verona
   bool lookup_valid_predicate(Node node);
 
   void extract_typeparams(Node scope, Node t, Node tp);
+  Node typeparams_to_typeargs(Node node, Node typeargs = TypeArgs);
 }

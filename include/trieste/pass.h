@@ -42,7 +42,7 @@ namespace trieste
 
     operator Pass() const
     {
-      return std::make_shared<PassDef>(*this);
+      return std::make_shared<PassDef>(std::move(*this));
     }
 
     void pre(const Token& type, PreF f)

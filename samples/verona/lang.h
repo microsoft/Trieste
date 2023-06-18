@@ -141,6 +141,11 @@ namespace verona
   inline constexpr auto Op = TokenDef("Op");
 
   // Sythetic locations.
+  inline const auto l_typevar = Location("typevar");
+  inline const auto l_param = Location("param");
+  inline const auto l_trait = Location("trait");
+  inline const auto l_class = Location("class");
+  inline const auto l_self = Location("self");
   inline const auto standard = Location("std");
   inline const auto cell = Location("cell");
   inline const auto new_ = Location("new");

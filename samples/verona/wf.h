@@ -51,8 +51,8 @@ namespace verona
     | (Equals <<= Group++)
     | (LLVMFuncType <<= (Args >>= LLVMList) * (Return >>= LLVM | Ident))
     | (LLVMList <<= (LLVM | Ident)++)
-    | (Type <<= wfModulesTokens++)
     | (TypePred <<= Type)
+    | (Type <<= (wfModulesTokens | TypeTrue)++)
     | (Group <<= wfModulesTokens++)
     ;
   // clang-format on
@@ -89,9 +89,11 @@ namespace verona
     | (Package <<= (Id >>= String | Escaped))
     | (LLVMFuncType <<= (Args >>= LLVMList) * (Return >>= LLVM | Ident))
     | (LLVMList <<= (LLVM | Ident)++)
+    | (TypePred <<= Type)
     | (Type <<=
-        (Type | wfCaps | TypeTrait | TypeTuple | TypeVar | TypeArgs | Package |
-         Self | DontCare | Ellipsis | Ident | Symbol | Dot | DoubleColon)++)
+        (Type | TypeTrue | wfCaps | TypeTrait | TypeTuple | TypeVar | TypeArgs |
+         Package | Self | DontCare | Ellipsis | Ident | Symbol | Dot |
+         DoubleColon)++)
     | (Expr <<=
         (Expr | ExprSeq | Unit | Tuple | Assign | TypeArgs | If | Else |
          Lambda | Let | Var | New | Try | Ref | DontCare | Ellipsis | Dot |
@@ -115,8 +117,8 @@ namespace verona
 
     // Remove DontCare, Ident.
     | (Type <<=
-        (Type | wfCaps | TypeTrait | TypeTuple | TypeVar | TypeArgs | Package |
-         Self | Ellipsis | Dot | DoubleColon | Symbol | wfTypeName)++)
+        (Type | TypeTrue | wfCaps | TypeTrait | TypeTuple | TypeVar | TypeArgs |
+         Package | Self | Ellipsis | Dot | DoubleColon | Symbol | wfTypeName)++)
     ;
   // clang-format on
 
@@ -130,8 +132,8 @@ namespace verona
 
     // Remove DoubleColon, Dot, Ellipsis, TypeArgs.
     | (Type <<=
-        (Type | wfCaps | TypeTrait | TypeTuple | TypeVar | Package | Self |
-         Symbol | wfTypeName | TypeView | TypeList)++)
+        (Type | TypeTrue | wfCaps | TypeTrait | TypeTuple | TypeVar | Package |
+         Self | Symbol | wfTypeName | TypeView | TypeList)++)
     ;
   // clang-format on
 
@@ -144,8 +146,9 @@ namespace verona
     | (TypeIsect <<= Type++[2])
 
     | (Type <<=
-        (Type | wfCaps | TypeTrait | TypeTuple | TypeVar | Package | Self |
-         Symbol | wfTypeName | TypeView | TypeList | TypeUnion | TypeIsect)++)
+        (Type | TypeTrue | wfCaps | TypeTrait | TypeTuple | TypeVar | Package |
+         Self | Symbol | wfTypeName | TypeView | TypeList | TypeUnion |
+         TypeIsect)++)
     ;
   // clang-format on
 
@@ -158,15 +161,15 @@ namespace verona
 
     // Remove Symbol. Add TypeSubtype.
     | (Type <<=
-        (Type | wfCaps | TypeTrait | TypeTuple | TypeVar | Package | Self |
-         wfTypeName | TypeView | TypeList | TypeUnion | TypeIsect |
+        (Type | TypeTrue | wfCaps | TypeTrait | TypeTuple | TypeVar | Package |
+         Self | wfTypeName | TypeView | TypeList | TypeUnion | TypeIsect |
          TypeSubtype)++)
     ;
   // clang-format on
 
-  inline const auto wfTypeNoAlg = wfCaps | TypeTrait | TypeUnit | TypeTuple |
-    TypeVar | Package | Self | wfTypeName | TypeView | TypeList | TypeSubtype |
-    TypeTrue | TypeFalse;
+  inline const auto wfTypeNoAlg = TypeTrue | TypeFalse | wfCaps | TypeTrait |
+    TypeUnit | TypeTuple | TypeVar | Package | Self | wfTypeName | TypeView |
+    TypeList | TypeSubtype;
 
   inline const auto wfType = wfTypeNoAlg | TypeUnion | TypeIsect;
 

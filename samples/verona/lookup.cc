@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 #include "lookup.h"
 
-#include "lang.h"
 #include "wf.h"
 
 #include <deque>
@@ -331,5 +330,23 @@ namespace verona
       extract_typeparams(scope, t->at(wf / TypeParamName / Lhs), tp);
       extract_typeparams(scope, t->at(wf / TypeParamName / TypeArgs), tp);
     }
+  }
+
+  Node typeparams_to_typeargs(Node node, Node typeargs)
+  {
+    if (!node->type().in({Class, Function}))
+      return typeargs;
+
+    for (auto typeparam :
+         *node->at(wf / Class / TypeParams, wf / Function / TypeParams))
+    {
+      typeargs
+        << (Type
+            << (TypeParamName
+                << TypeUnit
+                << clone(typeparam->at(wf / TypeParam / Ident)) << TypeArgs));
+    }
+
+    return typeargs;
   }
 }
