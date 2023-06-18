@@ -279,4 +279,57 @@ namespace verona
 
     return false;
   }
+
+  void extract_typeparams(Node scope, Node t, Node tp)
+  {
+    if (t->type().in(
+          {Type,
+           TypeArgs,
+           TypeUnion,
+           TypeIsect,
+           TypeTuple,
+           TypeList,
+           TypeView}))
+    {
+      for (auto& tt : *t)
+        extract_typeparams(scope, tt, tp);
+    }
+    else if (t->type().in({TypeClassName, TypeAliasName, TypeTraitName}))
+    {
+      extract_typeparams(
+        scope,
+        t->at(
+          wf / TypeClassName / Lhs,
+          wf / TypeAliasName / Lhs,
+          wf / TypeTraitName / Lhs),
+        tp);
+
+      extract_typeparams(
+        scope,
+        t->at(
+          wf / TypeClassName / TypeArgs,
+          wf / TypeAliasName / TypeArgs,
+          wf / TypeTraitName / TypeArgs),
+        tp);
+    }
+    else if (t->type() == TypeParamName)
+    {
+      auto id = t->at(wf / TypeParamName / Ident);
+      auto defs = id->lookup(scope);
+
+      if ((defs.size() == 1) && (defs.front()->type() == TypeParam))
+      {
+        if (!std::any_of(tp->begin(), tp->end(), [&](auto& p) {
+              return p->at(wf / TypeParam / Ident)->location() ==
+                id->location();
+            }))
+        {
+          tp << clone(defs.front());
+        }
+      }
+
+      extract_typeparams(scope, t->at(wf / TypeParamName / Lhs), tp);
+      extract_typeparams(scope, t->at(wf / TypeParamName / TypeArgs), tp);
+    }
+  }
 }

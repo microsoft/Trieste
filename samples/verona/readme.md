@@ -1,6 +1,6 @@
 # Todo
 
-`where` clauses on TypeAlias, Class, Function, Lambda.
+Conflicting TypeParam names?
 
 Tuples are traits, `()` is a synonym for `std::unit`
 ```ts

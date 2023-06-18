@@ -1909,9 +1909,10 @@ namespace verona
          {
            // Create an anonymous class for each arity.
            auto name = names[arity - start_arity];
+           Node class_tp = TypeParams;
            Node classbody = ClassBody;
-           auto classdef = Class << clone(name) << clone(tp)
-                                 << (Type << TypeUnit) << clone(pred)
+           auto classdef = Class << clone(name) << class_tp
+                                 << (Type << TypeUnit) << typepred()
                                  << classbody;
 
            // The anonymous class has fields for each supplied argument and a
@@ -1925,11 +1926,11 @@ namespace verona
                           << (Block << (Expr << (Call << New << new_args))));
 
            // Create a function that returns the anonymous class for each arity.
-           // TODO: pass our typeparams as class typeargs
+           Node func_tp = TypeParams;
            Node func_params = Params;
            Node func_args = Args;
            auto func =
-             Function << clone(ref) << clone(id) << TypeParams << func_params
+             Function << clone(ref) << clone(id) << func_tp << func_params
                       << typevar(_) << DontCare << typepred()
                       << (Block
                           << (Expr
@@ -1945,6 +1946,10 @@ namespace verona
              auto param = params->at(i);
              auto param_id = param->at(wf / Param / Ident);
              auto param_type = param->at(wf / Param / Type);
+
+             extract_typeparams(f, param_type, class_tp);
+             extract_typeparams(f, param_type, func_tp);
+
              classbody << (FieldLet << clone(param_id) << clone(param_type));
              create_params << clone(param);
              new_args << (Expr << (RefLet << clone(param_id)));
@@ -1958,7 +1963,9 @@ namespace verona
            {
              // TODO: capability for Self, depends on captured param types
              auto self_id = Ident ^ _.fresh();
+             Node apply_tp = TypeParams;
              Node apply_params = Params << (Param << self_id << (Type << Self));
+             Node apply_pred;
              Node fwd_args = Args;
 
              for (size_t j = 0; j < arity; ++j)
@@ -1986,16 +1993,20 @@ namespace verona
 
              if (i == end_arity)
              {
-               // The final arity calls the original function.
-               // TODO: typeargs for the original type?
+               // The final arity calls the original function. It has the type
+               // predicate from the original function.
+               // TODO: typeargs for the original type
+               apply_pred = clone(pred);
                fwd = FunctionName
                  << (ptype << TypeUnit << clone(tn) << TypeArgs) << clone(id)
                  << TypeArgs;
              }
              else
              {
-               // Intermediate arities call the next arity.
+               // Intermediate arities call the next arity. No type predicate is
+               // applied.
                // TODO: pass our typeparams as class typeargs
+               apply_pred = typepred();
                fwd = FunctionName
                  << (TypeClassName << TypeUnit << clone(names[i - start_arity])
                                    << TypeArgs)
@@ -2004,8 +2015,8 @@ namespace verona
 
              classbody
                << (Function
-                   << clone(ref) << (Ident ^ apply) << TypeParams
-                   << apply_params << typevar(_) << DontCare
+                   << clone(ref) << (Ident ^ apply) << apply_tp << apply_params
+                   << typevar(_) << DontCare << apply_pred
                    << (Block << (Expr << (clone(call) << fwd << fwd_args))));
            }
 
