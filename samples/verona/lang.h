@@ -80,7 +80,6 @@ namespace verona
   // Type structure.
   inline constexpr auto Type = TokenDef("type");
   inline constexpr auto TypePred = TokenDef("typepred");
-  inline constexpr auto TypeUnit = TokenDef("typeunit");
   inline constexpr auto TypeList = TokenDef("typelist");
   inline constexpr auto TypeClassName = TokenDef("typeclassname");
   inline constexpr auto TypeAliasName = TokenDef("typealiasname");
@@ -147,6 +146,8 @@ namespace verona
   inline const auto l_class = Location("class");
   inline const auto l_self = Location("self");
   inline const auto standard = Location("std");
+  inline const auto builtin = Location("builtin");
+  inline const auto unit = Location("Unit");
   inline const auto cell = Location("cell");
   inline const auto new_ = Location("new");
   inline const auto create = Location("create");

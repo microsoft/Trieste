@@ -1,16 +1,18 @@
-# Todo
+# TODO
 
-- replace TypeUnit with `std::builtin::unit`
-- automatically insert `use std::builtin` in `Top`?
+- Automatically insert `use std::builtin` in `Top`
+- Better system for including `std`
+- Inheritance
 
-Tuples are traits, `()` is a synonym for `std::unit`
+Tuples are traits:
 ```ts
 type Tuple[T, U] =
 {
-  head(self: Self & (in | out | const)): self.T
+  head(self): self.T
   rest(self): self.U
 }
 
+// make unit a 0-arity tuple
 class Unit: Tuple[(), ()]
 {
   head(self): () = ()

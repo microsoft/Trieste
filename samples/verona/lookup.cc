@@ -119,7 +119,7 @@ namespace verona
         // TODO: return only things that are identical in all disjunctions
         return {};
       }
-      else if (lookup.def->type().in({TypeUnit, TypeList, TypeTuple, TypeVar}))
+      else if (lookup.def->type().in({TypeList, TypeTuple, TypeVar}))
       {
         // Nothing to do here.
         return {};
@@ -180,7 +180,7 @@ namespace verona
     auto id = tn->at(1);
     auto ta = tn->at(2);
 
-    if (ctx->type() == TypeUnit)
+    if (ctx->type() == DontCare)
       return lookup_name(id, ta);
 
     return lookup_scopedname_name(ctx, id, ta);
@@ -343,7 +343,7 @@ namespace verona
       typeargs
         << (Type
             << (TypeParamName
-                << TypeUnit
+                << DontCare
                 << clone(typeparam->at(wf / TypeParam / Ident)) << TypeArgs));
     }
 

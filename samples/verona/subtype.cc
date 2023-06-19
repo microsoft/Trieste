@@ -347,8 +347,8 @@ namespace verona
         return false;
 
       // These must be the same type.
-      // TODO: region tracking, replace TypeUnit with std::builtin::unit
-      if (r->type().in({TypeUnit, Iso, Mut, Imm, Self}))
+      // TODO: region tracking
+      if (r->type().in({Iso, Mut, Imm, Self}))
         return l->type() == r->type();
 
       // Tuples must be the same arity and each element must be a subtype.
@@ -582,7 +582,6 @@ namespace verona
                Class,
                TypeTrait,
                TypeTuple,
-               TypeUnit,
                TypeTrue,
                TypeFalse}))
         {
