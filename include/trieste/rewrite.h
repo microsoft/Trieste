@@ -22,9 +22,9 @@ namespace trieste
   public:
     Match(Node in_node) : in_node(in_node) {}
 
-    Location fresh()
+    Location fresh(const Location& prefix = {})
     {
-      return in_node->fresh();
+      return in_node->fresh(prefix);
     }
 
     NodeRange& operator[](const Token& token)

@@ -48,9 +48,10 @@ namespace trieste
   public:
     SymtabDef() = default;
 
-    Location fresh()
+    Location fresh(const Location& prefix = {})
     {
-      return Location("$" + std::to_string(next_id++));
+      return Location(
+        std::string(prefix.view()) + "$" + std::to_string(next_id++));
     }
 
     void clear()
@@ -440,7 +441,7 @@ namespace trieste
       st->symtab_->includes.emplace_back(shared_from_this());
     }
 
-    Location fresh()
+    Location fresh(const Location& prefix = {})
     {
       // This actually returns a unique name, rather than a fresh one.
       auto p = this;
@@ -451,7 +452,7 @@ namespace trieste
       if (p->type_ != Top)
         throw std::runtime_error("No Top node");
 
-      return p->symtab_->fresh();
+      return p->symtab_->fresh(prefix);
     }
 
     Node clone()
