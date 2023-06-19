@@ -12,19 +12,20 @@ namespace verona
   namespace wfsub
   {
     inline const auto Type_Type = wfPassNameArity / Type / Type;
-    inline const auto TypeAlias_Type = wfPassNameArity / TypeAlias / Type;
     inline const auto Package_Id = wfPassNameArity / Package / Id;
-    inline const auto TypeTrait_ClassBody =
-      wfPassNameArity / TypeTrait / ClassBody;
-    inline const auto Function_Ident = wfPassNameArity / Function / Ident;
-    inline const auto Class_TypeParams = wfPassNameArity / Class / TypeParams;
     inline const auto TypeAlias_TypeParams =
       wfPassNameArity / TypeAlias / TypeParams;
+    inline const auto TypeAlias_Type = wfPassNameArity / TypeAlias / Type;
+    inline const auto TypeTrait_ClassBody =
+      wfPassNameArity / TypeTrait / ClassBody;
+    inline const auto Class_TypeParams = wfPassNameArity / Class / TypeParams;
+    inline const auto Function_Ident = wfPassNameArity / Function / Ident;
     inline const auto Function_TypeParams =
       wfPassNameArity / Function / TypeParams;
     inline const auto Function_Params = wfPassNameArity / Function / Params;
-    inline const auto Param_Type = wfPassNameArity / Param / Type;
     inline const auto Function_Type = wfPassNameArity / Function / Type;
+    inline const auto Param_Type = wfPassNameArity / Param / Type;
+    inline const auto TypeList_Type = wfPassNameArity / TypeList / TypeList;
   }
 
   struct BtypeDef
@@ -578,29 +579,26 @@ namespace verona
         auto r = t->make(*it);
 
         if (r->type().in(
-              {Package,
-               Class,
-               TypeTrait,
-               TypeTuple,
-               TypeTrue,
-               TypeFalse}))
+              {Package, Class, TypeTrait, TypeTuple, TypeTrue, TypeFalse}))
         {
           // The viewpoint path can be discarded.
           if (*it == t->node->back())
             return {r, false};
 
           // There is no view through this type, so treat it as true, i.e. top.
-          // TODO: should this be TypeFalse?
           return {t->make(TypeTrue), false};
         }
         else if (r->type() == TypeList)
         {
           // A.(B...) = (A.B)...
           if (*it == t->node->back())
-            return {r->make(TypeView << -lhs << -r->node), false};
+            return {
+              r->make(
+                TypeList
+                << (TypeView << -lhs << -r->node->at(wfsub::TypeList_Type))),
+              false};
 
           // There is no view through this type, so treat it as true, i.e. top.
-          // TODO: should this be TypeFalse?
           return {t->make(TypeTrue), false};
         }
         else if (r->type().in({TypeUnion, TypeIsect}))

@@ -19,12 +19,68 @@ class Unit: Tuple[(), ()]
   rest(self): () = ()
 }
 
-(): Tuple[(), ()]
-T1: Tuple[T1, ()]
-(T1, T2): Tuple[T1, Tuple[T2, ()]]
-(T1, T2, T3): Tuple[T1, Tuple[T2, Tuple[T3, ()]]]
-(T1, T2, T3, T4): Tuple[T1, Tuple[T2, Tuple[T3, Tuple[T4, ()]]]]
+Unit: Tuple[Unit, Unit]
+T1: Tuple[T1, Unit]
+(T1, T2): Tuple[T1, Tuple[T2, Unit]]
+(T1, T2, T3): Tuple[T1, Tuple[T2, Tuple[T3, Unit]]]
+(T1, T2, T3, T4): Tuple[T1, Tuple[T2, Tuple[T3, Tuple[T4, Unit]]]]
+
+match w
+{
+  // matches Unit
+  { () => e0 }
+  // matches {} (x = w)
+  { x => e1 }
+  // matches tuple_1 (x = w._0, y = w._1plus)
+  // problem: for w: (T1, T2), we want y: T2, not y: Tuple[T2, Unit]
+  { x, y => e2 }
+  // matches tuple_2 (x = _0, y = _1, z = _2plus)
+  { x, y, z => e3 }
+  // explicity indicate a w._1plus match?
+  { x, y... => e2plus }
+}
+
+// experiment: tuple types
+class tuple_1[T1]
+{
+  size(self): Size = 1
+  apply(self, n: Size): T1 | Unit = if (n == 0) { self._0 }
+  _0(self): T1
+}
+
+class tuple_2[T1, T2]
+{
+  size(self): Size = 2
+  apply(self, n: Size): T1 | T2 | Unit =
+    if (n == 0) { self._0 }
+    else if (n == 1) { self._1 }
+
+  _0(self): T1
+  _1(self): T2
+}
+
+class tuple_3[T1, T2, T3]
+{
+  size(self): Size = 2
+  apply(self, n: Size): T1 | T2 | T3 | Unit =
+    if (n == 0) { self._0 }
+    else if (n == 1) { self._1 }
+    else if (n == 2) { self._2 }
+
+  _0(self): T1
+  _1(self): T2
+  _2(self): T3
+}
+
+type typelist[T] =
+{
+  size(self): Size
+  apply(self, n: Size): T | Unit
+}
+
 ```
+
+Associated types
 
 Mangling
 - need reachability to do precise flattening

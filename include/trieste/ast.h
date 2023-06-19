@@ -501,6 +501,23 @@ namespace trieste
           [](auto& a, auto& b) { return a->equals(b); }));
     }
 
+    Node common_parent(Node node)
+    {
+      return common_parent(node.get());
+    }
+
+    Node common_parent(NodeDef* node)
+    {
+      auto [p, q] = same_parent(node);
+
+      // If p and q are the same, then one is contained within the other.
+      if (p == q)
+        return p->shared_from_this();
+
+      // Otherwise return the common parent.
+      return p->parent_->shared_from_this();
+    }
+
     bool precedes(Node node)
     {
       return precedes(node.get());
@@ -508,33 +525,13 @@ namespace trieste
 
     bool precedes(NodeDef* node)
     {
-      auto p = this;
-      auto q = node;
-
       // Node A precedes node B iff A is to the left of B and A does not
       // dominate B and B does not dominate A.
-      int d1 = 0, d2 = 0;
-
-      for (auto t = p; t; t = t->parent_)
-        ++d1;
-      for (auto t = q; t; t = t->parent_)
-        ++d2;
-
-      for (int i = 0; i < (d1 - d2); ++i)
-        p = p->parent_;
-      for (int i = 0; i < (d2 - d1); ++i)
-        q = q->parent_;
+      auto [p, q] = same_parent(node);
 
       // If p and q are the same, then either A dominates B or B dominates A.
       if (p == q)
         return false;
-
-      // Find the common parent.
-      while (p->parent_ != q->parent_)
-      {
-        p = p->parent_;
-        q = q->parent_;
-      }
 
       // Check that p is to the left of q.
       auto parent = p->parent_;
@@ -593,6 +590,34 @@ namespace trieste
       }
 
       return err;
+    }
+
+  private:
+    std::pair<NodeDef*, NodeDef*> same_parent(NodeDef* q)
+    {
+      auto p = this;
+
+      // Adjust p and q to point to the same depth in the AST.
+      int d1 = 0, d2 = 0;
+
+      for (auto t = p; t; t = t->parent_)
+        ++d1;
+      for (auto t = q; t; t = t->parent_)
+        ++d2;
+
+      for (int i = 0; i < (d1 - d2); ++i)
+        p = p->parent_;
+      for (int i = 0; i < (d2 - d1); ++i)
+        q = q->parent_;
+
+      // Find the common parent.
+      while (p->parent_ != q->parent_)
+      {
+        p = p->parent_;
+        q = q->parent_;
+      }
+
+      return {p, q};
     }
   };
 
