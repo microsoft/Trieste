@@ -334,12 +334,20 @@ namespace verona
 
     bool subtype_one(Btype& l, Btype& r)
     {
+      // TypeFalse is a subtype of everything.
+      if (l->type() == TypeFalse)
+        return true;
+
+      // TypeTrue is a supertype of everything.
+      if (r->type() == TypeTrue)
+        return true;
+
       // Skip TypeVar on either side.
       if ((l->type() == TypeVar) || (r->type() == TypeVar))
         return false;
 
       // These must be the same type.
-      // TODO: region tracking
+      // TODO: region tracking, replace TypeUnit with std::builtin::unit
       if (r->type().in({TypeUnit, Iso, Mut, Imm, Self}))
         return l->type() == r->type();
 
@@ -583,6 +591,7 @@ namespace verona
             return {r, false};
 
           // There is no view through this type, so treat it as true, i.e. top.
+          // TODO: should this be TypeFalse?
           return {t->make(TypeTrue), false};
         }
         else if (r->type() == TypeList)
@@ -592,6 +601,7 @@ namespace verona
             return {r->make(TypeView << -lhs << -r->node), false};
 
           // There is no view through this type, so treat it as true, i.e. top.
+          // TODO: should this be TypeFalse?
           return {t->make(TypeTrue), false};
         }
         else if (r->type().in({TypeUnion, TypeIsect}))

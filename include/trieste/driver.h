@@ -177,7 +177,9 @@ namespace trieste
             // Build the AST, set up the symbol table, check well-formedness,
             ast = wfParser->build_ast(source, pos2 + 1, std::cout);
             auto ok = wfParser->build_st(ast, std::cout);
-            ok = wfParser->check(ast, std::cout) && ok;
+
+            if (wfcheck)
+              ok = wfParser->check(ast, std::cout) && ok;
 
             if (!ok)
               return -1;

@@ -511,43 +511,10 @@ namespace verona
 
             for (auto& def : defs)
             {
-              if (def == field)
-                continue;
-
-              if (def->type().in({FieldLet, FieldVar}))
+              if (def->type().in({FieldLet, FieldVar}) && def->precedes(field))
                 return err(field, "duplicate field name")
                   << (ErrorAst ^
                       def->at(wf / FieldLet / Ident, wf / FieldVar / Ident));
-            }
-
-            return NoChange;
-          }),
-
-        (T(Class) / T(TypeAlias) / T(TypeParam))[Type] << (T(Ident)[Id]) >>
-          ([](Match& _) -> Node {
-            // Types can conflict with other types and functions.
-            auto type = _(Type);
-            auto defs = type->scope()->lookdown(_(Id)->location());
-
-            for (auto& def : defs)
-            {
-              if (def == type)
-                continue;
-
-              if (def->type().in({Class, TypeAlias, TypeParam}))
-              {
-                return err(type, "duplicate type name")
-                  << (ErrorAst ^
-                      def->at(
-                        wf / Class / Ident,
-                        wf / TypeAlias / Ident,
-                        wf / TypeParam / Ident));
-              }
-              else if (def->type() == Function)
-              {
-                return err(type, "this type has the same name as a function")
-                  << (ErrorAst ^ def->at(wf / Function / Ident));
-              }
             }
 
             return NoChange;
@@ -566,22 +533,11 @@ namespace verona
 
             for (auto& def : defs)
             {
-              if (def == func)
-                continue;
-
-              if (def->type().in({Class, TypeAlias, TypeParam}))
-              {
-                return err(func, "this function has the same name as a type")
-                  << (ErrorAst ^
-                      def->at(
-                        wf / Class / Ident,
-                        wf / TypeAlias / Ident,
-                        wf / TypeParam / Ident));
-              }
-              else if (
+              if (
                 (def->type() == Function) &&
                 (def->at(wf / Function / Ref)->type() == ref) &&
-                (def->at(wf / Function / Params)->size() == arity))
+                (def->at(wf / Function / Params)->size() == arity) &&
+                def->precedes(func))
               {
                 return err(
                          func,
@@ -595,7 +551,7 @@ namespace verona
               {
                 return err(
                          func,
-                         "this function has the same name and arity as a field")
+                         "this function has the same arity as a field")
                   << (ErrorAst ^ def->at(wf / FieldLet / Ident));
               }
               else if ((def->type() == FieldVar) && (arity == 1))
@@ -2027,6 +1983,41 @@ namespace verona
     };
   }
 
+  PassDef traitisect()
+  {
+    // Turn all traits into intersections of single-function traits. Do this
+    // late so that fields have already been turned into accessor functions and
+    // partial application functions have already been generated.
+    return {
+      dir::once | dir::topdown,
+      {
+        T(TypeTrait)[TypeTrait] << (T(Ident) * T(ClassBody)[ClassBody]) >>
+          [](Match& _) {
+            // If we're inside a TypeIsect, put the new traits inside it.
+            // Otherwise, create a new TypeIsect.
+            Node isect =
+              (_(TypeTrait)->parent()->type() == TypeIsect) ? Seq : TypeIsect;
+
+            for (auto& member : *_(ClassBody))
+            {
+              if (member->type() == Function)
+              {
+                isect
+                  << (TypeTrait << (Ident ^ _.fresh(l_trait))
+                                << (ClassBody << member));
+              }
+            }
+
+            if (isect->empty())
+              return _(TypeTrait);
+            else if (isect->size() == 1)
+              return isect->front();
+            else
+              return isect;
+          },
+      }};
+  }
+
   inline const auto Liftable = T(Unit) / T(Tuple) / T(Call) / T(CallLHS) /
     T(Conditional) / T(FieldRef) / T(TypeTest) / T(Cast) / T(Selector) /
     T(FunctionName) / Literal;
@@ -2476,6 +2467,7 @@ namespace verona
         {"autocreate", autocreate(), wfPassAutoCreate},
         {"defaultargs", defaultargs(), wfPassDefaultArgs},
         {"partialapp", partialapp(), wfPassDefaultArgs},
+        {"traitisect", traitisect(), wfPassDefaultArgs},
         {"anf", anf(), wfPassANF},
         {"defbeforeuse", defbeforeuse(), wfPassANF},
         {"drop", drop(), wfPassDrop},

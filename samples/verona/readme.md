@@ -1,6 +1,7 @@
 # Todo
 
-Conflicting TypeParam names?
+- replace TypeUnit with `std::builtin::unit`
+- automatically insert `use std::builtin` in `Top`?
 
 Tuples are traits, `()` is a synonym for `std::unit`
 ```ts
@@ -24,25 +25,10 @@ T1: Tuple[T1, ()]
 ```
 
 Mangling
-- automatically insert `use std::builtin` in `Top`?
 - need reachability to do precise flattening
 - for dynamic execution:
   - use polymorphic versions of types and functions
   - encode type arguments as fields (classes) or arguments (functions)
-
-Subtyping
-- when we see a syntactic type argument, need to check if typearg < bounds
-  - could do `T1[T2] ~> T1[T2] & (T2 < T1::TP[0])`
-- break up traits with >1 requirement into isect of 1 requirement traits
-- type inference might not work with typeparameter bounds checking
-```ts
-  x: T1, y: T2, z: T3
-  x.f(y, z)
-  T1 <: { f[](T1, T2, T3) }
-  // but what if T1::f[X](T1, T2, X) ?
-```
-- track `typevar <: x` as upper bounds, `x <: typevar` as lower bounds?
-- typealg: `!`, `A ? B : C`
 
 Pattern Matching
 - values as arguments
