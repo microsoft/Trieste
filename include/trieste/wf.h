@@ -79,7 +79,7 @@ namespace trieste
             if (i < (types.size() - 2))
               out << ", ";
             if (i == (types.size() - 2))
-              out << "or ";
+              out << " or ";
           }
 
           out << std::endl
