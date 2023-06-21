@@ -37,17 +37,6 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(cli11)
 
-FetchContent_Declare(
-  fmt
-  GIT_REPOSITORY https://github.com/fmtlib/fmt
-  GIT_TAG 9.1.0
-  GIT_SHALLOW TRUE
-)
-
-FetchContent_MakeAvailable(fmt)
-
-set_target_properties(fmt PROPERTIES EXCLUDE_FROM_ALL ON)
-
 # #############################################
 # Options
 option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
@@ -65,6 +54,13 @@ add_library(trieste::trieste ALIAS trieste)
 target_include_directories(trieste
   INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+target_link_libraries(trieste
+  INTERFACE
+  snmallocshim-static
+  re2::re2
+  CLI11::CLI11
 )
 
 target_compile_features(trieste INTERFACE cxx_std_20)
@@ -89,7 +85,7 @@ install(CODE [[
   file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX}/.)
   ]])
 
-install(TARGETS trieste
+install(TARGETS trieste snmallocshim-static snmalloc re2 CLI11
   EXPORT ${PROJECT_NAME}_Targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

@@ -1,5 +1,16 @@
 find_package(Threads REQUIRED)
 
+FetchContent_Declare(
+  fmt
+  GIT_REPOSITORY https://github.com/fmtlib/fmt
+  GIT_TAG 9.1.0
+  GIT_SHALLOW TRUE
+)
+
+FetchContent_MakeAvailable(fmt)
+
+set_target_properties(fmt PROPERTIES EXCLUDE_FROM_ALL ON)
+
 add_executable(verona
   lang.cc
   lookup.cc
@@ -9,10 +20,7 @@ add_executable(verona
   )
 
 target_link_libraries(verona
-  snmallocshim-static
   Threads::Threads
-  re2::re2
-  CLI11::CLI11
   fmt::fmt
   trieste::trieste
   )
