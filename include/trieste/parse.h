@@ -270,7 +270,7 @@ namespace trieste
       return exe;
     }
 
-    void executable(std::filesystem::path path)
+    void executable(const std::filesystem::path path)
     {
       exe = std::filesystem::canonical(path);
     }
@@ -305,7 +305,7 @@ namespace trieste
       done_ = f;
     }
 
-    Node parse(std::filesystem::path path) const
+    Node parse(const std::filesystem::path path) const
     {
       auto ast = sub_parse(path);
       auto top = NodeDef::create(Top);
@@ -317,18 +317,18 @@ namespace trieste
       return top;
     }
 
-    Node sub_parse(std::filesystem::path& path) const
+    Node sub_parse(const std::filesystem::path& path) const
     {
       if (!std::filesystem::exists(path))
         return {};
 
-      path = std::filesystem::canonical(path);
+      auto cpath = std::filesystem::canonical(path);
 
-      if (std::filesystem::is_regular_file(path))
-        return parse_file(path);
+      if (std::filesystem::is_regular_file(cpath))
+        return parse_file(cpath);
 
-      if ((depth_ != depth::file) && std::filesystem::is_directory(path))
-        return parse_directory(path);
+      if ((depth_ != depth::file) && std::filesystem::is_directory(cpath))
+        return parse_directory(cpath);
 
       return {};
     }

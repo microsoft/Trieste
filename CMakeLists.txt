@@ -3,6 +3,9 @@ project(trieste VERSION 1.0.0 LANGUAGES CXX)
 
 include(FetchContent)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(BUILD_TESTING OFF CACHE INTERNAL "Turn off snmalloc tests")
 set(SNMALLOC_STATIC_LIBRARY_PREFIX "")
 set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
@@ -83,7 +86,7 @@ set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR}/dist)
 
 # Clear all existing files and folders from the install directory
 install(CODE [[
-  file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX})
+  file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX}/.)
   ]])
 
 install(TARGETS trieste
