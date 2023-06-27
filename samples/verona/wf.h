@@ -11,7 +11,6 @@ namespace verona
   inline const auto wfRef = Ref >>= Ref | DontCare;
   inline const auto wfName = Ident >>= Ident | Symbol;
   inline const auto wfDefault = Default >>= Lambda | DontCare;
-  inline const auto wfOptType = Type >>= Type | DontCare;
 
   inline const auto wfLiteral =
     Bool | Int | Hex | Bin | Float | HexFloat | Char | Escaped | String | LLVM;
@@ -61,7 +60,8 @@ namespace verona
   // clang-format off
   inline const auto wfPassStructure =
       (Top <<= Class++)
-    | (Class <<= Ident * TypeParams * wfOptType * TypePred * ClassBody)[Ident]
+    | (Class <<= Ident * TypeParams * Inherit * TypePred * ClassBody)[Ident]
+    | (Inherit <<= Type | DontCare)
     | (ClassBody <<=
         (Use | Class | TypeAlias | FieldLet | FieldVar | Function)++)
     | (Use <<= Type)[Include]
@@ -73,7 +73,7 @@ namespace verona
         wfRef * wfName * TypeParams * Params * Type *
         (LLVMFuncType >>= LLVMFuncType | DontCare) * TypePred * Block)[Ident]
     | (TypeParams <<= TypeParam++)
-    | (TypeParam <<= Ident * wfOptType)[Ident]
+    | (TypeParam <<= Ident * (Type >>= Type | DontCare))[Ident]
     | (ValueParam <<= Ident * Type * Expr)[Ident]
     | (Params <<= Param++)
     | (Param <<= Ident * Type * wfDefault)[Ident]
@@ -428,39 +428,6 @@ namespace verona
         (Rhs >>=
           Tuple | Call | Conditional | TypeTest | Cast | FieldRef | wfLiteral |
           Copy | Move))[Ident]
-    ;
-  // clang-format on
-
-  // clang-format off
-  inline const auto wf =
-      (TypeAlias <<= Ident * TypeParams * TypePred * Type)
-    | (Use <<= Type)
-    | (Class <<= Ident * TypeParams * Type * TypePred * ClassBody)
-    | (TypeParam <<= Ident * Type)
-    | (ValueParam <<= Ident * Type * Expr)[Ident]
-    | (FieldLet <<= Ident * Type * Default)
-    | (FieldVar <<= Ident * Type * Default)
-    | (Function <<=
-        wfRef * wfName * TypeParams * Params * Type *
-        (LLVMFuncType >>= LLVMFuncType | DontCare) * TypePred * Block)
-    | (Param <<= Ident * Type * Default)
-    | (TypeAssert <<= Expr * Type)
-    | (Type <<= wfType)
-    | (FunctionName <<= (Lhs >>= (wfTypeName | DontCare)) * wfName * TypeArgs)
-    | (TypeClassName <<= (Lhs >>= (wfTypeName | DontCare)) * Ident * TypeArgs)
-    | (TypeTraitName <<= (Lhs >>= (wfTypeName | DontCare)) * Ident * TypeArgs)
-    | (TypeAliasName <<= (Lhs >>= (wfTypeName | DontCare)) * Ident * TypeArgs)
-    | (TypeParamName <<= (Lhs >>= (wfTypeName | DontCare)) * Ident * TypeArgs)
-    | (TypeTrait <<= Ident * ClassBody)
-    | (Package <<= (Id >>= String | Escaped))
-    | (Var <<= Ident * Type)
-    | (Let <<= Ident * Type)
-    | (RefLet <<= Ident)
-    | (Lambda <<= TypeParams * Params * Type * TypePred * Block)
-    | (Bind <<= Ident * Type *
-        (Rhs >>=
-          Tuple | Call | Conditional | TypeTest | Cast | FieldRef | wfLiteral |
-          Copy | Move))
     ;
   // clang-format on
 }

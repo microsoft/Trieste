@@ -21,10 +21,7 @@ namespace verona
     if (!ta)
       return;
 
-    auto tp = def->at(
-      wf / Class / TypeParams,
-      wf / TypeAlias / TypeParams,
-      wf / Function / TypeParams);
+    auto tp = def / TypeParams;
 
     if (tp->size() < ta->size())
     {
@@ -78,7 +75,7 @@ namespace verona
       else if (lookup.def->type() == TypeAlias)
       {
         // Replace the def with our type alias and try again.
-        lookup.def = lookup.def->at(wf / TypeAlias / Type);
+        lookup.def = lookup.def / Type;
       }
       else if (lookup.def->type() == TypeParam)
       {
@@ -95,7 +92,7 @@ namespace verona
       else if (lookup.def->type() == Type)
       {
         // Replace the def with the content of the type and try again.
-        lookup.def = lookup.def->at(wf / Type / Type);
+        lookup.def = lookup.def / Type;
       }
       else if (lookup.def->type().in(
                  {TypeClassName, TypeAliasName, TypeTraitName, TypeParamName}))
@@ -156,7 +153,7 @@ namespace verona
       if (def->type() == Use)
       {
         if (def->precedes(id))
-          lookups.add(lookdown(Lookup(def->at(wf / Use / Type)), id, ta));
+          lookups.add(lookdown(Lookup(def / Type), id, ta));
       }
       else
       {
@@ -169,6 +166,9 @@ namespace verona
 
   Lookups lookup_scopedname(Node tn)
   {
+    if (tn->type() == Error)
+      return {};
+
     assert(tn->type().in(
       {TypeClassName,
        TypeAliasName,
@@ -176,9 +176,9 @@ namespace verona
        TypeTraitName,
        FunctionName}));
 
-    auto ctx = tn->at(0);
-    auto id = tn->at(1);
-    auto ta = tn->at(2);
+    auto ctx = tn / Lhs;
+    auto id = tn / Ident;
+    auto ta = tn / TypeArgs;
 
     if (ctx->type() == DontCare)
       return lookup_name(id, ta);
@@ -197,7 +197,7 @@ namespace verona
       return false;
 
     std::deque<std::pair<NodeSet, Lookup>> worklist;
-    worklist.emplace_back(NodeSet{node}, node->at(wf / TypeAlias / Type));
+    worklist.emplace_back(NodeSet{node}, node / Type);
 
     while (!worklist.empty())
     {
@@ -209,8 +209,7 @@ namespace verona
 
       if (type->type() == Type)
       {
-        worklist.emplace_back(
-          set, Lookup(type->at(wf / Type / Type), bindings));
+        worklist.emplace_back(set, Lookup(type / Type, bindings));
       }
       else if (type->type().in({TypeTuple, TypeUnion, TypeIsect, TypeView}))
       {
@@ -231,8 +230,7 @@ namespace verona
           set.insert(def.def);
           def.bindings.insert(bindings.begin(), bindings.end());
           bindings.swap(def.bindings);
-          worklist.emplace_back(
-            set, Lookup(def.def->at(wf / TypeAlias / Type), bindings));
+          worklist.emplace_back(set, Lookup(def.def / Type, bindings));
         }
       }
       else if (type->type() == TypeParamName)
@@ -253,7 +251,7 @@ namespace verona
     return false;
   }
 
-  bool lookup_valid_predicate(Node node)
+  bool valid_predicate(Node node)
   {
     if (node->type() == TypeSubtype)
     {
@@ -262,18 +260,36 @@ namespace verona
     else if (node->type().in({TypeUnion, TypeIsect}))
     {
       // Check that all children are valid predicates.
-      for (auto& t : *node)
-      {
-        if (!lookup_valid_predicate(t))
-          return false;
-      }
+      return std::all_of(node->begin(), node->end(), valid_predicate);
+    }
+    else if (node->type() == TypeAliasName)
+    {
+      // TODO: this will be a TypeAliasName!!!
+      // We know that type aliases aren't recursive, check the definition.
+      auto defs = lookup_scopedname(node);
 
+      return valid_predicate(node / Type);
+    }
+
+    return false;
+  }
+
+  bool valid_inherit(Node node)
+  {
+    if (node->type().in({TypeClassName, TypeTraitName}))
+    {
       return true;
+    }
+    else if (node->type().in({Type, TypeIsect}))
+    {
+      // Check that all children are valid for code reuse.
+      return std::all_of(node->begin(), node->end(), valid_inherit);
     }
     else if (node->type() == TypeAlias)
     {
+      // TODO: this will be a TypeAliasName!!!
       // We know that type aliases aren't recursive, check the definition.
-      return lookup_valid_predicate(node->at(wf / TypeAlias / Type));
+      return valid_inherit(node / Type);
     }
 
     return false;
@@ -295,40 +311,26 @@ namespace verona
     }
     else if (t->type().in({TypeClassName, TypeAliasName, TypeTraitName}))
     {
-      extract_typeparams(
-        scope,
-        t->at(
-          wf / TypeClassName / Lhs,
-          wf / TypeAliasName / Lhs,
-          wf / TypeTraitName / Lhs),
-        tp);
-
-      extract_typeparams(
-        scope,
-        t->at(
-          wf / TypeClassName / TypeArgs,
-          wf / TypeAliasName / TypeArgs,
-          wf / TypeTraitName / TypeArgs),
-        tp);
+      extract_typeparams(scope, t / Lhs, tp);
+      extract_typeparams(scope, t / TypeArgs, tp);
     }
     else if (t->type() == TypeParamName)
     {
-      auto id = t->at(wf / TypeParamName / Ident);
+      auto id = t / Ident;
       auto defs = id->lookup(scope);
 
       if ((defs.size() == 1) && (defs.front()->type() == TypeParam))
       {
         if (!std::any_of(tp->begin(), tp->end(), [&](auto& p) {
-              return p->at(wf / TypeParam / Ident)->location() ==
-                id->location();
+              return (p / Ident)->location() == id->location();
             }))
         {
           tp << clone(defs.front());
         }
       }
 
-      extract_typeparams(scope, t->at(wf / TypeParamName / Lhs), tp);
-      extract_typeparams(scope, t->at(wf / TypeParamName / TypeArgs), tp);
+      extract_typeparams(scope, t / Lhs, tp);
+      extract_typeparams(scope, t / TypeArgs, tp);
     }
   }
 
@@ -337,14 +339,12 @@ namespace verona
     if (!node->type().in({Class, Function}))
       return typeargs;
 
-    for (auto typeparam :
-         *node->at(wf / Class / TypeParams, wf / Function / TypeParams))
+    for (auto typeparam : *(node / TypeParams))
     {
       typeargs
         << (Type
-            << (TypeParamName
-                << DontCare
-                << clone(typeparam->at(wf / TypeParam / Ident)) << TypeArgs));
+            << (TypeParamName << DontCare << clone(typeparam / Ident)
+                              << TypeArgs));
     }
 
     return typeargs;

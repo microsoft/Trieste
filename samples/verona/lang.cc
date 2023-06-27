@@ -53,14 +53,14 @@ namespace verona
           (~T(Brace) *
            (((T(Symbol) / T(Dot)) * T(Brace)) /
             (!(T(Where) / T(Brace) / T(TripleColon))))++)[Type] >>
-        [](Match& _) { return Type << (_[Type] / DontCare); },
+        [](Match& _) { return Type << (_[Type] || DontCare); },
 
       // Type predicate.
       T(Where) *
           (~T(Brace) *
            (((T(Symbol) / T(Dot)) * T(Brace)) /
             (!(T(Where) / T(Brace) / T(TripleColon))))++)[Type] >>
-        [](Match& _) { return TypePred << (Type << (_[Type] / TypeTrue)); },
+        [](Match& _) { return TypePred << (Type << (_[Type] || TypeTrue)); },
 
       T(TripleColon) *
           (T(Paren)
@@ -92,6 +92,16 @@ namespace verona
   {
     auto n = _(t);
     return n ? n : typevar(_);
+  }
+
+  auto inherit()
+  {
+    return Inherit << DontCare;
+  }
+
+  auto inherit(auto& _, const Token& t)
+  {
+    return Inherit << (_(t) || DontCare);
   }
 
   auto typepred()
@@ -147,10 +157,10 @@ namespace verona
                T(Group)++[Rhs])) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
-          return Seq << (Function << (_(Ref) / DontCare) << _(Id)
+          return Seq << (Function << (_(Ref) || DontCare) << _(Id)
                                   << (TypeParams << *_[TypeParams])
                                   << (Params << *_[Params]) << typevar(_, Type)
-                                  << (_(LLVMFuncType) / DontCare)
+                                  << (_(LLVMFuncType) || DontCare)
                                   << typepred(_, TypePred)
                                   << (Block << *_[Block]))
                      << (Equals << (Group << _[Lhs]) << _[Rhs]);
@@ -168,10 +178,10 @@ namespace verona
                T(Group)++[Rhs])) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
-          return Function << (_(Ref) / DontCare) << _(Id)
+          return Function << (_(Ref) || DontCare) << _(Id)
                           << (TypeParams << *_[TypeParams])
                           << (Params << *_[Params]) << typevar(_, Type)
-                          << (_(LLVMFuncType) / DontCare)
+                          << (_(LLVMFuncType) || DontCare)
                           << typepred(_, TypePred)
                           << (Block << (Expr << (Default << _[Rhs])));
         },
@@ -185,10 +195,10 @@ namespace verona
               ~T(Brace)[Block] * (Any++)[Rhs]) >>
         [](Match& _) {
           _.def(Id, Ident ^ apply);
-          return Seq << (Function << (_(Ref) / DontCare) << _(Id)
+          return Seq << (Function << (_(Ref) || DontCare) << _(Id)
                                   << (TypeParams << *_[TypeParams])
                                   << (Params << *_[Params]) << typevar(_, Type)
-                                  << (_(LLVMFuncType) / DontCare)
+                                  << (_(LLVMFuncType) || DontCare)
                                   << typepred(_, TypePred)
                                   << (Block << *_[Block]))
                      << (Group << _[Rhs]);
@@ -266,7 +276,7 @@ namespace verona
       // Use.
       (In(ClassBody) / In(Block)) * T(Group) << T(Use)[Use] * (Any++)[Type] >>
         [](Match& _) {
-          return (Use ^ _(Use)) << (Type << (_[Type] / DontCare));
+          return (Use ^ _(Use)) << (Type << (_[Type] || DontCare));
         },
 
       T(Use)[Use] << End >>
@@ -301,7 +311,7 @@ namespace verona
               (Any++)[Rhs]) >>
         [](Match& _) {
           return Seq << (Class << _(Id) << (TypeParams << *_[TypeParams])
-                               << (_(Type) / Type) << typepred(_, TypePred)
+                               << inherit(_, Type) << typepred(_, TypePred)
                                << (ClassBody << *_[ClassBody]))
                      << (Group << _[Rhs]);
         },
@@ -397,10 +407,10 @@ namespace verona
       In(Expr) * T(New) * T(Brace)[ClassBody] >>
         [](Match& _) {
           auto class_id = _.fresh(l_class);
-          return Seq << (Lift
-                         << Block
-                         << (Class << (Ident ^ class_id) << TypeParams
-                                   << DontCare << (ClassBody << *_[ClassBody])))
+          return Seq << (Lift << Block
+                              << (Class << (Ident ^ class_id) << TypeParams
+                                        << inherit() << typepred()
+                                        << (ClassBody << *_[ClassBody])))
                      << (Expr << (Ident ^ class_id) << DoubleColon
                               << (Ident ^ create) << Unit);
         },
@@ -504,8 +514,7 @@ namespace verona
             {
               if (def->type().in({FieldLet, FieldVar}) && def->precedes(field))
                 return err(field, "duplicate field name")
-                  << (ErrorAst ^
-                      def->at(wf / FieldLet / Ident, wf / FieldVar / Ident));
+                  << (ErrorAst ^ (def / Ident));
             }
 
             return NoChange;
@@ -525,28 +534,26 @@ namespace verona
             for (auto& def : defs)
             {
               if (
-                (def->type() == Function) &&
-                (def->at(wf / Function / Ref)->type() == ref) &&
-                (def->at(wf / Function / Params)->size() == arity) &&
-                def->precedes(func))
+                (def->type() == Function) && ((def / Ref)->type() == ref) &&
+                ((def / Params)->size() == arity) && def->precedes(func))
               {
                 return err(
                          func,
                          "this function has the same name, arity, and "
                          "handedness as "
                          "another function")
-                  << (ErrorAst ^ def->at(wf / Function / Ident));
+                  << (ErrorAst ^ (def / Ident));
               }
               else if (
                 (def->type() == FieldLet) && (ref == DontCare) && (arity == 1))
               {
                 return err(func, "this function has the same arity as a field")
-                  << (ErrorAst ^ def->at(wf / FieldLet / Ident));
+                  << (ErrorAst ^ (def / Ident));
               }
               else if ((def->type() == FieldVar) && (arity == 1))
               {
                 return err(func, "this function has the same arity as a field")
-                  << (ErrorAst ^ def->at(wf / FieldVar / Ident));
+                  << (ErrorAst ^ (def / Ident));
               }
             }
 
@@ -563,8 +570,7 @@ namespace verona
     T(TypeUnion) / T(TypeVar) / T(Package) / T(TypeSubtype) / T(TypeTrue) /
     T(TypeFalse);
 
-  Node
-  makename(const Lookups& defs, Node lhs, Node id, Node ta, bool func = false)
+  Node makename(Lookups& defs, Node lhs, Node id, Node ta, bool func = false)
   {
     if (defs.defs.size() == 0)
       return Error << (ErrorMsg ^ "unknown type name")
@@ -593,16 +599,7 @@ namespace verona
                        << ((ErrorAst ^ id) << lhs << id << ta);
 
       for (auto& def : defs.defs)
-      {
-        err
-          << (ErrorAst ^
-              def.def->at(
-                wf / Class / Ident,
-                wf / TypeAlias / Ident,
-                wf / TypeParam / Ident,
-                wf / TypeTrait / Ident,
-                wf / Param / Ident));
-      }
+        err << (ErrorAst ^ (def.def / Ident));
 
       return err;
     }
@@ -626,13 +623,7 @@ namespace verona
 
     return Error << (ErrorMsg ^ "not a type name")
                  << ((ErrorAst ^ id) << lhs << id << ta)
-                 << (ErrorAst ^
-                     defs.defs.front().def->at(
-                       wf / Class / Ident,
-                       wf / TypeAlias / Ident,
-                       wf / TypeParam / Ident,
-                       wf / TypeTrait / Ident,
-                       wf / Param / Ident));
+                 << (ErrorAst ^ (defs.defs.front().def / Ident));
   }
 
   PassDef typenames()
@@ -645,7 +636,7 @@ namespace verona
       TypeStruct * T(Ident)[Id] * ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {
           auto defs = lookup_name(_(Id), _(TypeArgs));
-          return makename(defs, DontCare, _(Id), (_(TypeArgs) / TypeArgs));
+          return makename(defs, DontCare, _(Id), (_(TypeArgs) || TypeArgs));
         },
 
       // Scoping binds most tightly.
@@ -653,7 +644,7 @@ namespace verona
           ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {
           auto defs = lookup_scopedname_name(_(Lhs), _(Id), _(TypeArgs));
-          return makename(defs, _(Lhs), _(Id), (_(TypeArgs) / TypeArgs));
+          return makename(defs, _(Lhs), _(Id), (_(TypeArgs) || TypeArgs));
         },
     };
   }
@@ -784,7 +775,7 @@ namespace verona
       T(TypeTuple) << (TypeElem[Op] * End) >> [](Match& _) { return _(Op); },
 
       // Tuples of arity 0 are the unit type.
-      T(TypeTuple) << End >> [](Match&) { return ClassUnit; },
+      T(TypeTuple) << End >> [](Match&) { return clone(ClassUnit); },
 
       // Flatten Type nodes. The top level Type node won't go away.
       TypeStruct * T(Type) << (TypeElem[Op] * End) >>
@@ -821,9 +812,10 @@ namespace verona
     return {
       dir::once | dir::topdown,
       {
-        T(TypeAlias)[TypeAlias] * In(TypePred)++ * !(In(TypeSubtype)++) >>
+        T(TypeAliasName)[TypeAliasName] * In(TypePred)++ *
+            !(In(TypeSubtype)++) >>
           ([](Match& _) -> Node {
-            if (!lookup_valid_predicate(_(TypeAlias)))
+            if (!valid_predicate(_(TypeAliasName)))
               return err(
                 _[Type], "this type alias isn't a valid type predicate");
 
@@ -837,6 +829,42 @@ namespace verona
           [](Match& _) {
             return err(_[Type], "can't put this in a type predicate");
           },
+
+        T(TypeAliasName)[TypeAliasName] * In(Inherit)++ >>
+          ([](Match& _) -> Node {
+            if (!valid_inherit(_(TypeAliasName)))
+              return err(
+                _[Type], "this type alias isn't valid for inheritance");
+
+            return NoChange;
+          }),
+
+        (T(TypeIsect) / T(TypeClassName)) * In(Inherit)++ >>
+          ([](Match&) -> Node { return NoChange; }),
+
+        TypeElem[Type] * In(Inherit)++ >>
+          [](Match& _) { return err(_[Type], "can't inherit from this type"); },
+      }};
+  }
+
+  PassDef codereuse()
+  {
+    return {
+      dir::once | dir::topdown,
+      {
+        T(Class)
+            << (T(Ident)[Ident] * T(TypeParams)[TypeParams] *
+                T(Inherit)[Inherit] * T(TypePred)[TypePred] *
+                T(ClassBody)[ClassBody]) >>
+          [](Match& _) {
+            // TODO: Type must be valid for code reuse
+            // strip Type from here on
+            // reuse stuff in Type if (a) it's not ambiguous and (b) it's not
+            // already provided in ClassBody
+            // need to do type substitution
+            return Class << _(Ident) << _(TypeParams) << _(Inherit)
+                         << _(TypePred) << _(ClassBody);
+          },
       }};
   }
 
@@ -845,7 +873,7 @@ namespace verona
     // Pack all of the branches into a single conditional and unpack them
     // in the follow-on rules.
     auto lambda = _(Lhs);
-    auto params = lambda->at(wf / Lambda / Params);
+    auto params = lambda / Params;
     Node cond = Expr;
     Node block = Block;
     Node args;
@@ -868,7 +896,7 @@ namespace verona
         // This is a single parameter.
         auto lhs_id = _.fresh();
         lhs = Expr << (Let << (Ident ^ lhs_id));
-        type = clone(params->front()->at(wf / Param / Type));
+        type = clone(params->front() / Type);
         args = Ident ^ lhs_id;
       }
       else
@@ -886,7 +914,7 @@ namespace verona
           auto lhs_id = _.fresh();
           args << (Expr << (Ident ^ lhs_id));
           lhs << (Expr << (Let << (Ident ^ lhs_id)));
-          typetuple << clone(param->at(wf / Param / Type)->front());
+          typetuple << clone(param / Type);
         }
       }
 
@@ -971,7 +999,7 @@ namespace verona
       // Dot notation. Use `Id` as a selector, even if it's in scope.
       In(Expr) * T(Dot) * Name[Id] * ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {
-          return Seq << Dot << (Selector << _[Id] << (_(TypeArgs) / TypeArgs));
+          return Seq << Dot << (Selector << _[Id] << (_(TypeArgs) || TypeArgs));
         },
 
       // Local reference.
@@ -989,13 +1017,13 @@ namespace verona
       }) * ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {
           auto defs = lookup_name(_(Id), _(TypeArgs));
-          return makename(defs, DontCare, _(Id), (_(TypeArgs) / TypeArgs));
+          return makename(defs, DontCare, _(Id), (_(TypeArgs) || TypeArgs));
         },
 
       // Unscoped reference that isn't a local or a type. Treat it as a
       // selector, even if it resolves to a Function.
       In(Expr) * Name[Id] * ~T(TypeArgs)[TypeArgs] >>
-        [](Match& _) { return Selector << _(Id) << (_(TypeArgs) / TypeArgs); },
+        [](Match& _) { return Selector << _(Id) << (_(TypeArgs) || TypeArgs); },
 
       // Scoped lookup.
       In(Expr) *
@@ -1003,7 +1031,7 @@ namespace verona
            ~T(TypeArgs)[TypeArgs])[Type] >>
         [](Match& _) {
           auto defs = lookup_scopedname_name(_(Lhs), _(Id), _(TypeArgs));
-          return makename(defs, _(Lhs), _(Id), (_(TypeArgs) / TypeArgs), true);
+          return makename(defs, _(Lhs), _(Id), (_(TypeArgs) || TypeArgs), true);
         },
 
       In(Expr) * T(DoubleColon) >>
@@ -1013,7 +1041,7 @@ namespace verona
       In(Expr) * TypeName[Lhs] * ~T(TypeArgs)[TypeArgs] >>
         [](Match& _) {
           return FunctionName << _(Lhs) << (Ident ^ create)
-                              << (_(TypeArgs) / TypeArgs);
+                              << (_(TypeArgs) || TypeArgs);
         },
 
       // Lone TypeArgs are typeargs on apply.
@@ -1035,8 +1063,8 @@ namespace verona
       {
         if (
           (def.def->type() == Function) &&
-          (def.def->at(wf / Function / Params)->size() == arity) &&
-          (def.def->at(wf / Function / LLVMFuncType)->type() == LLVMFuncType))
+          ((def.def / Params)->size() == arity) &&
+          ((def.def / LLVMFuncType)->type() == LLVMFuncType))
         {
           return true;
         }
@@ -1170,9 +1198,7 @@ namespace verona
             else if (expr->type() == TypeAssert)
             {
               auto id = _.fresh(l_param);
-              params
-                << (Param << (Ident ^ id) << expr->at(wf / TypeAssert / Type)
-                          << DontCare);
+              params << (Param << (Ident ^ id) << (expr / Type) << DontCare);
               args << (Expr << (RefLet << (Ident ^ id)));
             }
             else
@@ -1344,8 +1370,7 @@ namespace verona
             if (lhs_e->type() == Let)
             {
               // lhs_child is already a Let.
-              lhs_tuple
-                << (Expr << (RefLet << clone(lhs_e->at(wf / Let / Ident))));
+              lhs_tuple << (Expr << (RefLet << clone(lhs_e / Ident)));
             }
             else
             {
@@ -1472,7 +1497,7 @@ namespace verona
             Node class_body = ClassBody;
             auto class_id = _.fresh(l_class);
             auto classdef = Class << (Ident ^ class_id) << TypeParams
-                                  << DontCare << typepred() << class_body;
+                                  << inherit() << typepred() << class_body;
 
             // The create function will capture the free variables.
             Node create_params = Params;
@@ -1601,10 +1626,10 @@ namespace verona
             auto f = _(Function);
             auto id = _(Id);
             auto params = _(Params);
-            auto parent = f->parent()->parent();
+            auto parent = f->parent()->parent()->shared_from_this();
             Token ptype =
               (parent->type() == Class) ? TypeClassName : TypeTraitName;
-            auto tn = parent->at(wf / Class / Ident, wf / TypeTrait / Ident);
+            auto tn = parent / Ident;
             auto defs = parent->lookdown(id->location());
             auto found = false;
 
@@ -1613,10 +1638,9 @@ namespace verona
             {
               if (
                 (def != f) && (def->type() == Function) &&
-                (def->at(wf / Function / Ref)->type() != Ref) &&
-                (def->at(wf / Function / Ident)->location() ==
-                 id->location()) &&
-                (def->at(wf / Function / Params)->size() == params->size()))
+                ((def / Ref)->type() != Ref) &&
+                ((def / Ident)->location() == id->location()) &&
+                ((def / Params)->size() == params->size()))
               {
                 found = true;
                 break;
@@ -1630,8 +1654,7 @@ namespace verona
             Node args = Args;
 
             for (auto param : *params)
-              args
-                << (Expr << (RefLet << clone(param->at(wf / Param / Ident))));
+              args << (Expr << (RefLet << clone(param / Ident)));
 
             auto rhs_f = Function
               << DontCare << clone(id) << clone(_(TypeParams)) << clone(params)
@@ -1668,10 +1691,9 @@ namespace verona
           {
             if (node->type().in({FieldLet, FieldVar}))
             {
-              auto id = node->at(wf / FieldLet / Ident, wf / FieldVar / Ident);
-              auto ty = node->at(wf / FieldLet / Type, wf / FieldVar / Type);
-              auto def_arg =
-                node->at(wf / FieldLet / Default, wf / FieldVar / Default);
+              auto id = node / Ident;
+              auto ty = node / Type;
+              auto def_arg = node / Default;
 
               // Add each field in order to the call to `new` and the create
               // function parameters.
@@ -1735,8 +1757,8 @@ namespace verona
             Node params = Params;
             Node call = (ref->type() == Ref) ? CallLHS : Call;
 
-            auto parent = _(Function)->parent()->parent();
-            auto tn = parent->at(wf / Class / Ident, wf / TypeTrait / Ident);
+            auto parent = _(Function)->parent()->parent()->shared_from_this();
+            auto tn = parent / Ident;
             Token ptype =
               (parent->type() == Class) ? TypeClassName : TypeTraitName;
             Node args = Args;
@@ -1752,10 +1774,8 @@ namespace verona
             // Start with parameters that have no default value.
             for (auto it = lhs.first; it != lhs.second; ++it)
             {
-              auto param_id = (*it)->at(wf / Param / Ident);
-              params
-                << (Param << clone(param_id)
-                          << clone((*it)->at(wf / Param / Type)));
+              auto param_id = *it / Ident;
+              params << (Param << clone(param_id) << clone(*it / Type));
               args << (Expr << (RefLet << clone(param_id)));
             }
 
@@ -1764,9 +1784,8 @@ namespace verona
               // At this point, the default argument is a create call on the
               // anonymous class derived from the lambda. Apply the created
               // lambda to get the default argument, checking for nonlocal.
-              auto def_arg = Call
-                << clone(Apply)
-                << (Args << (Expr << (*it)->at(wf / Param / Default)));
+              auto def_arg = Call << clone(Apply)
+                                  << (Args << (Expr << (*it / Default)));
               def_arg = nlrexpand(_, def_arg, true);
 
               // Add the default argument to the forwarding call.
@@ -1779,10 +1798,8 @@ namespace verona
                              << clone(pred) << (Block << clone(fwd)));
 
               // Add a parameter.
-              auto param_id = (*it)->at(wf / Param / Ident);
-              params
-                << (Param << clone(param_id)
-                          << clone((*it)->at(wf / Param / Type)));
+              auto param_id = *it / Ident;
+              params << (Param << clone(param_id) << clone(*it / Type));
 
               // Replace the last argument with a reference to the parameter.
               args->pop_back();
@@ -1831,8 +1848,7 @@ namespace verona
 
          auto func_name = FunctionName
            << (((parent->type() == Class) ? TypeClassName : TypeTraitName)
-               << DontCare
-               << clone(parent->at(wf / Class / Ident, wf / TypeTrait / Ident))
+               << DontCare << clone(parent / Ident)
                << typeparams_to_typeargs(parent))
            << clone(id) << typeparams_to_typeargs(f);
 
@@ -1850,7 +1866,7 @@ namespace verona
            if ((def == f) || (def->type() != Function))
              continue;
 
-           auto arity = def->at(wf / Function / Params)->size();
+           auto arity = (def / Params)->size();
 
            if (arity < end_arity)
              start_arity = std::max(start_arity, arity + 1);
@@ -1872,7 +1888,7 @@ namespace verona
            auto name = names[arity - start_arity];
            Node class_tp = TypeParams;
            Node classbody = ClassBody;
-           auto classdef = Class << clone(name) << class_tp << DontCare
+           auto classdef = Class << clone(name) << class_tp << inherit()
                                  << typepred() << classbody;
 
            // The anonymous class has fields for each supplied argument and a
@@ -1904,8 +1920,8 @@ namespace verona
            for (size_t i = 0; i < arity; ++i)
            {
              auto param = params->at(i);
-             auto param_id = param->at(wf / Param / Ident);
-             auto param_type = param->at(wf / Param / Type);
+             auto param_id = param / Ident;
+             auto param_type = param / Type;
 
              extract_typeparams(f, param_type, class_tp);
              extract_typeparams(f, param_type, func_tp);
@@ -1934,9 +1950,8 @@ namespace verona
                fwd_args
                  << (Expr
                      << (Call
-                         << (Selector
-                             << clone(params->at(j)->at(wf / Param / Ident))
-                             << TypeArgs)
+                         << (Selector << clone(params->at(j) / Ident)
+                                      << TypeArgs)
                          << (Args << (Expr << (RefLet << clone(self_id))))));
              }
 
@@ -1944,10 +1959,9 @@ namespace verona
              {
                // Add the additional arguments passed to this apply function.
                auto param = params->at(j);
-               extract_typeparams(f, param->at(wf / Param / Type), apply_tp);
+               extract_typeparams(f, param / Type, apply_tp);
                apply_params << clone(param);
-               fwd_args
-                 << (Expr << (RefLet << clone(param->at(wf / Param / Ident))));
+               fwd_args << (Expr << (RefLet << clone(param / Ident)));
              }
 
              Node fwd;
@@ -2012,6 +2026,7 @@ namespace verona
               }
             }
 
+            // TODO: we're losing Use, Class, TypeAlias
             if (isect->empty())
               return _(TypeTrait);
             else if (isect->size() == 1)
@@ -2219,7 +2234,7 @@ namespace verona
               if (immediate && (parent->back() != ref))
                 parent->replace(ref);
               else
-                parent->replace(ref, Move << ref->at(wf / RefLet / Ident));
+                parent->replace(ref, Move << (ref / Ident));
 
               changes++;
             }
@@ -2234,7 +2249,7 @@ namespace verona
           {
             auto refblock = it->first;
             auto ref = it->second;
-            auto id = ref->at(wf / RefLet / Ident);
+            auto id = ref / Ident;
             auto parent = ref->parent()->shared_from_this();
             bool immediate = parent->type() == Block;
             bool discharging = true;
@@ -2343,7 +2358,7 @@ namespace verona
     });
 
     drop.pre(Function, [drop_map](Node f) {
-      auto llvm = f->at(wf / Function / LLVMFuncType)->type() == LLVMFuncType;
+      auto llvm = (f / LLVMFuncType)->type() == LLVMFuncType;
       drop_map->push_back(track(llvm));
       return 0;
     });
@@ -2428,14 +2443,17 @@ namespace verona
       }};
   }
 
-  PassDef typesubtype()
+  PassDef validtypeargs()
   {
     return {
-      dir::bottomup,
+      dir::bottomup | dir::once,
       {
-        T(TypeSubtype) << (TypeElem[Lhs] * TypeElem[Rhs]) >>
+        TypeName[Op] << ((TypeName / T(DontCare)) * T(Ident) * T(TypeArgs)) >>
           ([](Match& _) -> Node {
-            return subtype(_(Lhs), _(Rhs)) ? TypeTrue : TypeFalse;
+            if (!valid_typeargs(_(Op)))
+              return err(_[Op], "invalid type arguments");
+
+            return NoChange;
           }),
       }};
   }
@@ -2476,7 +2494,7 @@ namespace verona
         {"defbeforeuse", defbeforeuse(), wfPassANF},
         {"drop", drop(), wfPassDrop},
         {"namearity", namearity(), wfPassNameArity},
-        {"typesubtype", typesubtype(), wfPassNameArity},
+        {"validtypeargs", validtypeargs(), wfPassNameArity},
       });
 
     return d;

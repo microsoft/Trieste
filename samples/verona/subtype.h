@@ -13,4 +13,5 @@ namespace verona
   using namespace trieste;
 
   bool subtype(Node sub, Node sup);
+  bool valid_typeargs(Node tn);
 }

@@ -114,4 +114,83 @@ namespace trieste
       sp.remove_prefix(count);
     }
   };
+
+  inline Node build_ast(Source source, size_t pos, std::ostream& out)
+  {
+    auto hd = RE2("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
+    auto st = RE2("[[:space:]]*\\{[^\\}]*\\}");
+    auto id = RE2("[[:space:]]*([[:digit:]]+):");
+    auto tl = RE2("[[:space:]]*\\)");
+
+    REMatch re_match(2);
+    REIterator re_iterator(source);
+    re_iterator.skip(pos);
+
+    Node top;
+    Node ast;
+
+    while (!re_iterator.empty())
+    {
+      // Find the type of the node. If we didn't find a node, it's an error.
+      if (!re_iterator.consume(hd, re_match))
+      {
+        auto loc = re_iterator.current();
+        out << loc.origin_linecol() << "expected node" << std::endl
+            << loc.str() << std::endl;
+        return {};
+      }
+
+      // If we don't have a valid node type, it's an error.
+      auto type_loc = re_match.at(1);
+      auto type = detail::find_token(type_loc.view());
+
+      if (type == Invalid)
+      {
+        out << type_loc.origin_linecol() << "unknown type" << std::endl
+            << type_loc.str() << std::endl;
+        return {};
+      }
+
+      // Find the source location of the node as a netstring.
+      auto ident_loc = type_loc;
+
+      if (re_iterator.consume(id, re_match))
+      {
+        auto len = re_match.parse<size_t>(1);
+        ident_loc =
+          Location(source, re_match.at().pos + re_match.at().len, len);
+        re_iterator.skip(len);
+      }
+
+      // Push the node into the AST.
+      auto node = NodeDef::create(type, ident_loc);
+
+      if (ast)
+        ast->push_back(node);
+      else
+        top = node;
+
+      ast = node;
+
+      // Skip the symbol table.
+      re_iterator.consume(st, re_match);
+
+      // `)` ends the node. Otherwise, we'll add children to this node.
+      while (re_iterator.consume(tl, re_match))
+      {
+        auto parent = ast->parent();
+
+        if (!parent)
+          return ast;
+
+        ast = parent->shared_from_this();
+      }
+    }
+
+    // We never finished the AST, so it's an error.
+    auto loc = re_iterator.current();
+    out << loc.origin_linecol() << "incomplete AST" << std::endl
+        << loc.str() << std::endl;
+    return {};
+  }
 }

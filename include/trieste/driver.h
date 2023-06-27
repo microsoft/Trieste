@@ -4,6 +4,7 @@
 
 #include "parse.h"
 #include "pass.h"
+#include "regex.h"
 #include "wf.h"
 
 #include <CLI/CLI.hpp>
@@ -31,9 +32,7 @@ namespace trieste
       const wf::Wellformed& wfParser,
       std::initializer_list<
         std::tuple<std::string, Pass, const wf::Wellformed&>> passes)
-    : language_name(language_name),
-      app(language_name),
-      parser(parser)
+    : language_name(language_name), app(language_name), parser(parser)
     {
       if (wfParser)
         this->wfParser = &wfParser;
@@ -121,6 +120,7 @@ namespace trieste
         Node ast;
         size_t start_pass = 1;
         size_t end_pass = pass_index(limit);
+        const wf::Wellformed* wf_prev = nullptr;
 
         if (path.extension() == ".trieste")
         {
@@ -142,21 +142,21 @@ namespace trieste
               return -1;
             }
 
-            auto wf = std::get<2>(passes.at(start_pass - 1));
-
-            if (!wf)
-            {
-              std::cout << "No well-formedness check for pass: " << pass
-                        << std::endl;
-              return -1;
-            }
-
             // Build the AST, set up the symbol table, check well-formedness,
             // and move on to the next pass.
-            ast = wf->build_ast(source, pos2 + 1, std::cout);
-            auto ok = wf->build_st(ast, std::cout);
-            ok = wf->check(ast, std::cout) && ok;
+            ast = build_ast(source, pos2 + 1, std::cout);
+            bool ok = !!ast;
             start_pass++;
+
+            // Build the symbol table and check well-formedness.
+            auto wf = std::get<2>(passes.at(start_pass - 1));
+
+            if (wf)
+            {
+              wf_prev = wf;
+              ok = ok && wf->build_st(ast, std::cout);
+              ok = ok && wf->check(ast, std::cout);
+            }
 
             if (!ok)
               return -1;
@@ -167,19 +167,16 @@ namespace trieste
             // parser AST well-formedness definition.
             start_pass = 1;
             end_pass = std::max(start_pass, end_pass);
+            ast = build_ast(source, pos2 + 1, std::cout);
+            bool ok = !!ast;
 
-            if (!wfParser)
+            // Build the symbol table and check well-formedness.
+            if (wfParser)
             {
-              std::cout << "No well-formedness check for parser" << std::endl;
-              return -1;
+              wf_prev = wfParser;
+              ok = ok && wfParser->build_st(ast, std::cout);
+              ok = ok && wfParser->check(ast, std::cout);
             }
-
-            // Build the AST, set up the symbol table, check well-formedness,
-            ast = wfParser->build_ast(source, pos2 + 1, std::cout);
-            auto ok = wfParser->build_st(ast, std::cout);
-
-            if (wfcheck)
-              ok = wfParser->check(ast, std::cout) && ok;
 
             if (!ok)
               return -1;
@@ -195,12 +192,13 @@ namespace trieste
 
           bool ok = bool(ast);
 
-          if (ok && wfParser)
+          if (wfParser)
           {
-            ok = wfParser->build_st(ast, std::cout);
+            wf_prev = wfParser;
+            ok = ok && wfParser->build_st(ast, std::cout);
 
             if (wfcheck)
-              ok = wfParser->check(ast, std::cout) && ok;
+              ok = ok && wfParser->check(ast, std::cout);
           }
 
           if (!ok)
@@ -213,9 +211,13 @@ namespace trieste
         for (auto i = start_pass; i <= end_pass; i++)
         {
           // Run the pass until it reaches a fixed point.
+          wf::push(wf_prev);
           auto& [pass_name, pass, wf] = passes.at(i - 1);
           auto [new_ast, count, changes] = pass->run(ast);
           ast = new_ast;
+
+          wf_prev = wf;
+          wf::pop();
 
           if (diag)
           {

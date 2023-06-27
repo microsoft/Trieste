@@ -658,12 +658,12 @@ namespace trieste
     return {range};
   }
 
-  inline detail::RangeOr operator/(NodeRange range, Node node)
+  inline detail::RangeOr operator||(NodeRange range, Node node)
   {
     return {range, node};
   }
 
-  inline Node operator/(Node lhs, Node rhs)
+  inline Node operator||(Node lhs, Node rhs)
   {
     return lhs ? lhs : rhs;
   }

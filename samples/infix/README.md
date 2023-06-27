@@ -168,10 +168,10 @@ p("start", // this indicates the 'mode' these rules are associated with
 The tokens (e.g. `Int`, `Print`) are defined as `TokenDef` objects:
 
 ``` c++
-inline constexpr auto Int = TokenDef("int", flag::print);
-inline constexpr auto Print = TokenDef("print");
-inline constexpr auto Add = TokenDef("+");
-inline constexpr auto Equals = TokenDef("equals");
+inline const auto Int = TokenDef("int", flag::print);
+inline const auto Print = TokenDef("print");
+inline const auto Add = TokenDef("+");
+inline const auto Equals = TokenDef("equals");
 ```
 
 the `flag::print` indicates that, when outputting the tree, this
@@ -750,13 +750,13 @@ following way:
 ``` c++
 // | is used to create a Choice between all the elements
 // this indicates that literals can be an Int or a Float
-inline constexpr auto wf_literal = Int | Float;
+inline const auto wf_literal = Int | Float;
 
-inline constexpr auto wf_parse_tokens = wf_literal | String | Paren | Print | Ident | Add | Subtract | Divide | Multiply;
+inline const auto wf_parse_tokens = wf_literal | String | Paren | Print | Ident | Add | Subtract | Divide | Multiply;
 
 // A <<= B indicates that B is a child of A
 // ++ indicates that there are zero or more instances of the token
-inline constexpr auto wf_parser =
+inline const auto wf_parser =
     (Top <<= File)
   | (File <<= (Group | Equals)++)
   | (Paren <<= Group++)
@@ -870,8 +870,8 @@ Note how there is now a symbol table for the `Calculation` node. This
 is because it, and `Assign`, are defined like this:
 
 ``` c++
-  inline constexpr auto Calculation = TokenDef("calculation", flag::symtab | flag::defbeforeuse);
-  inline constexpr auto Assign = TokenDef("assign", flag::lookup | flag::shadowing);
+  inline const auto Calculation = TokenDef("calculation", flag::symtab | flag::defbeforeuse);
+  inline const auto Assign = TokenDef("assign", flag::lookup | flag::shadowing);
 ```
 
 Note the use of additional flags from the table above. `symtab`
@@ -904,10 +904,10 @@ there is a first pass, `expressions`, with a `PassDef` returned by
 `expressions()` and a well-formed check of its own, defined as:
 
 ``` c++
-inline constexpr auto wf_expressions_tokens =
+inline const auto wf_expressions_tokens =
     wf_literal | Ident | Add | Subtract | Divide | Multiply | Expression;
 
-inline constexpr auto wf_pass_expressions =
+inline const auto wf_pass_expressions =
     (Top <<= Calculation)
   | (Calculation <<= (Assign | Output)++)
   // [Ident] here indicates that the Ident node is a symbol that should
@@ -952,7 +952,7 @@ In(Expression) *
 with the updated well-formedness check:
 
 ``` c++
-inline constexpr auto wf_pass_multiply_divide =
+inline const auto wf_pass_multiply_divide =
   wf_pass_expressions
   | (Multiply <<= Expression * Expression)
   | (Divide <<= Expression * Expression)
@@ -977,7 +977,7 @@ In(Expression) *
 And an updated well-formedness check:
 
 ``` c++
-inline constexpr auto wf_pass_add_subtract =
+inline const auto wf_pass_add_subtract =
   wf_pass_expressions
   | (Add <<= Expression * Expression)
   | (Subtract <<= Expression * Expression)
@@ -1169,7 +1169,7 @@ T(Expression) << (T(Expression)[Expression] * End) >>
 Well-formed check:
 
 ``` c++
-inline constexpr auto wf_pass_trim =
+inline const auto wf_pass_trim =
   wf_pass_add_subtract
   | (Expression <<= wf_operands_tokens)
   ;
@@ -1370,7 +1370,7 @@ T(Literal) << Any[Rhs] >> [](Match& _) { return _(Rhs); },
 The final well-formedness check:
 
 ``` c++
-inline constexpr auto wf_pass_cleanup =
+inline const auto wf_pass_cleanup =
   wf_pass_maths
   | (Calculation <<= Output++)
   // note the use of >>= here. This allows us to have a choice

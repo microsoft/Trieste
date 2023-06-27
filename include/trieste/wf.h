@@ -192,9 +192,9 @@ namespace trieste
       Choice choice;
       size_t minlen;
 
-      Index index(const Token&, const Token&) const
+      size_t index(const Token&, const Token&) const
       {
-        return {};
+        throw std::runtime_error("index not supported for a sequence");
       }
 
       Sequence& operator[](size_t new_minlen)
@@ -258,19 +258,21 @@ namespace trieste
       std::vector<Field> fields;
       Token binding;
 
-      Index index(const Token& type, const Token& field) const
+      size_t index(const Token& type, const Token& field) const
       {
         auto i = 0;
 
         for (auto& f : fields)
         {
           if (f.name == field)
-            return Index(type, i);
+            return i;
 
           ++i;
         }
 
-        return {};
+        throw std::runtime_error(
+          "shape " + std::string(type.str()) + " has no field " +
+          std::string(field.str()));
       }
 
       Fields& operator[](const Token& type)
@@ -414,19 +416,19 @@ namespace trieste
     struct Wellformed
     {
       std::map<Token, ShapeT> shapes;
-      Tokens types;
 
       operator bool() const
       {
         return !shapes.empty();
       }
 
-      Index index(const Token& type, const Token& field) const
+      size_t index(const Token& type, const Token& field) const
       {
         auto find = shapes.find(type);
 
         if (find == shapes.end())
-          return {};
+          throw std::runtime_error(
+            "no shape for type " + std::string(type.str()));
 
         return std::visit(
           [&](auto& shape) { return shape.index(type, field); }, find->second);
@@ -448,30 +450,12 @@ namespace trieste
 
       void append(const Shape& shape)
       {
-        register_shape(shape);
         shapes[shape.type] = shape.shape;
       }
 
       void append(Shape&& shape)
       {
-        register_shape(shape);
         shapes[shape.type] = std::move(shape.shape);
-      }
-
-      void register_shape(const Shape& shape)
-      {
-        register_token(types, shape.type);
-
-        std::visit(
-          overload{
-            [&](const Sequence& sequence) {
-              register_tokens(types, sequence.choice.types);
-            },
-            [&](const Fields& fields) {
-              for (auto& field : fields.fields)
-                register_tokens(types, field.choice.types);
-            }},
-          shape.shape);
       }
 
       bool check(Node node, std::ostream& out) const
@@ -512,7 +496,8 @@ namespace trieste
                 << "and here:" << std::endl
                 << child->parent()->str() << std::endl
                 << "Your language implementation needs to explicitly clone "
-                   "nodes if they're duplicated.";
+                   "nodes if they're duplicated."
+                << std::endl;
             ok = false;
           }
 
@@ -646,87 +631,6 @@ namespace trieste
           ok = build_st(child, out) && ok;
 
         return ok;
-      }
-
-      Node build_ast(Source source, size_t pos, std::ostream& out) const
-      {
-        auto hd = RE2("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
-        auto st = RE2("[[:space:]]*\\{[^\\}]*\\}");
-        auto id = RE2("[[:space:]]*([[:digit:]]+):");
-        auto tl = RE2("[[:space:]]*\\)");
-
-        REMatch re_match(2);
-        REIterator re_iterator(source);
-        re_iterator.skip(pos);
-
-        Node top;
-        Node ast;
-
-        while (!re_iterator.empty())
-        {
-          // Find the type of the node. If we didn't find a node, it's an error.
-          if (!re_iterator.consume(hd, re_match))
-          {
-            auto loc = re_iterator.current();
-            out << loc.origin_linecol() << "expected node" << std::endl
-                << loc.str() << std::endl;
-            return {};
-          }
-
-          // If we don't have a valid node type, it's an error.
-          auto type_loc = re_match.at(1);
-          auto find = types.find(type_loc.view());
-
-          if (find == types.end())
-          {
-            out << type_loc.origin_linecol() << "unknown type" << std::endl
-                << type_loc.str() << std::endl;
-            return {};
-          }
-
-          auto type = find->second;
-
-          // Find the source location of the node as a netstring.
-          auto ident_loc = type_loc;
-
-          if (re_iterator.consume(id, re_match))
-          {
-            auto len = re_match.parse<size_t>(1);
-            ident_loc =
-              Location(source, re_match.at().pos + re_match.at().len, len);
-            re_iterator.skip(len);
-          }
-
-          // Push the node into the AST.
-          auto node = NodeDef::create(type, ident_loc);
-
-          if (ast)
-            ast->push_back(node);
-          else
-            top = node;
-
-          ast = node;
-
-          // Skip the symbol table.
-          re_iterator.consume(st, re_match);
-
-          // `)` ends the node. Otherwise, we'll add children to this node.
-          while (re_iterator.consume(tl, re_match))
-          {
-            auto parent = ast->parent();
-
-            if (!parent)
-              return ast;
-
-            ast = parent->shared_from_this();
-          }
-        }
-
-        // We never finished the AST, so it's an error.
-        auto loc = re_iterator.current();
-        out << loc.origin_linecol() << "incomplete AST" << std::endl
-            << loc.str() << std::endl;
-        return {};
       }
     };
 
@@ -912,9 +816,7 @@ namespace trieste
       {
         Wellformed wf;
         wf.shapes.insert(wf2.shapes.begin(), wf2.shapes.end());
-        wf.types.insert(wf2.types.begin(), wf2.types.end());
         wf.shapes.insert(wf1.shapes.begin(), wf1.shapes.end());
-        wf.types.insert(wf1.types.begin(), wf1.types.end());
         return wf;
       }
 
@@ -925,25 +827,18 @@ namespace trieste
             wf1.shapes.insert_or_assign(shape.first, shape.second);
           });
 
-        std::for_each(
-          wf2.types.begin(), wf2.types.end(), [&](const auto& type) {
-            wf1.types.insert_or_assign(type.first, type.second);
-          });
-
         return std::move(wf1);
       }
 
       inline Wellformed operator|(const Wellformed& wf1, Wellformed&& wf2)
       {
         wf2.shapes.insert(wf1.shapes.begin(), wf1.shapes.end());
-        wf2.types.insert(wf1.types.begin(), wf1.types.end());
         return std::move(wf2);
       }
 
       inline Wellformed operator|(Wellformed&& wf1, Wellformed&& wf2)
       {
         wf2.shapes.merge(wf1.shapes);
-        wf2.types.merge(wf1.types);
         return std::move(wf2);
       }
 
@@ -952,7 +847,6 @@ namespace trieste
         Wellformed wf2;
         wf2.append(shape);
         wf2.shapes.insert(wf.shapes.begin(), wf.shapes.end());
-        wf2.types.insert(wf.types.begin(), wf.types.end());
         return wf2;
       }
 
@@ -961,7 +855,6 @@ namespace trieste
         Wellformed wf2;
         wf2.append(shape);
         wf2.shapes.insert(wf.shapes.begin(), wf.shapes.end());
-        wf2.types.insert(wf.types.begin(), wf.types.end());
         return wf2;
       }
 
@@ -1035,16 +928,41 @@ namespace trieste
         return wf;
       }
     }
+
+    namespace detail
+    {
+      inline thread_local std::vector<const Wellformed*> wf_current;
+    }
+
+    inline void push(const Wellformed* wf)
+    {
+      detail::wf_current.push_back(wf);
+    }
+
+    inline void pop()
+    {
+      detail::wf_current.pop_back();
+    }
   }
 
-  inline auto operator/(const wf::Wellformed& wf, const Token& type)
+  inline Node& operator/(Node& node, const Token& field)
   {
-    return std::make_pair(&wf, type);
+    if (wf::detail::wf_current.empty())
+      throw std::runtime_error("no well-formedness definition");
+
+    return node->at(wf::detail::wf_current.front()->index(node->type(), field));
   }
 
-  inline Index operator/(
-    const std::pair<const wf::Wellformed*, Token>& pair, const Token& name)
+  inline auto operator/(const wf::Wellformed& wf, Node& node)
   {
-    return pair.first->index(pair.second, name);
+    return std::make_pair(&wf, node);
+  }
+
+  inline auto
+  operator/(std::pair<const wf::Wellformed*, Node>& pair, const Token& field)
+  {
+    auto wf = pair.first;
+    auto node = pair.second;
+    return std::make_pair(wf, node->at(wf->index(node->type(), field)));
   }
 }

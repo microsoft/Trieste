@@ -9,25 +9,6 @@ namespace verona
   struct BtypeDef;
   using Btype = std::shared_ptr<BtypeDef>;
 
-  namespace wfsub
-  {
-    inline const auto Type_Type = wfPassNameArity / Type / Type;
-    inline const auto Package_Id = wfPassNameArity / Package / Id;
-    inline const auto TypeAlias_TypeParams =
-      wfPassNameArity / TypeAlias / TypeParams;
-    inline const auto TypeAlias_Type = wfPassNameArity / TypeAlias / Type;
-    inline const auto TypeTrait_ClassBody =
-      wfPassNameArity / TypeTrait / ClassBody;
-    inline const auto Class_TypeParams = wfPassNameArity / Class / TypeParams;
-    inline const auto Function_Ident = wfPassNameArity / Function / Ident;
-    inline const auto Function_TypeParams =
-      wfPassNameArity / Function / TypeParams;
-    inline const auto Function_Params = wfPassNameArity / Function / Params;
-    inline const auto Function_Type = wfPassNameArity / Function / Type;
-    inline const auto Param_Type = wfPassNameArity / Param / Type;
-    inline const auto TypeList_Type = wfPassNameArity / TypeList / TypeList;
-  }
-
   struct BtypeDef
   {
     Node node;
@@ -40,9 +21,9 @@ namespace verona
 
       while (true)
       {
-        if (node->type() == Type)
+        if (node->type().in({Type, TypePred}))
         {
-          node = node->at(wfsub::Type_Type);
+          node = node / Type;
         }
         else if (node->type().in(
                    {TypeClassName,
@@ -94,9 +75,9 @@ namespace verona
       return make(t, bindings);
     }
 
-    Btype make(const Index& index)
+    Btype field(const Token& f)
     {
-      return make(node->at(index), bindings);
+      return make(node / f, bindings);
     }
 
     const Token& type() const
@@ -128,8 +109,9 @@ namespace verona
     std::vector<Btype> rhs_pending;
     std::vector<Btype> lhs_atomic;
     std::vector<Btype> rhs_atomic;
-    std::vector<Assume> assumptions;
     std::vector<Btype> self;
+    std::vector<Btype> predicates;
+    std::vector<Assume> assumptions;
 
     Sequent() = default;
 
@@ -138,8 +120,9 @@ namespace verona
       rhs_pending(rhs.rhs_pending),
       lhs_atomic(rhs.lhs_atomic),
       rhs_atomic(rhs.rhs_atomic),
-      assumptions(rhs.assumptions),
-      self(rhs.self)
+      self(rhs.self),
+      predicates(rhs.predicates),
+      assumptions(rhs.assumptions)
     {}
 
     void push_assume(Btype sub, Btype sup)
@@ -163,13 +146,29 @@ namespace verona
       self.pop_back();
     }
 
+    void add_predicates(Btype& t)
+    {
+      auto p = t->node;
+
+      while (p)
+      {
+        if (p->type().in({Function, Class, TypeAlias}))
+          predicates.push_back(t->make(p / TypePred));
+
+        p = p->parent()->shared_from_this();
+      }
+    }
+
     bool reduce(Btype l, Btype r)
     {
       Sequent seq;
       seq.lhs_pending.push_back(l);
       seq.rhs_pending.push_back(r);
-      seq.assumptions = assumptions;
       seq.self = self;
+      seq.predicates = predicates;
+      seq.assumptions = assumptions;
+      seq.add_predicates(l);
+      seq.add_predicates(r);
       return seq.reduce();
     }
 
@@ -182,9 +181,9 @@ namespace verona
 
         if (r->type() == TypeUnion)
         {
-          // G |- D, A, B
+          // Π ⊩ Γ ⊢ Δ, A, B
           // ---
-          // G |- D, (A | B)
+          // Π ⊩ Γ ⊢ Δ, (A | B)
 
           // RHS union becomes RHS formulae.
           for (auto& t : *r->node)
@@ -192,18 +191,10 @@ namespace verona
         }
         else if (r->type() == TypeIsect)
         {
-          // G |- D, A
-          // G |- D, B
+          // Π ⊩ Γ ⊢ Δ, A
+          // Π ⊩ Γ ⊢ Δ, B
           // ---
-          // G |- D, (A & B)
-
-          // G |- A < B
-          // G |- A < C
-          // ---
-          // G |- A < (B & C)
-
-          // A |- (B & C)
-          // (A |- B), (A |- C)
+          // Π ⊩ Γ ⊢ Δ, (A & B)
 
           // RHS isect is a sequent split.
           for (auto& t : *r->node)
@@ -220,7 +211,7 @@ namespace verona
         else if (r->type() == TypeAlias)
         {
           // Try both the typealias and the underlying type.
-          rhs_pending.push_back(r->make(wfsub::TypeAlias_Type));
+          rhs_pending.push_back(r->field(Type));
           rhs_atomic.push_back(r);
         }
         else if (r->type() == TypeView)
@@ -251,11 +242,27 @@ namespace verona
         auto l = lhs_pending.back();
         lhs_pending.pop_back();
 
-        if (l->type() == TypeIsect)
+        if (l->type() == TypeSubtype)
         {
-          // G, A, B |- D
+          // Π, A < B ⊩ Γ ⊢ Δ, A
+          // Π, A < B ⊩ Γ, B ⊢ Δ
           // ---
-          // G, (A & B) |- D
+          // Π ⊩ Γ, A < B ⊢ Δ
+          predicates.push_back(l);
+
+          Sequent seq(*this);
+          seq.rhs_pending.push_back(l->field(Lhs));
+
+          if (!seq.reduce())
+            return false;
+
+          lhs_pending.push_back(l->field(Rhs));
+        }
+        else if (l->type() == TypeIsect)
+        {
+          // Γ, A, B ⊢ Δ
+          // ---
+          // Γ, (A & B) ⊢ Δ
 
           // LHS isect becomes LHS formulae.
           for (auto& t : *l->node)
@@ -263,10 +270,10 @@ namespace verona
         }
         else if (l->type() == TypeUnion)
         {
-          // G, A |- D
-          // G, B |- D
+          // Γ, A ⊢ Δ
+          // Γ, B ⊢ Δ
           // ---
-          // G, (A | B) |- D
+          // Γ, (A | B) ⊢ Δ
 
           // LHS union is a sequent split.
           for (auto& t : *l->node)
@@ -283,7 +290,7 @@ namespace verona
         else if (l->type() == TypeAlias)
         {
           // Try both the typealias and the underlying type.
-          lhs_pending.push_back(l->make(wfsub::TypeAlias_Type));
+          lhs_pending.push_back(l->field(Type));
           lhs_atomic.push_back(l);
         }
         else if (l->type() == TypeView)
@@ -339,7 +346,7 @@ namespace verona
       if (l->type() == TypeFalse)
         return true;
 
-      // TypeTrue is a supertype of everything.
+      // Everything is a subtype of TypeTrue.
       if (r->type() == TypeTrue)
         return true;
 
@@ -387,8 +394,20 @@ namespace verona
       if (r->type() == Package)
       {
         return (l->type() == Package) &&
-          (l->node->at(wfsub::Package_Id)->location() ==
-           r->node->at(wfsub::Package_Id)->location());
+          ((l->node / Id)->location() == (r->node / Id)->location());
+      }
+
+      // Check predicate subtyping.
+      if (r->type() == TypeSubtype)
+      {
+        // ⊩ Π, A ⊢ B
+        // ---
+        // Π ⊩ Γ ⊢ Δ, A < B
+        Sequent seq;
+        seq.lhs_pending = predicates;
+        seq.lhs_pending.push_back(r->field(Lhs));
+        seq.rhs_pending.push_back(r->field(Rhs));
+        return seq.reduce();
       }
 
       // Check structural subtyping.
@@ -400,7 +419,7 @@ namespace verona
         // If any assumption is true, the trait is satisfied.
         if (std::any_of(
               assumptions.begin(), assumptions.end(), [&](auto& assume) {
-                // Effectively: (l <: assume.sub) && (assume.sup <: r)
+                // Effectively: (l < assume.sub) && (assume.sup < r)
                 return same_def_site(r, assume.sup) &&
                   same_def_site(l, assume.sub) &&
                   invariant_typeargs(r, assume.sup) &&
@@ -416,53 +435,44 @@ namespace verona
           push_self(l);
 
         bool ok = true;
-        auto rbody = r->node->at(wfsub::TypeTrait_ClassBody);
+        auto rbody = r->node / ClassBody;
 
-        for (auto rmember : *rbody)
+        for (auto rf : *rbody)
         {
-          if (rmember->type() != Function)
+          if (rf->type() != Function)
             continue;
 
-          auto id = rmember->at(wfsub::Function_Ident)->location();
-          auto lmembers = l->node->lookdown(id);
+          // At this point, traits have been decomposed into intersections of
+          // single-function traits.
+          auto id = (rf / Ident)->location();
+          auto lfs = l->node->lookdown(id);
 
           // Function names are distinguished by arity at this point.
-          if (lmembers.size() != 1)
+          if ((lfs.size() != 1) || (lfs.front()->type() != Function))
           {
             ok = false;
             break;
           }
 
-          auto lmember = lmembers.front();
+          // The functions must take the same number of type parameters.
+          auto lf = lfs.front();
 
-          if (lmember->type() != Function)
+          if ((lf / TypeParams)->size() != (rf / TypeParams)->size())
           {
             ok = false;
             break;
           }
 
-          // rmember.typeparams.upper <: lmember.typeparams.upper
-          auto rtparams = rmember->at(wfsub::Function_TypeParams);
-          auto ltparams = lmember->at(wfsub::Function_TypeParams);
+          // Contravariant predicates: rf.predicates < lf.predicates
+          if (!reduce(r->make(rf / TypePred), l->make(lf / TypePred)))
+          {
+            ok = false;
+            break;
+          }
 
-          // if (!std::equal(
-          //       rtparams->begin(),
-          //       rtparams->end(),
-          //       ltparams->begin(),
-          //       ltparams->end(),
-          //       [&](auto& rtparam, auto& ltparam) {
-          //         return reduce(
-          //           r->make(rtparam->at(wfsub::TypeParam_Bound)),
-          //           l->make(ltparam->at(wfsub::TypeParam_Bound)));
-          //       }))
-          // {
-          //   ok = false;
-          //   break;
-          // }
-
-          // rmember.params <: lmember.params
-          auto rparams = rmember->at(wfsub::Function_Params);
-          auto lparams = lmember->at(wfsub::Function_Params);
+          // Contravariant parameters: rf.params < lf.params
+          auto rparams = rf / Params;
+          auto lparams = lf / Params;
 
           if (!std::equal(
                 rparams->begin(),
@@ -470,19 +480,15 @@ namespace verona
                 lparams->begin(),
                 lparams->end(),
                 [&](auto& rparam, auto& lparam) {
-                  return reduce(
-                    r->make(rparam->at(wfsub::Param_Type)),
-                    l->make(lparam->at(wfsub::Param_Type)));
+                  return reduce(r->make(rparam / Type), l->make(lparam / Type));
                 }))
           {
             ok = false;
             break;
           }
 
-          // lmember.result <: rmember.result
-          if (!reduce(
-                l->make(lmember->at(wfsub::Function_Type)),
-                r->make(rmember->at(wfsub::Function_Type))))
+          // Covariant result: lmember.result < rmember.result
+          if (!reduce(l->make(lf / Type), r->make(rf / Type)))
           {
             ok = false;
             break;
@@ -545,12 +551,7 @@ namespace verona
       {
         if (node->type().in({Class, TypeAlias, Function}))
         {
-          auto tps = node->at(
-            wfsub::Class_TypeParams,
-            wfsub::TypeAlias_TypeParams,
-            wfsub::Function_TypeParams);
-
-          for (auto& tp : *tps)
+          for (auto& tp : *(node / TypeParams))
           {
             auto la = l->make(tp);
             auto ra = r->make(tp);
@@ -593,9 +594,7 @@ namespace verona
           // A.(B...) = (A.B)...
           if (*it == t->node->back())
             return {
-              r->make(
-                TypeList
-                << (TypeView << -lhs << -r->node->at(wfsub::TypeList_Type))),
+              r->make(TypeList << (TypeView << -lhs << -(r->node / Type))),
               false};
 
           // There is no view through this type, so treat it as true, i.e. top.
@@ -615,9 +614,7 @@ namespace verona
         else if (r->type() == TypeAlias)
         {
           return {
-            r->make(wfsub::TypeAlias_Type)
-              ->make(TypeView << -lhs << -r->node << -rhs),
-            false};
+            r->field(Type)->make(TypeView << -lhs << -r->node << -rhs), false};
         }
         else if (r->type() == TypeView)
         {
@@ -658,5 +655,29 @@ namespace verona
   {
     Sequent seq;
     return seq.reduce(make(sub), make(sup));
+  }
+
+  bool valid_typeargs(Node tn)
+  {
+    // TODO: handle FunctionName
+    if (!tn->type().in({TypeClassName, TypeAlias}))
+      return true;
+
+    // Make a Btype out of the type name.
+    auto t = make(tn);
+
+    if (t->type() == TypeClassName)
+    {
+      t = make(tn);
+    }
+
+    // Derive a Btype for the predicate.
+    auto pred = t->field(TypePred);
+
+    // Ask if it's true with no additional assumptions.
+    Sequent seq;
+    seq.lhs_pending.push_back(make(TypeTrue));
+    seq.rhs_pending.push_back(pred);
+    return seq.reduce();
   }
 }

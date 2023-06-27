@@ -1,8 +1,13 @@
 # TODO
 
-- Automatically insert `use std::builtin` in `Top`
-- Better system for including `std`
-- Inheritance
+- Do code-reuse early.
+  - Code-reuse must be intersections of classes and traits only, recursively through type aliases.
+  - Do textual inclusion of any member or method that isn't already defined.
+  - Afterwards, strip default implementations from traits.
+
+- Automatically insert `use std::builtin` in `Top`.
+- Better system for including `std`.
+- Check that default types for type parameters satisfy predicates.
 
 Tuples are traits:
 ```ts

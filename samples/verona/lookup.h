@@ -48,7 +48,9 @@ namespace verona
   Lookups lookup_scopedname(Node tn);
   Lookups lookup_scopedname_name(Node tn, Node id, Node ta = {});
   bool lookup_recursive(Node node);
-  bool lookup_valid_predicate(Node node);
+
+  bool valid_predicate(Node node);
+  bool valid_inherit(Node node);
 
   void extract_typeparams(Node scope, Node t, Node tp);
   Node typeparams_to_typeargs(Node node, Node typeargs = TypeArgs);

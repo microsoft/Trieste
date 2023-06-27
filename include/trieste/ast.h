@@ -71,10 +71,8 @@ namespace trieste
     Token type;
     size_t index;
 
-    constexpr Index() : type(Invalid), index(std::numeric_limits<size_t>::max())
-    {}
-    constexpr Index(const Token& type, size_t index) : type(type), index(index)
-    {}
+    Index() : type(Invalid), index(std::numeric_limits<size_t>::max()) {}
+    Index(const Token& type, size_t index) : type(type), index(index) {}
   };
 
   class NodeDef : public std::enable_shared_from_this<NodeDef>
@@ -194,7 +192,7 @@ namespace trieste
       return children.empty();
     }
 
-    size_t size()
+    size_t size() const
     {
       return children.size();
     }
@@ -202,20 +200,6 @@ namespace trieste
     Node& at(size_t index)
     {
       return children.at(index);
-    }
-
-    template<typename... Ts>
-    Node& at(const Index& index, const Ts&... indices)
-    {
-      if (index.type != type_)
-      {
-        if constexpr (sizeof...(Ts) > 0)
-          return at(indices...);
-        else
-          throw std::runtime_error("invalid index");
-      }
-
-      return children.at(index.index);
     }
 
     Node& front()
