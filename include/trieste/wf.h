@@ -367,8 +367,6 @@ namespace trieste
 
         return std::visit(
           [&](auto& shape) { return shape.index(type, field); }, find->second);
-
-        return {};
       }
 
       void prepend(const Shape& shape)
