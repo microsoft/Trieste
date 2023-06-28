@@ -156,6 +156,18 @@ namespace verona
   inline const auto store = Location("store");
   inline const auto nonlocal = Location("nonlocal");
 
+  inline auto err(NodeRange& r, const std::string& msg)
+  {
+    return Error << (ErrorMsg ^ msg) << (ErrorAst << r);
+  }
+
+  inline auto err(Node node, const std::string& msg)
+  {
+    return Error << (ErrorMsg ^ msg) << ((ErrorAst ^ node) << node);
+  }
+
   Parse parser();
+  PassDef modules();
+
   Driver& driver();
 }

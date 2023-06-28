@@ -4,6 +4,7 @@
 
 #include "wf.h"
 
+#include <cassert>
 #include <deque>
 
 namespace verona
@@ -149,9 +150,9 @@ namespace verona
 
     for (auto& def : defs)
     {
-      // Expand Use nodes by looking down into the target type.
       if (def->type() == Use)
       {
+        // Expand Use nodes by looking down into the target type.
         if (def->precedes(id))
           lookups.add(lookdown(Lookup(def / Type), id, ta));
       }
@@ -191,21 +192,23 @@ namespace verona
     return lookdown(lookup_scopedname(tn), id, ta);
   }
 
-  bool lookup_recursive(Node node)
+  bool recursive_typealias(Node node)
   {
+    // This detects cycles in type aliases, which are not allowed.
     if (node->type() != TypeAlias)
       return false;
 
+    // Each element in the worklist carries a set of nodes that have been
+    // visited, a type node, and a map of typeparam bindings.
     std::deque<std::pair<NodeSet, Lookup>> worklist;
     worklist.emplace_back(NodeSet{node}, node / Type);
 
     while (!worklist.empty())
     {
-      auto work = worklist.front();
+      auto& work = worklist.front();
       auto& set = work.first;
-      auto type = work.second.def;
+      auto& type = work.second.def;
       auto& bindings = work.second.bindings;
-      worklist.pop_front();
 
       if (type->type() == Type)
       {
@@ -227,9 +230,10 @@ namespace verona
           if (set.contains(def.def))
             return true;
 
+          for (auto& bind : def.bindings)
+            bindings[bind.first] = bind.second;
+
           set.insert(def.def);
-          def.bindings.insert(bindings.begin(), bindings.end());
-          bindings.swap(def.bindings);
           worklist.emplace_back(set, Lookup(def.def / Type, bindings));
         }
       }
@@ -246,107 +250,10 @@ namespace verona
             worklist.emplace_back(set, Lookup(find->second, bindings));
         }
       }
+
+      worklist.pop_front();
     }
 
     return false;
-  }
-
-  bool valid_predicate(Node node)
-  {
-    if (node->type() == TypeSubtype)
-    {
-      return true;
-    }
-    else if (node->type().in({TypeUnion, TypeIsect}))
-    {
-      // Check that all children are valid predicates.
-      return std::all_of(node->begin(), node->end(), valid_predicate);
-    }
-    else if (node->type() == TypeAliasName)
-    {
-      // TODO: this will be a TypeAliasName!!!
-      // We know that type aliases aren't recursive, check the definition.
-      auto defs = lookup_scopedname(node);
-
-      return valid_predicate(node / Type);
-    }
-
-    return false;
-  }
-
-  bool valid_inherit(Node node)
-  {
-    if (node->type().in({TypeClassName, TypeTraitName}))
-    {
-      return true;
-    }
-    else if (node->type().in({Type, TypeIsect}))
-    {
-      // Check that all children are valid for code reuse.
-      return std::all_of(node->begin(), node->end(), valid_inherit);
-    }
-    else if (node->type() == TypeAlias)
-    {
-      // TODO: this will be a TypeAliasName!!!
-      // We know that type aliases aren't recursive, check the definition.
-      return valid_inherit(node / Type);
-    }
-
-    return false;
-  }
-
-  void extract_typeparams(Node scope, Node t, Node tp)
-  {
-    if (t->type().in(
-          {Type,
-           TypeArgs,
-           TypeUnion,
-           TypeIsect,
-           TypeTuple,
-           TypeList,
-           TypeView}))
-    {
-      for (auto& tt : *t)
-        extract_typeparams(scope, tt, tp);
-    }
-    else if (t->type().in({TypeClassName, TypeAliasName, TypeTraitName}))
-    {
-      extract_typeparams(scope, t / Lhs, tp);
-      extract_typeparams(scope, t / TypeArgs, tp);
-    }
-    else if (t->type() == TypeParamName)
-    {
-      auto id = t / Ident;
-      auto defs = id->lookup(scope);
-
-      if ((defs.size() == 1) && (defs.front()->type() == TypeParam))
-      {
-        if (!std::any_of(tp->begin(), tp->end(), [&](auto& p) {
-              return (p / Ident)->location() == id->location();
-            }))
-        {
-          tp << clone(defs.front());
-        }
-      }
-
-      extract_typeparams(scope, t / Lhs, tp);
-      extract_typeparams(scope, t / TypeArgs, tp);
-    }
-  }
-
-  Node typeparams_to_typeargs(Node node, Node typeargs)
-  {
-    if (!node->type().in({Class, Function}))
-      return typeargs;
-
-    for (auto typeparam : *(node / TypeParams))
-    {
-      typeargs
-        << (Type
-            << (TypeParamName << DontCare << clone(typeparam / Ident)
-                              << TypeArgs));
-    }
-
-    return typeargs;
   }
 }

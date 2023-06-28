@@ -2,78 +2,16 @@
 // SPDX-License-Identifier: MIT
 #include "lang.h"
 
+#include "btype.h"
 #include "lookup.h"
 #include "subtype.h"
 #include "wf.h"
 
 namespace verona
 {
-  auto err(NodeRange& r, const std::string& msg)
-  {
-    return Error << (ErrorMsg ^ msg) << (ErrorAst << r);
-  }
-
-  auto err(Node node, const std::string& msg)
-  {
-    return Error << (ErrorMsg ^ msg) << ((ErrorAst ^ node) << node);
-  }
-
   bool lookup(const NodeRange& n, std::initializer_list<Token> t)
   {
     return lookup_name(*n.first).one(t);
-  }
-
-  PassDef modules()
-  {
-    return {
-      // Files at the top level and directories are modules.
-      ((In(Top) * T(File)[Class]) / T(Directory)[Class]) >>
-        [](Match& _) {
-          return Group << (Class ^ _(Class)) << (Ident ^ _(Class)->location())
-                       << (Brace << *_[Class]);
-        },
-
-      // Files in a directory aren't semantically meaningful.
-      In(Brace) * T(File)[File] >> [](Match& _) { return Seq << *_[File]; },
-
-      T(Colon)[Colon] * In(Type)++ >>
-        [](Match& _) {
-          return err(_[Colon], "can't put a type assertion inside a type");
-        },
-
-      T(Where)[Where] * In(Type)++ >>
-        [](Match& _) {
-          return err(_[Where], "can't put a type predicate inside a type");
-        },
-
-      // Type assertion. Treat an empty assertion as DontCare. Accept a brace if
-      // it comes immediately after the colon or after a symbol or dot.
-      // Otherwise end the type at a Where, Brace, or TripleColon.
-      T(Colon) *
-          (~T(Brace) *
-           (((T(Symbol) / T(Dot)) * T(Brace)) /
-            (!(T(Where) / T(Brace) / T(TripleColon))))++)[Type] >>
-        [](Match& _) { return Type << (_[Type] || DontCare); },
-
-      // Type predicate.
-      T(Where) *
-          (~T(Brace) *
-           (((T(Symbol) / T(Dot)) * T(Brace)) /
-            (!(T(Where) / T(Brace) / T(TripleColon))))++)[Type] >>
-        [](Match& _) { return TypePred << (Type << (_[Type] || TypeTrue)); },
-
-      T(TripleColon) *
-          (T(Paren)
-           << ((T(List) << (T(Group) << (T(Ident) / T(LLVM)))++[Args]) /
-               ~(T(Group) << (T(Ident) / T(LLVM)))[Args])) *
-          T(Symbol, "->") * (T(Ident) / T(LLVM))[Return] >>
-        [](Match& _) {
-          return LLVMFuncType << (LLVMList << *_[Args]) << _(Return);
-        },
-
-      T(TripleColon)[TripleColon] >>
-        [](Match& _) { return err(_[TripleColon], "malformed LLVM type"); },
-    };
   }
 
   inline const auto TypeStruct = In(Type) / In(TypeList) / In(TypeTuple) /
@@ -793,56 +731,49 @@ namespace verona
     };
   }
 
-  PassDef typerec()
+  PassDef typevalid()
   {
     return {
       dir::once | dir::topdown,
       {
         T(TypeAlias)[TypeAlias] >> ([](Match& _) -> Node {
-          if (lookup_recursive(_(TypeAlias)))
+          if (recursive_typealias(_(TypeAlias)))
             return err(_[TypeAlias], "recursive type alias");
 
           return NoChange;
         }),
-      }};
-  }
 
-  PassDef typevalidpred()
-  {
-    return {
-      dir::once | dir::topdown,
-      {
-        T(TypeAliasName)[TypeAliasName] * In(TypePred)++ *
+        In(TypePred)++ * T(TypeAliasName)[TypeAliasName] *
             !(In(TypeSubtype)++) >>
           ([](Match& _) -> Node {
-            if (!valid_predicate(_(TypeAliasName)))
+            if (!make_btype(_(TypeAliasName))->valid_predicate())
               return err(
                 _[Type], "this type alias isn't a valid type predicate");
 
             return NoChange;
           }),
 
-        (T(TypeUnion) / T(TypeIsect) / T(TypeSubtype)) * In(TypePred)++ >>
-          ([](Match&) -> Node { return NoChange; }),
-
-        TypeElem[Type] * In(TypePred)++ * !(In(TypeSubtype)++) >>
+        In(TypePred)++ * !(In(TypeSubtype)++) *
+            (TypeCaps / T(TypeClassName) / T(TypeParamName) / T(TypeTraitName) /
+             T(TypeTrait) / T(TypeTuple) / T(Self) / T(TypeList) / T(TypeView) /
+             T(TypeVar) / T(Package))[Type] >>
           [](Match& _) {
             return err(_[Type], "can't put this in a type predicate");
           },
 
-        T(TypeAliasName)[TypeAliasName] * In(Inherit)++ >>
+        In(Inherit)++ * T(TypeAliasName)[TypeAliasName] >>
           ([](Match& _) -> Node {
-            if (!valid_inherit(_(TypeAliasName)))
+            if (!make_btype(_(TypeAliasName))->valid_inherit())
               return err(
                 _[Type], "this type alias isn't valid for inheritance");
 
             return NoChange;
           }),
 
-        (T(TypeIsect) / T(TypeClassName)) * In(Inherit)++ >>
-          ([](Match&) -> Node { return NoChange; }),
-
-        TypeElem[Type] * In(Inherit)++ >>
+        In(Inherit)++ *
+            (TypeCaps / T(TypeParamName) / T(TypeTuple) / T(Self) /
+             T(TypeList) / T(TypeView) / T(TypeUnion) / T(TypeVar) /
+             T(Package) / T(TypeSubtype) / T(TypeTrue) / T(TypeFalse))[Type] >>
           [](Match& _) { return err(_[Type], "can't inherit from this type"); },
       }};
   }
@@ -857,11 +788,11 @@ namespace verona
                 T(Inherit)[Inherit] * T(TypePred)[TypePred] *
                 T(ClassBody)[ClassBody]) >>
           [](Match& _) {
-            // TODO: Type must be valid for code reuse
-            // strip Type from here on
+            // TODO:
             // reuse stuff in Type if (a) it's not ambiguous and (b) it's not
             // already provided in ClassBody
             // need to do type substitution
+            // strip Inherit from here on
             return Class << _(Ident) << _(TypeParams) << _(Inherit)
                          << _(TypePred) << _(ClassBody);
           },
@@ -1824,6 +1755,65 @@ namespace verona
       }};
   }
 
+  void extract_typeparams(Node scope, Node t, Node tp)
+  {
+    // This function extracts all typeparams from a type `t` that are defined
+    // within `scope` and appends them to `tp` if they aren't already present.
+    if (t->type().in(
+          {Type,
+           TypeArgs,
+           TypeUnion,
+           TypeIsect,
+           TypeTuple,
+           TypeList,
+           TypeView}))
+    {
+      for (auto& tt : *t)
+        extract_typeparams(scope, tt, tp);
+    }
+    else if (t->type().in({TypeClassName, TypeAliasName, TypeTraitName}))
+    {
+      extract_typeparams(scope, t / Lhs, tp);
+      extract_typeparams(scope, t / TypeArgs, tp);
+    }
+    else if (t->type() == TypeParamName)
+    {
+      auto id = t / Ident;
+      auto defs = id->lookup(scope);
+
+      if ((defs.size() == 1) && (defs.front()->type() == TypeParam))
+      {
+        if (!std::any_of(tp->begin(), tp->end(), [&](auto& p) {
+              return (p / Ident)->location() == id->location();
+            }))
+        {
+          tp << clone(defs.front());
+        }
+      }
+
+      extract_typeparams(scope, t / Lhs, tp);
+      extract_typeparams(scope, t / TypeArgs, tp);
+    }
+  }
+
+  Node typeparams_to_typeargs(Node node, Node typeargs = TypeArgs)
+  {
+    // This finds all typeparams in a Class or Function definition and builds
+    // a TypeArgs that contains all of them, in order.
+    if (!node->type().in({Class, Function}))
+      return typeargs;
+
+    for (auto typeparam : *(node / TypeParams))
+    {
+      typeargs
+        << (Type
+            << (TypeParamName << DontCare << clone(typeparam / Ident)
+                              << TypeArgs));
+    }
+
+    return typeargs;
+  }
+
   PassDef partialapp()
   {
     // This should happen after `lambda` (so that anonymous types get partial
@@ -2473,8 +2463,7 @@ namespace verona
         {"typefunc", typefunc(), wfPassTypeFunc},
         {"typealg", typealg(), wfPassTypeAlg},
         {"typeflat", typeflat(), wfPassTypeFlat},
-        {"typerec", typerec(), wfPassTypeFlat},
-        {"typevalidpred", typevalidpred(), wfPassTypeFlat},
+        {"typevalid", typevalid(), wfPassTypeFlat},
         {"conditionals", conditionals(), wfPassConditionals},
         {"reference", reference(), wfPassReference},
         {"reverseapp", reverseapp(), wfPassReverseApp},

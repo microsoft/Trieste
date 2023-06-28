@@ -2,7 +2,7 @@
 
 The string that represents a package is a resolver.
 
-Packages go in `Top`, inside of a class, where the class name is derived from the resolver. Two resolvers that end up at the same package should get the same class name.
+Packages go in `Top`, inside a class, where the class name is derived from the resolver. Two resolvers that end up at the same package should get the same class name.
 
 On disk, packages are directories. The package name is the directory name. Package directories go in your build directory, not in the source directory.
 
@@ -34,7 +34,7 @@ https://cmake.org/cmake/help/latest/module/ExternalProject.html#id1
 
 This could be added as the prologue to every program:
 
-```rust
+```ts
 type std = "std lib resolver"
 use std::builtin
 

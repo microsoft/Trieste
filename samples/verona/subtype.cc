@@ -2,95 +2,12 @@
 // SPDX-License-Identifier: MIT
 #include "subtype.h"
 
+#include "btype.h"
+
 #include <cassert>
 
 namespace verona
 {
-  struct BtypeDef;
-  using Btype = std::shared_ptr<BtypeDef>;
-
-  struct BtypeDef
-  {
-    Node node;
-    NodeMap<Btype> bindings;
-
-    BtypeDef(Node t, NodeMap<Btype> b = {}) : node(t), bindings(b)
-    {
-      // Keep unwinding until done.
-      NodeSet set;
-
-      while (true)
-      {
-        if (node->type().in({Type, TypePred}))
-        {
-          node = node / Type;
-        }
-        else if (node->type().in(
-                   {TypeClassName,
-                    TypeTraitName,
-                    TypeAliasName,
-                    TypeParamName}))
-        {
-          auto defs = lookup_scopedname(node);
-
-          // This won't be empty in non-testing code.
-          if (defs.defs.empty())
-            return;
-
-          // Use existing bindings if they haven't been specified here.
-          auto& def = defs.defs.front();
-          node = def.def;
-
-          for (auto& bind : def.bindings)
-            bindings[bind.first] = make(bind.second, b);
-
-          // Check for cycles.
-          if (set.contains(node))
-            return;
-        }
-        else if (node->type() == TypeParam)
-        {
-          // An unbound typeparam effectively binds to itself.
-          set.insert(node);
-          auto it = bindings.find(node);
-          if (it == bindings.end())
-            return;
-
-          *this = *it->second;
-        }
-        else
-        {
-          return;
-        }
-      }
-    }
-
-    static Btype make(Node t, NodeMap<Btype> b)
-    {
-      return std::make_shared<BtypeDef>(t, b);
-    }
-
-    Btype make(Node t)
-    {
-      return make(t, bindings);
-    }
-
-    Btype field(const Token& f)
-    {
-      return make(node / f, bindings);
-    }
-
-    const Token& type() const
-    {
-      return node->type();
-    }
-  };
-
-  Btype make(Node t, NodeMap<Btype> b = {})
-  {
-    return BtypeDef::make(t, b);
-  }
-
   struct Assume
   {
     Btype sub;
@@ -654,30 +571,18 @@ namespace verona
   bool subtype(Node sub, Node sup)
   {
     Sequent seq;
-    return seq.reduce(make(sub), make(sup));
+    return seq.reduce(make_btype(sub), make_btype(sup));
   }
 
   bool valid_typeargs(Node tn)
   {
     // TODO: handle FunctionName
-    if (!tn->type().in({TypeClassName, TypeAlias}))
+    if (!tn->type().in({TypeClassName, TypeAliasName}))
       return true;
 
-    // Make a Btype out of the type name.
-    auto t = make(tn);
-
-    if (t->type() == TypeClassName)
-    {
-      t = make(tn);
-    }
-
-    // Derive a Btype for the predicate.
-    auto pred = t->field(TypePred);
-
-    // Ask if it's true with no additional assumptions.
     Sequent seq;
-    seq.lhs_pending.push_back(make(TypeTrue));
-    seq.rhs_pending.push_back(pred);
+    seq.lhs_pending.push_back(make_btype(TypeTrue));
+    seq.rhs_pending.push_back(make_btype(tn)->field(TypePred));
     return seq.reduce();
   }
 }

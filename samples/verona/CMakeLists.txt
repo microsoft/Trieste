@@ -17,6 +17,7 @@ add_executable(verona
   main.cc
   parse.cc
   subtype.cc
+  passes/modules.cc
   )
 
 target_link_libraries(verona

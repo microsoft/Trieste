@@ -140,23 +140,30 @@ namespace trieste
 
   namespace detail
   {
-    inline std::map<std::string_view, Token> FindToken;
+    inline std::map<std::string_view, Token>& token_map()
+    {
+      static std::map<std::string_view, Token> global_map;
+      return global_map;
+    }
 
     inline void register_token(const TokenDef& def)
     {
-      auto it = FindToken.find(def.name);
-      if (it != FindToken.end())
+      auto& map = token_map();
+      auto it = map.find(def.name);
+      if (it != map.end())
         throw std::runtime_error(
           "Duplicate token definition: " + std::string(def.name));
 
       Token t = def;
-      FindToken[t.str()] = t;
+      map[t.str()] = t;
     }
 
     inline Token find_token(std::string_view str)
     {
-      auto it = FindToken.find(str);
-      if (it != FindToken.end())
+      auto& map = token_map();
+      auto it = map.find(str);
+
+      if (it != map.end())
         return it->second;
 
       return Invalid;

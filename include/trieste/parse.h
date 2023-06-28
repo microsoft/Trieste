@@ -114,8 +114,8 @@ namespace trieste
         }
         else
         {
-          auto seq = NodeDef::create(type, re_match.at(0));
           auto group = p->pop_back();
+          auto seq = NodeDef::create(type, re_match.at(0) * group->location());
           p->push_back(seq);
           seq->push_back(group);
           node = seq;
@@ -411,25 +411,30 @@ namespace trieste
       if (predir_ && !predir_(*this, dir))
         return {};
 
-      Node top = NodeDef::create(Directory, {dir.stem().string()});
+      std::set<std::filesystem::path> dirs;
+      std::set<std::filesystem::path> files;
 
       for (const auto& entry : std::filesystem::directory_iterator(dir))
       {
-        Node ast;
-
-        if (std::filesystem::is_regular_file(entry.status()))
-        {
-          ast = parse_file(entry.path());
-        }
-        else if (
+        if (
           (depth_ == depth::subdirectories) &&
           std::filesystem::is_directory(entry.status()))
         {
-          ast = parse_directory(entry.path());
+          dirs.insert(entry.path());
         }
-
-        top->push_back(ast);
+        else if (std::filesystem::is_regular_file(entry.status()))
+        {
+          files.insert(entry.path());
+        }
       }
+
+      auto top = NodeDef::create(Directory, {dir.stem().string()});
+
+      for (auto& subdir : dirs)
+        top->push_back(parse_directory(subdir));
+
+      for (auto& file : files)
+        top->push_back(parse_file(file));
 
       if (top->empty())
         return {};
