@@ -17,7 +17,6 @@ namespace trieste
   private:
     Node in_node;
     std::map<Token, NodeRange> captures;
-    std::map<Token, Node> defaults;
 
   public:
     Match(Node in_node) : in_node(in_node) {}
@@ -32,20 +31,11 @@ namespace trieste
       return captures[token];
     }
 
-    void def(const Token& token, Node node)
-    {
-      defaults[token] = node;
-    }
-
     Node operator()(const Token& token)
     {
       auto it = captures.find(token);
       if ((it != captures.end()) && *it->second.first)
         return *it->second.first;
-
-      auto it2 = defaults.find(token);
-      if (it2 != defaults.end())
-        return it2->second;
 
       return {};
     }
@@ -53,7 +43,6 @@ namespace trieste
     void operator+=(const Match& that)
     {
       captures.insert(that.captures.begin(), that.captures.end());
-      defaults.insert(that.defaults.begin(), that.defaults.end());
     }
   };
 

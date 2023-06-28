@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 #include "lookup.h"
 
-#include "wf.h"
+#include "lang.h"
 
 #include <cassert>
 #include <deque>
@@ -189,7 +189,15 @@ namespace verona
 
   Lookups lookup_scopedname_name(Node tn, Node id, Node ta)
   {
+    if (tn->type() == DontCare)
+      return lookup_name(id, ta);
+
     return lookdown(lookup_scopedname(tn), id, ta);
+  }
+
+  bool lookup(const NodeRange& n, std::initializer_list<Token> t)
+  {
+    return lookup_name(*n.first).one(t);
   }
 
   bool recursive_typealias(Node node)

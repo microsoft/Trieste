@@ -4,8 +4,6 @@
 
 #include <trieste/ast.h>
 
-#include "lang.h"
-
 namespace verona
 {
   using namespace trieste;
@@ -47,6 +45,7 @@ namespace verona
   Lookups lookup_name(Node id, Node ta = {});
   Lookups lookup_scopedname(Node tn);
   Lookups lookup_scopedname_name(Node tn, Node id, Node ta = {});
+  bool lookup(const NodeRange& n, std::initializer_list<Token> t);
 
   bool recursive_typealias(Node node);
 }

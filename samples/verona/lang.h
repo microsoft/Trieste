@@ -145,29 +145,83 @@ namespace verona
   inline const auto l_trait = Location("trait");
   inline const auto l_class = Location("class");
   inline const auto l_self = Location("self");
-  inline const auto standard = Location("std");
-  inline const auto builtin = Location("builtin");
-  inline const auto unit = Location("Unit");
-  inline const auto cell = Location("cell");
   inline const auto new_ = Location("new");
   inline const auto create = Location("create");
-  inline const auto apply = Location("apply");
-  inline const auto load = Location("load");
-  inline const auto store = Location("store");
-  inline const auto nonlocal = Location("nonlocal");
 
-  inline auto err(NodeRange& r, const std::string& msg)
-  {
-    return Error << (ErrorMsg ^ msg) << (ErrorAst << r);
-  }
+  // Helper patterns.
+  inline const auto TypeStruct = In(Type) / In(TypeList) / In(TypeTuple) /
+    In(TypeView) / In(TypeUnion) / In(TypeIsect) / In(TypeSubtype);
+  inline const auto TypeCaps = T(Iso) / T(Mut) / T(Imm);
+  inline const auto Name = T(Ident) / T(Symbol);
+  inline const auto Literal = T(String) / T(Escaped) / T(Char) / T(Bool) /
+    T(Hex) / T(Bin) / T(Int) / T(Float) / T(HexFloat) / T(LLVM);
+  inline const auto TypeName =
+    T(TypeClassName) / T(TypeAliasName) / T(TypeParamName) / T(TypeTraitName);
+  inline const auto TypeElem = T(Type) / TypeCaps / TypeName / T(TypeTrait) /
+    T(TypeTuple) / T(Self) / T(TypeList) / T(TypeView) / T(TypeIsect) /
+    T(TypeUnion) / T(TypeVar) / T(Package) / T(TypeSubtype) / T(TypeTrue) /
+    T(TypeFalse);
+  inline const auto Object0 = Literal / T(RefVar) / T(RefVarLHS) / T(RefLet) /
+    T(Unit) / T(Tuple) / T(Lambda) / T(Call) / T(NLRCheck) / T(CallLHS) /
+    T(Assign) / T(Expr) / T(ExprSeq) / T(DontCare) / T(Conditional) /
+    T(TypeTest) / T(Cast);
+  inline const auto Object = Object0 / (T(TypeAssert) << (Object0 * T(Type)));
+  inline const auto Operator = T(New) / T(FunctionName) / T(Selector);
 
-  inline auto err(Node node, const std::string& msg)
-  {
-    return Error << (ErrorMsg ^ msg) << ((ErrorAst ^ node) << node);
-  }
+  // Helper functions for generating AST fragments.
+  Node err(NodeRange& r, const std::string& msg);
+  Node err(Node node, const std::string& msg);
+  Node typevar(Match& _);
+  Node typevar(Match& _, const Token& t);
+  Node inherit();
+  Node inherit(Match& _, const Token& t);
+  Node typepred();
+  Node typepred(Match& _, const Token& t);
+  Node builtin();
+  Node nonlocal(Match& _);
+  Node unittype();
+  Node unit();
+  Node cell();
+  Node apply_id();
+  Node apply(Node ta = TypeArgs);
+  Node makename(Node lhs, Node id, Node ta, bool func = false);
+  bool is_llvm_call(Node op, size_t arity);
+  Node call(Node op, Node lhs = {}, Node rhs = {});
+  Node load(Node arg);
+  Node nlrexpand(Match& _, Node call, bool unwrap);
 
+  // Pass definitions.
   Parse parser();
   PassDef modules();
+  PassDef structure();
+  PassDef memberconflict();
+  PassDef typenames();
+  PassDef typeview();
+  PassDef typefunc();
+  PassDef typealg();
+  PassDef typeflat();
+  PassDef typevalid();
+  PassDef codereuse();
+  PassDef conditionals();
+  PassDef reference();
+  PassDef reverseapp();
+  PassDef application();
+  PassDef assignlhs();
+  PassDef localvar();
+  PassDef assignment();
+  PassDef nlrcheck();
+  PassDef lambda();
+  PassDef autofields();
+  PassDef autorhs();
+  PassDef autocreate();
+  PassDef defaultargs();
+  PassDef partialapp();
+  PassDef traitisect();
+  PassDef anf();
+  PassDef defbeforeuse();
+  PassDef drop();
+  PassDef namearity();
+  PassDef validtypeargs();
 
   Driver& driver();
 }

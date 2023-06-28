@@ -4,7 +4,6 @@
 
 #include "lang.h"
 #include "lookup.h"
-#include "wf.h"
 
 #include <trieste/ast.h>
 
