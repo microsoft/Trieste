@@ -218,10 +218,10 @@ namespace verona
     // optionally unwrap it and return. Otherwise, continue execution.
     auto id = _.fresh();
     auto nlr = Type << nonlocal(_);
-    Node ret = Expr << (Cast << (Expr << (RefLet << (Ident ^ id))) << nlr);
+    Node ret = Cast << (Expr << (RefLet << (Ident ^ id))) << nlr;
 
     if (unwrap)
-      ret = Expr << load(ret);
+      ret = load(ret);
 
     return ExprSeq
       << (Expr << (Bind << (Ident ^ id) << typevar(_) << (Expr << call)))
@@ -229,7 +229,7 @@ namespace verona
           << (Conditional << (Expr
                               << (TypeTest << (Expr << (RefLet << (Ident ^ id)))
                                            << clone(nlr)))
-                          << (Block << (Return << ret))
+                          << (Block << (Return << (Expr << ret)))
                           << (Block << (Expr << (RefLet << (Ident ^ id))))));
   }
 
@@ -249,6 +249,7 @@ namespace verona
         {"typealg", typealg(), wfPassTypeAlg},
         {"typeflat", typeflat(), wfPassTypeFlat},
         {"typevalid", typevalid(), wfPassTypeFlat},
+        {"codereuse", codereuse(), wfPassTypeFlat},
         {"conditionals", conditionals(), wfPassConditionals},
         {"reference", reference(), wfPassReference},
         {"reverseapp", reverseapp(), wfPassReverseApp},

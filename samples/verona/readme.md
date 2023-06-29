@@ -1,12 +1,15 @@
 # TODO
 
-- Do code-reuse early.
-  - Code-reuse must be intersections of classes and traits only, recursively through type aliases.
-  - Do textual inclusion of any member or method that isn't already defined.
-  - Afterwards, strip default implementations from traits.
+Code reuse:
+- Code reuse must be intersections of classes and traits only, recursively through type aliases.
+- Can it be done after default args?
+  - That would solve the problem of default args in traits.
+- Do textual inclusion of any member or method that isn't already defined.
+- Afterwards, strip default implementations from traits.
 
-- Automatically insert `use std::builtin` in `Top`.
-- Better system for including `std`.
+- `partialapp`: don't generate an implementation if the original function doesn't have an implementation (i.e., for traits).
+- Automatically insert `use std::builtin`.
+- Better system for including parts of `std`.
 - Check that default types for type parameters satisfy predicates.
 
 Tuples are traits:

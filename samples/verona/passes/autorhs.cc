@@ -12,7 +12,7 @@ namespace verona
         T(Function)[Function]
             << (T(Ref) * Name[Id] * T(TypeParams)[TypeParams] *
                 T(Params)[Params] * T(Type)[Type] * T(DontCare) *
-                T(TypePred)[TypePred] * T(Block)) >>
+                T(TypePred)[TypePred] * (T(Block) / T(DontCare))) >>
           ([](Match& _) -> Node {
             auto f = _(Function);
             auto id = _(Id);

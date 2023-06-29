@@ -13,7 +13,7 @@ namespace verona
   {
     if (!def->type().in({Class, TypeAlias, Function}))
     {
-      if (ta)
+      if (ta && !ta->empty())
         too_many_typeargs = true;
 
       return;

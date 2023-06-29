@@ -18,11 +18,10 @@ namespace verona
             auto id = _(Id);
             auto self_id = _.fresh(l_self);
             Token is_ref = (field->type() == FieldVar) ? Ref : DontCare;
-            auto expr = Expr
-              << (FieldRef << (RefLet << (Ident ^ self_id)) << clone(id));
+            auto expr = FieldRef << (RefLet << (Ident ^ self_id)) << clone(id);
 
             if (is_ref == DontCare)
-              expr = Expr << load(expr);
+              expr = load(expr);
 
             // TODO: capability for Self, return type is self.T
             auto f = Function << is_ref << clone(id) << TypeParams
@@ -30,7 +29,7 @@ namespace verona
                                   << (Param << (Ident ^ self_id)
                                             << (Type << Self) << DontCare))
                               << clone(_(Type)) << DontCare << typepred()
-                              << (Block << expr);
+                              << (Block << (Expr << expr));
 
             return Seq << field << f;
           }),

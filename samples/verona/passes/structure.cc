@@ -81,12 +81,13 @@ namespace verona
               ~T(LLVMFuncType)[LLVMFuncType] * ~T(TypePred)[TypePred] *
               ~T(Brace)[Block] * (Any++)[Rhs]) >>
         [](Match& _) {
+          auto block = _(Block) ? (Block << *_[Block]) : DontCare;
           return Seq << (Function
                          << (_(Ref) || DontCare) << (_(Id) || apply_id())
                          << (TypeParams << *_[TypeParams])
                          << (Params << *_[Params]) << typevar(_, Type)
                          << (_(LLVMFuncType) || DontCare)
-                         << typepred(_, TypePred) << (Block << *_[Block]))
+                         << typepred(_, TypePred) << block)
                      << (Group << _[Rhs]);
         },
 

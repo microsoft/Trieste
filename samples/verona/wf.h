@@ -71,7 +71,8 @@ namespace verona
     | (FieldVar <<= Ident * Type * wfDefault)[Ident]
     | (Function <<=
         wfRef * wfName * TypeParams * Params * Type *
-        (LLVMFuncType >>= LLVMFuncType | DontCare) * TypePred * Block)[Ident]
+        (LLVMFuncType >>= LLVMFuncType | DontCare) * TypePred *
+        (Block >>= Block | DontCare))[Ident]
     | (TypeParams <<= TypeParam++)
     | (TypeParam <<= Ident * (Type >>= Type | DontCare))[Ident]
     | (ValueParam <<= Ident * Type * Expr)[Ident]
@@ -418,7 +419,8 @@ namespace verona
     // Remove LHS/RHS function distinction.
     | (Function <<=
         Ident * TypeParams * Params * Type *
-        (LLVMFuncType >>= LLVMFuncType | DontCare) * TypePred * Block)[Ident]
+        (LLVMFuncType >>= LLVMFuncType | DontCare) * TypePred *
+        (Block >>= Block | DontCare))[Ident]
 
     // Turn New into a function.
     | (Call <<= (Selector >>= (Selector | FunctionName)) * Args)

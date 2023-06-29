@@ -13,7 +13,7 @@ namespace verona
             << ((T(Ref) / T(DontCare))[Ref] * Name[Id] *
                 T(TypeParams)[TypeParams] * T(Params)[Params] * T(Type)[Type] *
                 (T(LLVMFuncType) / T(DontCare))[LLVMFuncType] *
-                T(TypePred)[TypePred] * T(Block)[Block]) >>
+                T(TypePred)[TypePred] * (T(Block) / T(DontCare))[Block]) >>
           [](Match& _) {
             auto id = _(Id);
             auto arity = _(Params)->size();
