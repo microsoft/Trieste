@@ -93,7 +93,9 @@ namespace verona
       else if (lookup.def->type() == Type)
       {
         // Replace the def with the content of the type and try again.
-        lookup.def = lookup.def / Type;
+        // Use `front()` instead of `def / Type` to allow looking up in `use`
+        // directives before Type is no longer a sequence.
+        lookup.def = lookup.def->front();
       }
       else if (lookup.def->type().in(
                  {TypeClassName, TypeAliasName, TypeTraitName, TypeParamName}))
@@ -177,14 +179,7 @@ namespace verona
        TypeTraitName,
        FunctionName}));
 
-    auto ctx = tn / Lhs;
-    auto id = tn / Ident;
-    auto ta = tn / TypeArgs;
-
-    if (ctx->type() == DontCare)
-      return lookup_name(id, ta);
-
-    return lookup_scopedname_name(ctx, id, ta);
+    return lookup_scopedname_name(tn / Lhs, tn / Ident, tn / TypeArgs);
   }
 
   Lookups lookup_scopedname_name(Node tn, Node id, Node ta)

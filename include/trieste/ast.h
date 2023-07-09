@@ -474,6 +474,14 @@ namespace trieste
       }
     }
 
+    void lookup_replace(Node& node1, Node& node2)
+    {
+      assert(node1->parent_ == this);
+      node1->parent_ = nullptr;
+      node2->parent_ = this;
+      node1 = node2;
+    }
+
     bool equals(Node& node)
     {
       return (type_ == node->type()) &&

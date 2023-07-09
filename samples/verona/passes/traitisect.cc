@@ -12,30 +12,36 @@ namespace verona
     return {
       dir::once | dir::topdown,
       {
-        T(TypeTrait)[TypeTrait] << (T(Ident) * T(ClassBody)[ClassBody]) >>
+        T(TypeTrait)[TypeTrait] << (T(Ident)[Id] * T(ClassBody)[ClassBody]) >>
           [](Match& _) {
             // If we're inside a TypeIsect, put the new traits inside it.
             // Otherwise, create a new TypeIsect.
-            Node isect =
+            Node r =
               (_(TypeTrait)->parent()->type() == TypeIsect) ? Seq : TypeIsect;
+
+            Node base = ClassBody;
+            r << (TypeTrait << _(Id) << base);
 
             for (auto& member : *_(ClassBody))
             {
               if (member->type() == Function)
               {
-                isect
+                // Strip any default implementation.
+                (member / Block) = DontCare;
+                r
                   << (TypeTrait << (Ident ^ _.fresh(l_trait))
                                 << (ClassBody << member));
               }
+              else
+              {
+                base << member;
+              }
             }
 
-            // TODO: we're losing Use, Class, TypeAlias
-            if (isect->empty())
-              return _(TypeTrait);
-            else if (isect->size() == 1)
-              return isect->front();
-            else
-              return isect;
+            if (r->size() == 1)
+              return r->front();
+
+            return r;
           },
       }};
   }

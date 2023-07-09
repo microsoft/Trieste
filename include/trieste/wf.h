@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <numeric>
+#include <deque>
 #include <variant>
 
 /* Notes on how to use the Well-formedness checker:
@@ -192,9 +193,9 @@ namespace trieste
       Choice choice;
       size_t minlen;
 
-      size_t index(const Token&, const Token&) const
+      size_t index(const Token&) const
       {
-        throw std::runtime_error("index not supported for a sequence");
+        return std::numeric_limits<size_t>::max();
       }
 
       Sequence& operator[](size_t new_minlen)
@@ -258,7 +259,7 @@ namespace trieste
       std::vector<Field> fields;
       Token binding;
 
-      size_t index(const Token& type, const Token& field) const
+      size_t index(const Token& field) const
       {
         auto i = 0;
 
@@ -270,9 +271,7 @@ namespace trieste
           ++i;
         }
 
-        throw std::runtime_error(
-          "shape " + std::string(type.str()) + " has no field " +
-          std::string(field.str()));
+        return std::numeric_limits<size_t>::max();
       }
 
       Fields& operator[](const Token& type)
@@ -427,11 +426,10 @@ namespace trieste
         auto find = shapes.find(type);
 
         if (find == shapes.end())
-          throw std::runtime_error(
-            "no shape for type " + std::string(type.str()));
+          return std::numeric_limits<size_t>::max();
 
         return std::visit(
-          [&](auto& shape) { return shape.index(type, field); }, find->second);
+          [&](auto& shape) { return shape.index(field); }, find->second);
       }
 
       void prepend(const Shape& shape)
@@ -931,38 +929,69 @@ namespace trieste
 
     namespace detail
     {
-      inline thread_local std::vector<const Wellformed*> wf_current;
+      inline thread_local std::deque<const Wellformed*> wf_current;
+
+      struct WFLookup
+      {
+        const Wellformed* wf;
+        Node& node;
+
+        operator Node&()
+        {
+          return node;
+        }
+
+        void operator=(Node rhs)
+        {
+          node->parent()->lookup_replace(node, rhs);
+        }
+
+        Node& operator->()
+        {
+          return node;
+        }
+
+        NodeDef& operator*()
+        {
+          return *node;
+        }
+
+        WFLookup& operator/(const Token& field)
+        {
+          node = node->at(wf->index(node->type(), field));
+          return *this;
+        }
+      };
     }
 
-    inline void push(const Wellformed* wf)
+    inline void push_back(const Wellformed* wf)
     {
       detail::wf_current.push_back(wf);
     }
 
-    inline void pop()
+    inline void pop_front()
     {
-      detail::wf_current.pop_back();
+      detail::wf_current.pop_front();
     }
   }
 
-  inline Node& operator/(Node& node, const Token& field)
+  inline wf::detail::WFLookup operator/(Node& node, const Token& field)
   {
-    if (wf::detail::wf_current.empty())
-      throw std::runtime_error("no well-formedness definition");
+    for (auto& wf : wf::detail::wf_current)
+    {
+      auto i = wf->index(node->type(), field);
 
-    return node->at(wf::detail::wf_current.front()->index(node->type(), field));
+      if (i != std::numeric_limits<size_t>::max())
+        return {wf, node->at(i)};
+    }
+
+    throw std::runtime_error(
+      "shape " + std::string(node->type().str()) + " has no field " +
+      std::string(field.str()));
   }
 
-  inline auto operator/(const wf::Wellformed& wf, Node& node)
+  inline wf::detail::WFLookup operator/(const wf::Wellformed& wf, Node& node)
   {
-    return std::make_pair(&wf, node);
-  }
-
-  inline auto
-  operator/(std::pair<const wf::Wellformed*, Node>& pair, const Token& field)
-  {
-    auto wf = pair.first;
-    auto node = pair.second;
-    return std::make_pair(wf, node->at(wf->index(node->type(), field)));
+    return {&wf, node};
   }
 }

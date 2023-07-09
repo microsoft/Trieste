@@ -120,7 +120,6 @@ namespace trieste
         Node ast;
         size_t start_pass = 1;
         size_t end_pass = pass_index(limit);
-        const wf::Wellformed* wf_prev = nullptr;
 
         if (path.extension() == ".trieste")
         {
@@ -153,7 +152,7 @@ namespace trieste
 
             if (wf)
             {
-              wf_prev = wf;
+              wf::push_back(wf);
               ok = ok && wf->build_st(ast, std::cout);
               ok = ok && wf->check(ast, std::cout);
             }
@@ -173,7 +172,7 @@ namespace trieste
             // Build the symbol table and check well-formedness.
             if (wfParser)
             {
-              wf_prev = wfParser;
+              wf::push_back(wfParser);
               ok = ok && wfParser->build_st(ast, std::cout);
               ok = ok && wfParser->check(ast, std::cout);
             }
@@ -194,7 +193,7 @@ namespace trieste
 
           if (wfParser)
           {
-            wf_prev = wfParser;
+            wf::push_back(wfParser);
             ok = ok && wfParser->build_st(ast, std::cout);
 
             if (wfcheck)
@@ -211,13 +210,12 @@ namespace trieste
         for (auto i = start_pass; i <= end_pass; i++)
         {
           // Run the pass until it reaches a fixed point.
-          wf::push(wf_prev);
           auto& [pass_name, pass, wf] = passes.at(i - 1);
-          auto [new_ast, count, changes] = pass->run(ast);
-          ast = new_ast;
+          wf::push_back(wf);
 
-          wf_prev = wf;
-          wf::pop();
+          auto [new_ast, count, changes] = pass->run(ast);
+          wf::pop_front();
+          ast = new_ast;
 
           if (diag)
           {
@@ -246,6 +244,8 @@ namespace trieste
             }
           }
         }
+
+        wf::pop_front();
 
         if (output.empty())
           output = path.stem().replace_extension(".trieste");
