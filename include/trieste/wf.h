@@ -4,8 +4,12 @@
 
 #include "ast.h"
 #include "gen.h"
+#include "regex.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
+#include <numeric>
 #include <variant>
 
 /* Notes on how to use the Well-formedness checker:
@@ -19,22 +23,84 @@ namespace trieste
 {
   namespace wf
   {
-    using Nonterminal = std::function<bool(const Token&)>;
+    using TokenTerminalDistance = std::map<Token, std::size_t>;
 
     struct Gen
     {
-      Nonterminal nonterminal;
+      TokenTerminalDistance token_terminal_distance;
       GenNodeLocationF gloc;
       Rand rand;
-      size_t max_depth;
+      size_t target_depth;
+      double alpha;
 
+      /* The generator chooses which token to emit next. It makes this choice
+       * using a weighted probability distribution, where the weights are based
+       * on the distance to the nearest terminal node in the token graph.
+       * once the tree exceeds the target depth, this distribution becomes
+       * "spikier" as controlled by the value of alpha using the following
+       * equations:
+       *
+       * $P(c|d,p) = \frac{P(d|c,p)P(c|p)}{\sum_{c' \in T} P(d|c',p)P(c'|p)}$
+       *
+       * $P(d|c,p) = 1 / (1 + m_c * \alpha * max(d - t))$
+       *
+       * where $m_c$ is the expected distance to a terminal node from the token
+       * $c$ and $t$ is the target depth.
+       */
       Gen(
-        Nonterminal nonterminal,
+        TokenTerminalDistance token_terminal_distance,
         GenNodeLocationF gloc,
         Seed seed,
-        size_t max_depth)
-      : nonterminal(nonterminal), gloc(gloc), rand(seed), max_depth(max_depth)
+        size_t target_depth,
+        double alpha = 1)
+      : token_terminal_distance(token_terminal_distance),
+        gloc(gloc),
+        rand(seed),
+        target_depth(target_depth),
+        alpha(alpha)
       {}
+
+      Token choose(const std::vector<Token>& tokens, std::size_t depth)
+      {
+        if (tokens.size() == 1)
+        {
+          return tokens[0];
+        }
+
+        if (depth <= target_depth)
+        {
+          std::size_t choice = rand() % tokens.size();
+          return tokens[choice];
+        }
+
+        // compute 1 / (1 + alpha * (depth - target_depth) * distance)
+        std::vector<double> offsets;
+        std::transform(
+          tokens.begin(),
+          tokens.end(),
+          std::back_inserter(offsets),
+          [&](const Token& t) {
+            return 1.0 /
+              (1.0 +
+               (alpha * (depth - target_depth) *
+                token_terminal_distance.at(t)));
+          });
+
+        // compute the cumulative distribution of P(d | c, p)
+        std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
+
+        // instead of normalizing the cumulative distribution, scale the random
+        // number to the sum of the probabilities
+        double value = static_cast<double>(rand() - rand.min()) /
+          static_cast<double>(rand.max() - rand.min()) * offsets.back();
+
+        // finding the first element greater than the uniform random number is
+        // the same as performing a weighted sampling of the P(c | d, p)
+        // distribution
+        auto it = std::lower_bound(offsets.begin(), offsets.end(), value);
+
+        return tokens[std::distance(offsets.begin(), it)];
+      }
 
       Result next()
       {
@@ -89,32 +155,29 @@ namespace trieste
         return ok;
       }
 
+      std::size_t expected_distance_to_terminal(
+        const std::set<Token>& omit,
+        std::size_t max_distance,
+        std::function<std::size_t(Token)> distance) const
+      {
+        return std::accumulate(
+                 types.begin(),
+                 types.end(),
+                 0,
+                 [&](std::size_t acc, auto& type) {
+                   if (omit.contains(type))
+                   {
+                     return acc + max_distance;
+                   }
+
+                   return acc + distance(type);
+                 }) /
+          types.size();
+      }
+
       void gen(Gen& g, size_t depth, Node node) const
       {
-        Token type;
-
-        if (depth < g.max_depth)
-        {
-          type = types[g.next() % types.size()];
-        }
-        else
-        {
-          auto i = g.next() % types.size();
-          auto wrap = i;
-          type = types[i];
-
-          do
-          {
-            if (!g.nonterminal(types[i]))
-            {
-              type = types[i];
-              break;
-            }
-
-            // If all choices are nonterminal, use the initially selected one.
-            i = (i + 1) % types.size();
-          } while (i != wrap);
-        }
+        Token type = g.choose(types, depth);
 
         // We may need a fresh location, so the child needs to be in the AST by
         // the time we call g.location().
@@ -459,19 +522,86 @@ namespace trieste
         return ok;
       }
 
-      Node gen(GenNodeLocationF gloc, Seed seed, size_t max_depth) const
+      Node gen(GenNodeLocationF gloc, Seed seed, size_t target_depth) const
       {
         auto g = Gen(
-          [this](const Token& type) {
-            return shapes.find(type) != shapes.end();
-          },
+          compute_minimum_distance_to_terminal(target_depth),
           gloc,
           seed,
-          max_depth);
+          target_depth);
 
         auto node = NodeDef::create(Top);
         gen_node(g, 0, node);
         return node;
+      }
+
+      std::size_t min_dist_to_terminal(
+        TokenTerminalDistance& distance,
+        const std::set<Token>& prefix,
+        std::size_t max_distance,
+        const Token& token) const
+      {
+        if (distance.contains(token))
+        {
+          return distance[token];
+        }
+
+        if (!shapes.contains(token))
+        {
+          distance[token] = 0;
+        }
+        else
+        {
+          std::set<Token> current = prefix;
+          current.insert(token);
+          distance[token] = std::visit(
+            [&](auto&& arg) {
+              using T = std::decay_t<decltype(arg)>;
+              if constexpr (std::is_same_v<T, Sequence>)
+              {
+                return arg.choice.expected_distance_to_terminal(
+                  current, max_distance, std::function([&](const Token& token) {
+                    return min_dist_to_terminal(
+                      distance, current, max_distance, token);
+                  }));
+              }
+              else if constexpr (std::is_same_v<T, Fields>)
+              {
+                return std::accumulate(
+                  arg.fields.begin(),
+                  arg.fields.end(),
+                  static_cast<std::size_t>(0),
+                  [&](std::size_t acc, auto& field) {
+                    auto expected_dist =
+                      field.choice.expected_distance_to_terminal(
+                        current,
+                        max_distance,
+                        std::function([&](const Token& token) {
+                          return min_dist_to_terminal(
+                            distance, current, max_distance, token);
+                        }));
+                    return std::max(acc, expected_dist);
+                  });
+              }
+            },
+            shapes.at(token));
+        }
+
+        return distance[token];
+      }
+
+      TokenTerminalDistance
+      compute_minimum_distance_to_terminal(std::size_t max_distance) const
+      {
+        TokenTerminalDistance distance;
+
+        for (auto& [token, _] : shapes)
+        {
+          distance[token] =
+            min_dist_to_terminal(distance, {}, max_distance, token);
+        }
+
+        return distance;
       }
 
       void gen_node(Gen& g, size_t depth, Node node) const
