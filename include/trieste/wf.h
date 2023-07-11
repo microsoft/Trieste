@@ -163,7 +163,7 @@ namespace trieste
         return std::accumulate(
                  types.begin(),
                  types.end(),
-                 0,
+                 static_cast<std::size_t>(0),
                  [&](std::size_t acc, auto& type) {
                    if (omit.contains(type))
                    {
