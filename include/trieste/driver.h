@@ -307,6 +307,8 @@ namespace trieste
           }
 
           std::cout << "Testing pass: " << pass_name << std::endl;
+          wf::push_back(prev);
+          wf::push_back(wf);
 
           for (size_t seed = test_seed; seed < test_seed + test_seed_count;
                seed++)
@@ -348,6 +350,9 @@ namespace trieste
                 return ret;
             }
           }
+
+          wf::pop_front();
+          wf::pop_front();
         }
       }
 

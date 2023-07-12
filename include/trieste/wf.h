@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <numeric>
 #include <deque>
+#include <numeric>
 #include <variant>
 
 /* Notes on how to use the Well-formedness checker:
@@ -976,8 +976,11 @@ namespace trieste
 
   inline wf::detail::WFLookup operator/(Node& node, const Token& field)
   {
-    for (auto& wf : wf::detail::wf_current)
+    for (auto wf : wf::detail::wf_current)
     {
+      if (!wf)
+        continue;
+
       auto i = wf->index(node->type(), field);
 
       if (i != std::numeric_limits<size_t>::max())
@@ -985,8 +988,8 @@ namespace trieste
     }
 
     throw std::runtime_error(
-      "shape " + std::string(node->type().str()) + " has no field " +
-      std::string(field.str()));
+      "shape `" + std::string(node->type().str()) + "` has no field `" +
+      std::string(field.str()) + "`");
   }
 
   inline wf::detail::WFLookup operator/(const wf::Wellformed& wf, Node& node)
