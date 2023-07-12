@@ -1,8 +1,8 @@
 # TODO
 
-Type predicates:
-- Predicates on type aliases aren't checked correctly.
-- Is it right to assume (lhs) and demand (rhs) them?
+Error messages:
+- Too many repetitions from implicit methods.
+  - `defaultargs`, `partialapp`, `autocreate`, `autofields`, etc.
 
 Code reuse:
 - Code reuse must be intersections of classes and traits only, recursively through type aliases.
