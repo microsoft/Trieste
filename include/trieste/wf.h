@@ -955,10 +955,9 @@ namespace trieste
           return *node;
         }
 
-        WFLookup& operator/(const Token& field)
+        WFLookup operator/(const Token& field)
         {
-          node = node->at(wf->index(node->type(), field));
-          return *this;
+          return {wf, node->at(wf->index(node->type(), field))};
         }
       };
     }

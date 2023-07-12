@@ -177,7 +177,7 @@ namespace verona
     return out;
   }
 
-  __attribute__((used)) inline void print(const Btype& b)
+  [[gnu::used]] inline void print(const Btype& b)
   {
     std::cout << b;
   }

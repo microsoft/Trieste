@@ -40,9 +40,10 @@ namespace verona
         // This is multiple parameters. We need to build a TypeTuple for the
         // Cast and a Tuple both for destructuring the cast value and for the
         // arguments to be passed to the lambda on success.
-        Node typetuple = TypeTuple;
         args = Tuple;
         lhs = Tuple;
+
+        Node typetuple = TypeTuple;
         type = Type << typetuple;
 
         for (auto& param : *params)
@@ -50,7 +51,7 @@ namespace verona
           auto lhs_id = _.fresh();
           args << (Expr << (Ident ^ lhs_id));
           lhs << (Expr << (Let << (Ident ^ lhs_id)));
-          typetuple << clone(param / Type);
+          typetuple << clone(param / Type / Type);
         }
       }
 

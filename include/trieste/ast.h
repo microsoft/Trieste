@@ -679,12 +679,12 @@ namespace trieste
     return os;
   }
 
-  __attribute__((used)) inline void print(const NodeDef* node)
+  [[gnu::used]] inline void print(const NodeDef* node)
   {
     std::cout << node;
   }
 
-  __attribute__((used)) inline void print(const Node& node)
+  [[gnu::used]] inline void print(const Node& node)
   {
     std::cout << node;
   }
