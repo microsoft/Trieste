@@ -590,9 +590,15 @@ namespace verona
     if (!tn->type().in({TypeClassName, TypeAliasName}))
       return true;
 
+    // This should only fail in testing code.
+    auto bt = make_btype(tn);
+
+    if (!bt->type().in({Class, TypeAlias}))
+      return true;
+
     Sequent seq;
     seq.lhs_pending.push_back(make_btype(TypeTrue));
-    seq.rhs_pending.push_back(make_btype(tn)->field(TypePred));
+    seq.rhs_pending.push_back(bt->field(TypePred));
     return seq.reduce();
   }
 }
