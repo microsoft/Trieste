@@ -61,7 +61,7 @@ namespace trieste
       includes.clear();
     }
 
-    std::string str(size_t level);
+    void str(std::ostream& out, size_t level);
   };
 
   using Symtab = std::shared_ptr<SymtabDef>;
@@ -531,25 +531,29 @@ namespace trieste
         parent->find(q->shared_from_this());
     }
 
-    std::string str(size_t level = 0)
+    void str(std::ostream& out, size_t level) const
     {
-      std::stringstream ss;
-      ss << indent(level) << "(" << type_.str();
+      out << indent(level) << "(" << type_.str();
 
       if (type_ & flag::print)
-        ss << " " << location_.view().size() << ":" << location_.view();
+        out << " " << location_.view().size() << ":" << location_.view();
 
       if (symtab_)
-        ss << std::endl << symtab_->str(level + 1);
+      {
+        out << std::endl;
+        symtab_->str(out, level + 1);
+      }
 
       for (auto child : children)
-        ss << std::endl << child->str(level + 1);
+      {
+        out << std::endl;
+        child->str(out, level + 1);
+      }
 
-      ss << ")";
-      return ss.str();
+      out << ")";
     }
 
-    bool errors(std::ostream& out)
+    bool errors(std::ostream& out) const
     {
       if (type_ == Error)
       {
@@ -623,51 +627,64 @@ namespace trieste
     return NodeDef::create(*this);
   }
 
-  inline std::string SymtabDef::str(size_t level)
+  inline void SymtabDef::str(std::ostream& out, size_t level)
   {
-    std::stringstream ss;
-    ss << indent(level) << "{";
+    out << indent(level) << "{";
 
     for (auto& [loc, sym] : symbols)
     {
-      ss << std::endl << indent(level + 1) << loc.view() << " =";
+      out << std::endl << indent(level + 1) << loc.view() << " =";
 
       if (sym.size() == 1)
       {
-        ss << " " << sym.back()->type().str();
+        out << " " << sym.back()->type().str();
       }
       else
       {
         for (auto& node : sym)
-          ss << std::endl << indent(level + 2) << node->type().str();
+          out << std::endl << indent(level + 2) << node->type().str();
       }
     }
 
     for (auto& node : includes)
     {
-      ss << std::endl
-         << indent(level + 1) << "include " << node->location().view();
+      out << std::endl
+          << indent(level + 1) << "include " << node->location().view();
     }
 
-    ss << "}";
-    return ss.str();
+    out << "}";
+  }
+
+  inline std::ostream& operator<<(std::ostream& os, const NodeDef* node)
+  {
+    if (node)
+    {
+      node->str(os, 0);
+      os << std::endl;
+    }
+
+    return os;
   }
 
   inline std::ostream& operator<<(std::ostream& os, const Node& node)
   {
-    if (node)
-      os << node->str() << std::endl;
-    return os;
+    return os << node.get();
   }
 
   inline std::ostream& operator<<(std::ostream& os, const NodeRange& range)
   {
     for (auto it = range.first; it != range.second; ++it)
-      os << (*it)->str();
+      (*it)->str(os, 0);
+
     return os;
   }
 
-  inline void print(const Node& node)
+  __attribute__((used)) inline void print(const NodeDef* node)
+  {
+    std::cout << node;
+  }
+
+  __attribute__((used)) inline void print(const Node& node)
   {
     std::cout << node;
   }

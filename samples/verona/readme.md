@@ -1,13 +1,16 @@
 # TODO
 
+Type predicates:
+- Predicates on type aliases aren't checked correctly.
+- Is it right to assume (lhs) and demand (rhs) them?
+
 Code reuse:
 - Code reuse must be intersections of classes and traits only, recursively through type aliases.
-- Can it be done after default args?
-  - That would solve the problem of default args in traits.
+- Logical order: (1) defaultargs, (2) inheritance, (3) partialapp.
+  - Can actually do inheritance first, treating defaultargs as blocking multiple arities.
 - Do textual inclusion of any member or method that isn't already defined.
-- Afterwards, strip default implementations from traits.
+  - Need to do type substitution on the included code.
 
-- `partialapp`: don't generate an implementation if the original function doesn't have an implementation (i.e., for traits).
 - Automatically insert `use std::builtin`.
 - Better system for including parts of `std`.
 - Check that default types for type parameters satisfy predicates.

@@ -223,5 +223,16 @@ namespace verona
   PassDef namearity();
   PassDef validtypeargs();
 
+  struct Options : public trieste::Options
+  {
+    bool no_std = false;
+
+    void configure(CLI::App& cli) override
+    {
+      cli.add_flag("--no-std", no_std, "Don't import the standard library.");
+    }
+  };
+
+  Options& options();
   Driver& driver();
 }

@@ -1,8 +1,7 @@
 // Copyright Microsoft and Project Verona Contributors.
 // SPDX-License-Identifier: MIT
-#include "lang.h"
-
 #include "btype.h"
+#include "lang.h"
 #include "lookup.h"
 
 namespace verona
@@ -19,8 +18,8 @@ namespace verona
           return NoChange;
         }),
 
-        In(TypePred)++ * T(TypeAliasName)[TypeAliasName] *
-            !(In(TypeSubtype)++) >>
+        In(TypePred)++ * --(In(TypeSubtype, TypeArgs)++) *
+            T(TypeAliasName)[TypeAliasName] >>
           ([](Match& _) -> Node {
             if (!make_btype(_(TypeAliasName))->valid_predicate())
               return err(
@@ -29,7 +28,7 @@ namespace verona
             return NoChange;
           }),
 
-        In(TypePred)++ * !(In(TypeSubtype)++) *
+        In(TypePred)++ * --(In(TypeSubtype, TypeArgs)++) *
             (TypeCaps / T(TypeClassName) / T(TypeParamName) / T(TypeTraitName) /
              T(TypeTrait) / T(TypeTuple) / T(Self) / T(TypeList) / T(TypeView) /
              T(TypeVar) / T(Package))[Type] >>
@@ -37,7 +36,7 @@ namespace verona
             return err(_[Type], "can't put this in a type predicate");
           },
 
-        In(Inherit)++ * T(TypeAliasName)[TypeAliasName] >>
+        In(Inherit)++ * --(In(TypeArgs)++) * T(TypeAliasName)[TypeAliasName] >>
           ([](Match& _) -> Node {
             if (!make_btype(_(TypeAliasName))->valid_inherit())
               return err(
@@ -46,7 +45,7 @@ namespace verona
             return NoChange;
           }),
 
-        In(Inherit)++ *
+        In(Inherit)++ * --(In(TypeArgs)++) *
             (TypeCaps / T(TypeParamName) / T(TypeTuple) / T(Self) /
              T(TypeList) / T(TypeView) / T(TypeUnion) / T(TypeVar) /
              T(Package) / T(TypeSubtype) / T(TypeTrue) / T(TypeFalse))[Type] >>

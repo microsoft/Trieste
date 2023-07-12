@@ -233,10 +233,17 @@ namespace verona
                           << (Block << (Expr << (RefLet << (Ident ^ id))))));
   }
 
+  Options& options()
+  {
+    static Options opts;
+    return opts;
+  }
+
   Driver& driver()
   {
     static Driver d(
       "Verona",
+      &options(),
       parser(),
       wfParser,
       {

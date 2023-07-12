@@ -13,6 +13,11 @@
 
 namespace trieste
 {
+  struct Options
+  {
+    virtual void configure(CLI::App& cli) = 0;
+  };
+
   class Driver
   {
   private:
@@ -20,6 +25,7 @@ namespace trieste
 
     std::string language_name;
     CLI::App app;
+    Options* options;
     Parse parser;
     const wf::Wellformed* wfParser;
     std::vector<std::tuple<std::string, Pass, const wf::Wellformed*>> passes;
@@ -28,11 +34,15 @@ namespace trieste
   public:
     Driver(
       const std::string& language_name,
+      Options* options,
       Parse parser,
       const wf::Wellformed& wfParser,
       std::initializer_list<
         std::tuple<std::string, Pass, const wf::Wellformed&>> passes)
-    : language_name(language_name), app(language_name), parser(parser)
+    : language_name(language_name),
+      app(language_name),
+      options(options),
+      parser(parser)
     {
       if (wfParser)
         this->wfParser = &wfParser;
@@ -49,9 +59,6 @@ namespace trieste
 
     int run(int argc, char** argv)
     {
-      // This is only present to allow running `print` in the debugger.
-      print({});
-
       parser.executable(argv[0]);
 
       app.set_help_all_flag("--help-all", "Expand all help");
@@ -75,6 +82,10 @@ namespace trieste
 
       std::filesystem::path output;
       build->add_option("-o,--output", output, "Output path.");
+
+      // Custom command line options when building.
+      if (options)
+        options->configure(*build);
 
       // Test command line options.
       auto test = app.add_subcommand("test", "Run automated tests");

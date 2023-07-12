@@ -132,10 +132,53 @@ namespace verona
 
       return false;
     }
+
+    void str(std::ostream& out, size_t level)
+    {
+      out << indent(level) << "btype: {" << std::endl
+          << indent(level + 1) << "bindings: {" << std::endl;
+
+      for (auto& b : bindings)
+      {
+        out << indent(level + 2) << "{" << std::endl;
+        b.first->str(out, level + 3);
+        out << " =" << std::endl;
+        b.second->str(out, level + 3);
+        out << indent(level + 2) << "}," << std::endl;
+      }
+
+      out << indent(level + 1) << "}," << std::endl
+          << indent(level + 1) << "node: {" << std::endl;
+
+      if (node->type().in({Class, TypeAlias}))
+      {
+        out << indent(level + 2) << node->type().str() << " "
+            << (node / Ident)->location().view();
+      }
+      else
+      {
+        node->str(out, level + 2);
+      }
+
+      out << std::endl
+          << indent(level + 1) << "}" << std::endl
+          << indent(level) << "}" << std::endl;
+    }
   };
 
   inline Btype make_btype(Node t)
   {
     return BtypeDef::make(t, {});
+  }
+
+  inline std::ostream& operator<<(std::ostream& out, const Btype& b)
+  {
+    b->str(out, 0);
+    return out;
+  }
+
+  __attribute__((used)) inline void print(const Btype& b)
+  {
+    std::cout << b;
   }
 }

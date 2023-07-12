@@ -57,6 +57,9 @@ namespace verona
     });
 
     p.postparse([](auto& p, auto& path, auto ast) {
+      if (options().no_std)
+        return;
+
       auto stdlib = p.executable().parent_path() / "std";
       if (path != stdlib)
         ast->push_back(p.sub_parse(stdlib));

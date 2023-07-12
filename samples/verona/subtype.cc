@@ -72,7 +72,7 @@ namespace verona
         if (p->type().in({Function, Class, TypeAlias}))
           predicates.push_back(t->make(p / TypePred));
 
-        p = p->parent()->shared_from_this();
+        p = p->parent({Function, Class, TypeAlias});
       }
     }
 
@@ -127,6 +127,13 @@ namespace verona
         }
         else if (r->type() == TypeAlias)
         {
+          // Demand that we satisfy the type predicate, which is a split.
+          Sequent seq(*this);
+          seq.rhs_pending.push_back(r->field(TypePred));
+
+          if (!seq.reduce())
+            return false;
+
           // Try both the typealias and the underlying type.
           rhs_pending.push_back(r->field(Type));
           rhs_atomic.push_back(r);
@@ -206,6 +213,9 @@ namespace verona
         }
         else if (l->type() == TypeAlias)
         {
+          // Assume that we've satisfied the type predicate.
+          lhs_pending.push_back(l->field(TypePred));
+
           // Try both the typealias and the underlying type.
           lhs_pending.push_back(l->field(Type));
           lhs_atomic.push_back(l);
