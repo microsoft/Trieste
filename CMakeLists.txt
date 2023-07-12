@@ -66,7 +66,7 @@ target_link_libraries(trieste
 target_compile_features(trieste INTERFACE cxx_std_20)
 
 if(MSVC)
-  target_compile_options(trieste INTERFACE /W4 /WX /bigobj)
+  target_compile_options(trieste INTERFACE /W4 /WX /wdC5030 /bigobj)
 else()
   target_compile_options(trieste INTERFACE
     -Wall -Wextra -Wpedantic -Werror -Wshadow)
