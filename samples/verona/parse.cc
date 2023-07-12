@@ -57,6 +57,9 @@ namespace verona
     });
 
     p.postparse([](auto& p, auto& path, auto ast) {
+      if (options().no_std)
+        return;
+
       auto stdlib = p.executable().parent_path() / "std";
       if (path != stdlib)
         ast->push_back(p.sub_parse(stdlib));
@@ -88,7 +91,6 @@ namespace verona
         "\n([[:blank:]]*)" >>
           [indent](auto& m) {
             size_t col = m.match(1).len;
-            auto prev = indent->back();
 
             // If following a brace, don't terminate, but reset indentation.
             if (m.previous(Brace))
@@ -100,7 +102,9 @@ namespace verona
             // Don't terminate and don't reset indentation if:
             // * in an equals or list
             // * in a group and indented
-            if (m.in(Equals) || m.in(List) || (m.in(Group) && (col > prev)))
+            if (
+              m.in(Equals) || m.in(List) ||
+              (m.in(Group) && (col > indent->back())))
               return;
 
             // Otherwise, terminate and reset indentation.
@@ -217,21 +221,36 @@ namespace verona
           },
 
         // Keywords.
-        "use\\b" >> [](auto& m) { m.add(Use); },
-        "type\\b" >> [](auto& m) { m.add(TypeAlias); },
-        "class\\b" >> [](auto& m) { m.add(Class); },
+        "use\\b" >>
+          [](auto& m) {
+            m.term(terminators);
+            m.add(Use);
+          },
+
+        "type\\b" >>
+          [](auto& m) {
+            m.term(terminators);
+            m.add(TypeAlias);
+          },
+
+        "class\\b" >>
+          [](auto& m) {
+            m.term(terminators);
+            m.add(Class);
+          },
+
+        "where\\b" >> [](auto& m) { m.add(Where); },
         "var\\b" >> [](auto& m) { m.add(Var); },
         "let\\b" >> [](auto& m) { m.add(Let); },
         "ref\\b" >> [](auto& m) { m.add(Ref); },
-        "lin\\b" >> [](auto& m) { m.add(Lin); },
-        "in\\b" >> [](auto& m) { m.add(In_); },
-        "out\\b" >> [](auto& m) { m.add(Out); },
-        "const\\b" >> [](auto& m) { m.add(Const); },
         "Self\\b" >> [](auto& m) { m.add(Self); },
         "if\\b" >> [](auto& m) { m.add(If); },
         "else\\b" >> [](auto& m) { m.add(Else); },
         "new\\b" >> [](auto& m) { m.add(New); },
         "try\\b" >> [](auto& m) { m.add(Try); },
+        "iso\\b" >> [](auto& m) { m.add(Iso); },
+        "mut\\b" >> [](auto& m) { m.add(Mut); },
+        "imm\\b" >> [](auto& m) { m.add(Imm); },
 
         // Don't care.
         "_\\b" >> [](auto& m) { m.add(DontCare); },

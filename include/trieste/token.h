@@ -8,7 +8,13 @@
 
 namespace trieste
 {
+  struct TokenDef;
   struct Token;
+
+  namespace detail
+  {
+    void register_token(const TokenDef& def);
+  }
 
   struct TokenDef
   {
@@ -16,14 +22,17 @@ namespace trieste
     const char* name;
     flag fl;
 
-    constexpr TokenDef(const char* name, flag fl = 0) : name(name), fl(fl) {}
+    TokenDef(const char* name, flag fl = 0) : name(name), fl(fl)
+    {
+      detail::register_token(*this);
+    }
 
     TokenDef() = delete;
     TokenDef(const TokenDef&) = delete;
 
     operator Node() const;
 
-    constexpr bool has(TokenDef::flag f) const
+    bool has(TokenDef::flag f) const
     {
       return (fl & f) != 0;
     }
@@ -33,69 +42,61 @@ namespace trieste
   {
     const TokenDef* def;
 
-    constexpr Token() : def(nullptr) {}
-    constexpr Token(const TokenDef& def) : def(&def) {}
+    Token() : def(nullptr) {}
+    Token(const TokenDef& def) : def(&def) {}
 
     operator Node() const;
 
-    constexpr bool operator&(TokenDef::flag f) const
+    bool operator&(TokenDef::flag f) const
     {
       return def->has(f);
     }
 
-    constexpr bool operator==(const Token& that) const
+    bool operator==(const Token& that) const
     {
       return def == that.def;
     }
 
-    constexpr bool operator!=(const Token& that) const
+    bool operator!=(const Token& that) const
     {
       return def != that.def;
     }
 
-    constexpr bool operator<(const Token& that) const
+    bool operator<(const Token& that) const
     {
       return def < that.def;
     }
 
-    constexpr bool operator>(const Token& that) const
+    bool operator>(const Token& that) const
     {
       return def > that.def;
     }
 
-    constexpr bool operator<=(const Token& that) const
+    bool operator<=(const Token& that) const
     {
       return def <= that.def;
     }
 
-    constexpr bool operator>=(const Token& that) const
+    bool operator>=(const Token& that) const
     {
       return def >= that.def;
     }
 
-    constexpr bool in(const std::initializer_list<Token>& list) const
+    bool in(const std::initializer_list<Token>& list) const
     {
       return std::find(list.begin(), list.end(), *this) != list.end();
     }
 
-    constexpr const char* str() const
+    bool in(const std::vector<Token>& list) const
+    {
+      return std::find(list.begin(), list.end(), *this) != list.end();
+    }
+
+    const char* str() const
     {
       return def->name;
     }
   };
-
-  using Tokens = std::map<std::string_view, Token>;
-
-  inline void register_token(Tokens& tokens, const Token& token)
-  {
-    tokens[token.str()] = token;
-  }
-
-  inline void register_tokens(Tokens& tokens, const std::vector<Token>& list)
-  {
-    for (const auto& token : list)
-      register_token(tokens, token);
-  }
 
   namespace flag
   {
@@ -124,17 +125,48 @@ namespace trieste
     constexpr TokenDef::flag lookdown = 1 << 5;
   }
 
-  inline constexpr auto Invalid = TokenDef("invalid");
-  inline constexpr auto Unclosed = TokenDef("unclosed");
-  inline constexpr auto Top = TokenDef("top", flag::symtab);
-  inline constexpr auto Group = TokenDef("group");
-  inline constexpr auto File = TokenDef("file");
-  inline constexpr auto Directory = TokenDef("directory");
-  inline constexpr auto Seq = TokenDef("seq");
-  inline constexpr auto Lift = TokenDef("lift");
-  inline constexpr auto NoChange = TokenDef("nochange");
-  inline constexpr auto Include = TokenDef("include");
-  inline constexpr auto Error = TokenDef("error");
-  inline constexpr auto ErrorMsg = TokenDef("errormsg", flag::print);
-  inline constexpr auto ErrorAst = TokenDef("errorast");
+  inline const auto Invalid = TokenDef("invalid");
+  inline const auto Top = TokenDef("top", flag::symtab);
+  inline const auto Group = TokenDef("group");
+  inline const auto File = TokenDef("file");
+  inline const auto Directory = TokenDef("directory");
+  inline const auto Seq = TokenDef("seq");
+  inline const auto Lift = TokenDef("lift");
+  inline const auto NoChange = TokenDef("nochange");
+  inline const auto Include = TokenDef("include");
+  inline const auto Error = TokenDef("error");
+  inline const auto ErrorMsg = TokenDef("errormsg", flag::print);
+  inline const auto ErrorAst = TokenDef("errorast");
+
+  namespace detail
+  {
+    inline std::map<std::string_view, Token>& token_map()
+    {
+      static std::map<std::string_view, Token> global_map;
+      return global_map;
+    }
+
+    inline void register_token(const TokenDef& def)
+    {
+      auto& map = token_map();
+      auto it = map.find(def.name);
+      if (it != map.end())
+        throw std::runtime_error(
+          "Duplicate token definition: " + std::string(def.name));
+
+      Token t = def;
+      map[t.str()] = t;
+    }
+
+    inline Token find_token(std::string_view str)
+    {
+      auto& map = token_map();
+      auto it = map.find(str);
+
+      if (it != map.end())
+        return it->second;
+
+      return Invalid;
+    }
+  }
 }

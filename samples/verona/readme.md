@@ -1,4 +1,97 @@
-# Todo
+# TODO
+
+Error messages:
+- Too many repetitions from implicit methods.
+  - `defaultargs`, `partialapp`, `autocreate`, `autofields`, etc.
+
+Code reuse:
+- Code reuse must be intersections of classes and traits only, recursively through type aliases.
+- Logical order: (1) defaultargs, (2) inheritance, (3) partialapp.
+  - Can actually do inheritance first, treating defaultargs as blocking multiple arities.
+- Do textual inclusion of any member or method that isn't already defined.
+  - Need to do type substitution on the included code.
+
+- Automatically insert `use std::builtin`.
+- Better system for including parts of `std`.
+- Check that default types for type parameters satisfy predicates.
+
+Tuples are traits:
+```ts
+type Tuple[T, U] =
+{
+  head(self): self.T
+  rest(self): self.U
+}
+
+// make unit a 0-arity tuple
+class Unit: Tuple[(), ()]
+{
+  head(self): () = ()
+  rest(self): () = ()
+}
+
+Unit: Tuple[Unit, Unit]
+T1: Tuple[T1, Unit]
+(T1, T2): Tuple[T1, Tuple[T2, Unit]]
+(T1, T2, T3): Tuple[T1, Tuple[T2, Tuple[T3, Unit]]]
+(T1, T2, T3, T4): Tuple[T1, Tuple[T2, Tuple[T3, Tuple[T4, Unit]]]]
+
+match w
+{
+  // matches Unit
+  { () => e0 }
+  // matches {} (x = w)
+  { x => e1 }
+  // matches tuple_1 (x = w._0, y = w._1plus)
+  // problem: for w: (T1, T2), we want y: T2, not y: Tuple[T2, Unit]
+  { x, y => e2 }
+  // matches tuple_2 (x = _0, y = _1, z = _2plus)
+  { x, y, z => e3 }
+  // explicity indicate a w._1plus match?
+  { x, y... => e2plus }
+}
+
+// experiment: tuple types
+class tuple_1[T1]
+{
+  size(self): Size = 1
+  apply(self, n: Size): T1 | Unit = if (n == 0) { self._0 }
+  _0(self): T1
+}
+
+class tuple_2[T1, T2]
+{
+  size(self): Size = 2
+  apply(self, n: Size): T1 | T2 | Unit =
+    if (n == 0) { self._0 }
+    else if (n == 1) { self._1 }
+
+  _0(self): T1
+  _1(self): T2
+}
+
+class tuple_3[T1, T2, T3]
+{
+  size(self): Size = 2
+  apply(self, n: Size): T1 | T2 | T3 | Unit =
+    if (n == 0) { self._0 }
+    else if (n == 1) { self._1 }
+    else if (n == 2) { self._2 }
+
+  _0(self): T1
+  _1(self): T2
+  _2(self): T3
+}
+
+type typelist[T] =
+{
+  size(self): Size
+  apply(self, n: Size): T | Unit
+}
+
+```
+
+Associated types
 
 Mangling
 - need reachability to do precise flattening
@@ -6,16 +99,14 @@ Mangling
   - use polymorphic versions of types and functions
   - encode type arguments as fields (classes) or arguments (functions)
 
-Subtyping
-- type inference might not work with typeparameter bounds checking
-```ts
-  x: T1, y: T2, z: T3
-  x.f(y, z)
-  T1 <: { f[](T1, T2, T3) }
-  // but what if T1::f[X](T1, T2, X) ?
-```
-- track `typevar <: x` as upper bounds, `x <: typevar` as lower bounds?
-- typealg: `!`, `A ? B : C`
+Pattern Matching
+- values as arguments
+- exhaustiveness
+- backtracking?
+
+Late loads of code that's been through some passes
+- delay name lookup
+- only tricky part is `create` sugar
 
 Type Descriptor
 - sizeof: encode it as a function?
@@ -106,8 +197,8 @@ mul[n: {*(n, n): n}, a: n...](x: n, y: a): a
 {
   match y
   {
-    { _: () -> () }
-    { y, ys -> x * y, mul(x, ys)... }
+    { _: () => () }
+    { y, ys => x * y, mul(x, ys)... }
   }
 }
 

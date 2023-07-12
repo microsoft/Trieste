@@ -338,6 +338,7 @@ namespace infix
   {
     static Driver d(
       "infix",
+      nullptr,
       parser(),
       wf_parser,
       {{"expressions", expressions(), wf_pass_expressions},

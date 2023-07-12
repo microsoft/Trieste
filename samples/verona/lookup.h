@@ -45,5 +45,7 @@ namespace verona
   Lookups lookup_name(Node id, Node ta = {});
   Lookups lookup_scopedname(Node tn);
   Lookups lookup_scopedname_name(Node tn, Node id, Node ta = {});
-  bool lookup_recursive(Node node);
+  bool lookup(const NodeRange& n, std::initializer_list<Token> t);
+
+  bool recursive_typealias(Node node);
 }

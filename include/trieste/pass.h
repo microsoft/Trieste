@@ -42,7 +42,7 @@ namespace trieste
 
     operator Pass() const
     {
-      return std::make_shared<PassDef>(*this);
+      return std::make_shared<PassDef>(std::move(*this));
     }
 
     void pre(const Token& type, PreF f)
@@ -141,7 +141,11 @@ namespace trieste
               continue;
             }
 
-            auto loc = (*start)->location() * (*(it - 1))->location();
+            auto loc = (*start)->location();
+
+            for (auto i = start + 1; i < it; ++i)
+              loc = loc * (*i)->location();
+
             it = node->erase(start, it);
 
             // If we return nothing, just remove the matched nodes.

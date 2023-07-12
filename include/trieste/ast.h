@@ -61,7 +61,7 @@ namespace trieste
       includes.clear();
     }
 
-    std::string str(size_t level);
+    void str(std::ostream& out, size_t level);
   };
 
   using Symtab = std::shared_ptr<SymtabDef>;
@@ -71,10 +71,8 @@ namespace trieste
     Token type;
     size_t index;
 
-    constexpr Index() : type(Invalid), index(std::numeric_limits<size_t>::max())
-    {}
-    constexpr Index(const Token& type, size_t index) : type(type), index(index)
-    {}
+    Index() : type(Invalid), index(std::numeric_limits<size_t>::max()) {}
+    Index(const Token& type, size_t index) : type(type), index(index) {}
   };
 
   class NodeDef : public std::enable_shared_from_this<NodeDef>
@@ -194,7 +192,7 @@ namespace trieste
       return children.empty();
     }
 
-    size_t size()
+    size_t size() const
     {
       return children.size();
     }
@@ -202,20 +200,6 @@ namespace trieste
     Node& at(size_t index)
     {
       return children.at(index);
-    }
-
-    template<typename... Ts>
-    Node& at(const Index& index, const Ts&... indices)
-    {
-      if (index.type != type_)
-      {
-        if constexpr (sizeof...(Ts) > 0)
-          return at(indices...);
-        else
-          throw std::runtime_error("invalid index");
-      }
-
-      return children.at(index.index);
     }
 
     Node& front()
@@ -254,7 +238,7 @@ namespace trieste
     void push_back(NodeRange range)
     {
       for (auto it = range.first; it != range.second; ++it)
-        push_back(it);
+        push_back(*it);
     }
 
     void push_back_ephemeral(Node node)
@@ -264,6 +248,12 @@ namespace trieste
 
       // Don't set the parent of the new child node to `this`.
       children.push_back(node);
+    }
+
+    void push_back_ephemeral(NodeRange range)
+    {
+      for (auto it = range.first; it != range.second; ++it)
+        push_back_ephemeral(*it);
     }
 
     Node pop_back()
@@ -484,6 +474,14 @@ namespace trieste
       }
     }
 
+    void lookup_replace(Node& node1, Node& node2)
+    {
+      assert(node1->parent_ == this);
+      node1->parent_ = nullptr;
+      node2->parent_ = this;
+      node1 = node2;
+    }
+
     bool equals(Node& node)
     {
       return (type_ == node->type()) &&
@@ -495,6 +493,23 @@ namespace trieste
           [](auto& a, auto& b) { return a->equals(b); }));
     }
 
+    Node common_parent(Node node)
+    {
+      return common_parent(node.get());
+    }
+
+    Node common_parent(NodeDef* node)
+    {
+      auto [p, q] = same_parent(node);
+
+      // If p and q are the same, then one is contained within the other.
+      if (p == q)
+        return p->shared_from_this();
+
+      // Otherwise return the common parent.
+      return p->parent_->shared_from_this();
+    }
+
     bool precedes(Node node)
     {
       return precedes(node.get());
@@ -502,33 +517,13 @@ namespace trieste
 
     bool precedes(NodeDef* node)
     {
-      auto p = this;
-      auto q = node;
-
       // Node A precedes node B iff A is to the left of B and A does not
       // dominate B and B does not dominate A.
-      int d1 = 0, d2 = 0;
-
-      for (auto t = p; t; t = t->parent_)
-        ++d1;
-      for (auto t = q; t; t = t->parent_)
-        ++d2;
-
-      for (int i = 0; i < (d1 - d2); ++i)
-        p = p->parent_;
-      for (int i = 0; i < (d2 - d1); ++i)
-        q = q->parent_;
+      auto [p, q] = same_parent(node);
 
       // If p and q are the same, then either A dominates B or B dominates A.
       if (p == q)
         return false;
-
-      // Find the common parent.
-      while (p->parent_ != q->parent_)
-      {
-        p = p->parent_;
-        q = q->parent_;
-      }
 
       // Check that p is to the left of q.
       auto parent = p->parent_;
@@ -536,25 +531,29 @@ namespace trieste
         parent->find(q->shared_from_this());
     }
 
-    std::string str(size_t level = 0)
+    void str(std::ostream& out, size_t level) const
     {
-      std::stringstream ss;
-      ss << indent(level) << "(" << type_.str();
+      out << indent(level) << "(" << type_.str();
 
       if (type_ & flag::print)
-        ss << " " << location_.view().size() << ":" << location_.view();
+        out << " " << location_.view().size() << ":" << location_.view();
 
       if (symtab_)
-        ss << std::endl << symtab_->str(level + 1);
+      {
+        out << std::endl;
+        symtab_->str(out, level + 1);
+      }
 
       for (auto child : children)
-        ss << std::endl << child->str(level + 1);
+      {
+        out << std::endl;
+        child->str(out, level + 1);
+      }
 
-      ss << ")";
-      return ss.str();
+      out << ")";
     }
 
-    bool errors(std::ostream& out)
+    bool errors(std::ostream& out) const
     {
       if (type_ == Error)
       {
@@ -588,6 +587,34 @@ namespace trieste
 
       return err;
     }
+
+  private:
+    std::pair<NodeDef*, NodeDef*> same_parent(NodeDef* q)
+    {
+      auto p = this;
+
+      // Adjust p and q to point to the same depth in the AST.
+      int d1 = 0, d2 = 0;
+
+      for (auto t = p; t; t = t->parent_)
+        ++d1;
+      for (auto t = q; t; t = t->parent_)
+        ++d2;
+
+      for (int i = 0; i < (d1 - d2); ++i)
+        p = p->parent_;
+      for (int i = 0; i < (d2 - d1); ++i)
+        q = q->parent_;
+
+      // Find the common parent.
+      while (p->parent_ != q->parent_)
+      {
+        p = p->parent_;
+        q = q->parent_;
+      }
+
+      return {p, q};
+    }
   };
 
   inline TokenDef::operator Node() const
@@ -600,51 +627,64 @@ namespace trieste
     return NodeDef::create(*this);
   }
 
-  inline std::string SymtabDef::str(size_t level)
+  inline void SymtabDef::str(std::ostream& out, size_t level)
   {
-    std::stringstream ss;
-    ss << indent(level) << "{";
+    out << indent(level) << "{";
 
     for (auto& [loc, sym] : symbols)
     {
-      ss << std::endl << indent(level + 1) << loc.view() << " =";
+      out << std::endl << indent(level + 1) << loc.view() << " =";
 
       if (sym.size() == 1)
       {
-        ss << " " << sym.back()->type().str();
+        out << " " << sym.back()->type().str();
       }
       else
       {
         for (auto& node : sym)
-          ss << std::endl << indent(level + 2) << node->type().str();
+          out << std::endl << indent(level + 2) << node->type().str();
       }
     }
 
     for (auto& node : includes)
     {
-      ss << std::endl
-         << indent(level + 1) << "include " << node->location().view();
+      out << std::endl
+          << indent(level + 1) << "include " << node->location().view();
     }
 
-    ss << "}";
-    return ss.str();
+    out << "}";
+  }
+
+  inline std::ostream& operator<<(std::ostream& os, const NodeDef* node)
+  {
+    if (node)
+    {
+      node->str(os, 0);
+      os << std::endl;
+    }
+
+    return os;
   }
 
   inline std::ostream& operator<<(std::ostream& os, const Node& node)
   {
-    if (node)
-      os << node->str() << std::endl;
-    return os;
+    return os << node.get();
   }
 
   inline std::ostream& operator<<(std::ostream& os, const NodeRange& range)
   {
     for (auto it = range.first; it != range.second; ++it)
-      os << (*it)->str();
+      (*it)->str(os, 0);
+
     return os;
   }
 
-  inline void print(const Node& node)
+  [[gnu::used]] inline void print(const NodeDef* node)
+  {
+    std::cout << node;
+  }
+
+  [[gnu::used]] inline void print(const Node& node)
   {
     std::cout << node;
   }

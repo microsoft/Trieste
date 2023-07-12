@@ -17,7 +17,6 @@ namespace trieste
   private:
     Node in_node;
     std::map<Token, NodeRange> captures;
-    std::map<Token, Node> defaults;
 
   public:
     Match(Node in_node) : in_node(in_node) {}
@@ -32,20 +31,11 @@ namespace trieste
       return captures[token];
     }
 
-    void def(const Token& token, Node node)
-    {
-      defaults[token] = node;
-    }
-
     Node operator()(const Token& token)
     {
       auto it = captures.find(token);
       if ((it != captures.end()) && *it->second.first)
         return *it->second.first;
-
-      auto it2 = defaults.find(token);
-      if (it2 != defaults.end())
-        return it2->second;
 
       return {};
     }
@@ -53,7 +43,6 @@ namespace trieste
     void operator+=(const Match& that)
     {
       captures.insert(that.captures.begin(), that.captures.end());
-      defaults.insert(that.defaults.begin(), that.defaults.end());
     }
   };
 
@@ -63,6 +52,11 @@ namespace trieste
     {
     public:
       virtual ~PatternDef() = default;
+
+      virtual bool custom_rep()
+      {
+        return false;
+      }
 
       virtual bool match(NodeIt&, NodeIt, Match&) const
       {
@@ -179,6 +173,12 @@ namespace trieste
     public:
       Rep(PatternPtr pattern) : pattern(pattern) {}
 
+      bool custom_rep() override
+      {
+        // Rep(Rep(...)) is treated as Rep(...).
+        return true;
+      }
+
       bool match(NodeIt& it, NodeIt end, Match& match) const override
       {
         while ((it != end) && pattern->match(it, end, match))
@@ -278,9 +278,17 @@ namespace trieste
     {
     private:
       Token type;
+      bool any;
 
     public:
-      Inside(const Token& type) : type(type) {}
+      Inside(const Token& type) : type(type), any(false) {}
+
+      bool custom_rep() override
+      {
+        // Rep(Inside) checks for any parent, not just the immediate parent.
+        any = true;
+        return true;
+      }
 
       bool match(NodeIt& it, NodeIt end, Match&) const override
       {
@@ -288,7 +296,57 @@ namespace trieste
           return false;
 
         auto p = (*it)->parent();
-        return p && (p->type() == type);
+
+        while (p)
+        {
+          if (p->type() == type)
+            return true;
+
+          if (!any)
+            break;
+
+          p = p->parent();
+        }
+
+        return false;
+      }
+    };
+
+    class InsideN : public PatternDef
+    {
+    private:
+      std::vector<Token> types;
+      bool any;
+
+    public:
+      InsideN(const std::vector<Token>& types) : types(types), any(false) {}
+
+      bool custom_rep() override
+      {
+        // Rep(InsideN) checks for any parent, not just the immediate parent.
+        any = true;
+        return true;
+      }
+
+      bool match(NodeIt& it, NodeIt end, Match&) const override
+      {
+        if (it == end)
+          return false;
+
+        auto p = (*it)->parent();
+
+        while (p)
+        {
+          if (p->type().in(types))
+            return true;
+
+          if (!any)
+            break;
+
+          p = p->parent();
+        }
+
+        return false;
       }
     };
 
@@ -296,6 +354,12 @@ namespace trieste
     {
     public:
       First() {}
+
+      bool custom_rep() override
+      {
+        // Rep(First) is treated as First.
+        return true;
+      }
 
       bool match(NodeIt& it, NodeIt end, Match&) const override
       {
@@ -311,6 +375,12 @@ namespace trieste
     {
     public:
       Last() {}
+
+      bool custom_rep() override
+      {
+        // Rep(Last) is treated as Last.
+        return true;
+      }
 
       bool match(NodeIt& it, NodeIt end, Match&) const override
       {
@@ -359,6 +429,12 @@ namespace trieste
     public:
       Pred(PatternPtr pattern) : pattern(pattern) {}
 
+      bool custom_rep() override
+      {
+        // Rep(Pred(...)) is treated as Pred(...).
+        return true;
+      }
+
       bool match(NodeIt& it, NodeIt end, Match& match) const override
       {
         auto begin = it;
@@ -376,6 +452,12 @@ namespace trieste
 
     public:
       NegPred(PatternPtr pattern) : pattern(pattern) {}
+
+      bool custom_rep() override
+      {
+        // Rep(NegPred(...)) is treated as NegPred(...).
+        return true;
+      }
 
       bool match(NodeIt& it, NodeIt end, Match& match) const override
       {
@@ -467,6 +549,9 @@ namespace trieste
 
       Pattern operator++(int) const
       {
+        if (pattern->custom_rep())
+          return {pattern};
+
         return {std::make_shared<Rep>(pattern)};
       }
 
@@ -506,6 +591,11 @@ namespace trieste
     {
       Node node;
     };
+
+    struct EphemeralNodeRange
+    {
+      NodeRange range;
+    };
   }
 
   template<typename F>
@@ -534,7 +624,20 @@ namespace trieste
     return detail::Pattern(std::make_shared<detail::Inside>(type));
   }
 
+  template<typename... Ts>
+  inline detail::Pattern
+  In(const Token& type1, const Token& type2, const Ts&... types)
+  {
+    std::vector<Token> t = {type1, type2, types...};
+    return detail::Pattern(std::make_shared<detail::InsideN>(t));
+  }
+
   inline detail::EphemeralNode operator-(Node node)
+  {
+    return {node};
+  }
+
+  inline detail::EphemeralNodeRange operator-(NodeRange node)
   {
     return {node};
   }
@@ -544,12 +647,12 @@ namespace trieste
     return {range};
   }
 
-  inline detail::RangeOr operator/(NodeRange range, Node node)
+  inline detail::RangeOr operator||(NodeRange range, Node node)
   {
     return {range, node};
   }
 
-  inline Node operator/(Node lhs, Node rhs)
+  inline Node operator||(Node lhs, Node rhs)
   {
     return lhs ? lhs : rhs;
   }
@@ -569,6 +672,12 @@ namespace trieste
   inline Node operator<<(Node node, NodeRange range)
   {
     node->push_back(range);
+    return node;
+  }
+
+  inline Node operator<<(Node node, detail::EphemeralNodeRange ephemeral)
+  {
+    node->push_back_ephemeral(ephemeral.range);
     return node;
   }
 
