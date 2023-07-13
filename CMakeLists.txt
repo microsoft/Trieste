@@ -130,11 +130,5 @@ export(PACKAGE trieste)
 # # Add samples
 if(TRIESTE_BUILD_SAMPLES)
   enable_testing()
-
-  if(NOT MSVC)
-    # # MSVC can't build the Verona example in CI it takes too much memory.
-    add_subdirectory(samples/verona)
-  endif()
-
   add_subdirectory(samples/infix)
 endif()
