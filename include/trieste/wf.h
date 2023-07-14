@@ -940,9 +940,10 @@ namespace trieste
           return node;
         }
 
-        void operator=(Node rhs)
+        WFLookup& operator=(Node rhs)
         {
-          node->parent()->lookup_replace(node, rhs);
+          node->parent()->replace(node, rhs);
+          return *this;
         }
 
         Node& operator->()
