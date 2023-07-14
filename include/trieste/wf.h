@@ -933,7 +933,7 @@ namespace trieste
       struct WFLookup
       {
         const Wellformed* wf;
-        Node& node;
+        Node node;
 
         operator Node&()
         {
@@ -973,7 +973,7 @@ namespace trieste
     }
   }
 
-  inline wf::detail::WFLookup operator/(Node& node, const Token& field)
+  inline wf::detail::WFLookup operator/(const Node& node, const Token& field)
   {
     for (auto wf : wf::detail::wf_current)
     {
@@ -991,7 +991,8 @@ namespace trieste
       std::string(field.str()) + "`");
   }
 
-  inline wf::detail::WFLookup operator/(const wf::Wellformed& wf, Node& node)
+  inline wf::detail::WFLookup
+  operator/(const wf::Wellformed& wf, const Node& node)
   {
     return {&wf, node};
   }
