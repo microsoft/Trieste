@@ -933,16 +933,19 @@ namespace trieste
       struct WFLookup
       {
         const Wellformed* wf;
-        Node& node;
+        Node node;
+        std::size_t index;
 
         operator Node&()
         {
           return node;
         }
 
-        void operator=(Node rhs)
+        WFLookup& operator=(Node rhs)
         {
-          node->parent()->lookup_replace(node, rhs);
+          node->parent()->replace(node->parent()->at(index), rhs);
+          node = rhs;
+          return *this;
         }
 
         Node& operator->()
@@ -957,7 +960,8 @@ namespace trieste
 
         WFLookup operator/(const Token& field)
         {
-          return {wf, node->at(wf->index(node->type(), field))};
+          auto i = wf->index(node->type(), field);
+          return {wf, node->at(i), i};
         }
       };
     }
@@ -973,7 +977,7 @@ namespace trieste
     }
   }
 
-  inline wf::detail::WFLookup operator/(Node& node, const Token& field)
+  inline wf::detail::WFLookup operator/(const Node& node, const Token& field)
   {
     for (auto wf : wf::detail::wf_current)
     {
@@ -983,7 +987,7 @@ namespace trieste
       auto i = wf->index(node->type(), field);
 
       if (i != std::numeric_limits<size_t>::max())
-        return {wf, node->at(i)};
+        return {wf, node->at(i), i};
     }
 
     throw std::runtime_error(
@@ -991,8 +995,9 @@ namespace trieste
       std::string(field.str()) + "`");
   }
 
-  inline wf::detail::WFLookup operator/(const wf::Wellformed& wf, Node& node)
+  inline wf::detail::WFLookup
+  operator/(const wf::Wellformed& wf, const Node& node)
   {
-    return {&wf, node};
+    return {&wf, node, 0};
   }
 }
