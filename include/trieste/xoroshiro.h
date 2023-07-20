@@ -27,6 +27,8 @@ namespace xoroshiro
       }
 
     public:
+      typedef RESULT result_type;
+
       XorOshiro(STATE x_ = 5489, STATE y_ = 0) : x(x_), y(y_)
       {
         // If both zero, then this does not work
@@ -47,17 +49,17 @@ namespace xoroshiro
         (*this)();
       }
 
-      constexpr static RESULT min()
+      constexpr static result_type min()
       {
-        return std::numeric_limits<RESULT>::min();
+        return std::numeric_limits<result_type>::min();
       }
 
-      constexpr static RESULT max()
+      constexpr static result_type max()
       {
-        return std::numeric_limits<RESULT>::max();
+        return std::numeric_limits<result_type>::max();
       }
 
-      RESULT operator()()
+      result_type operator()()
       {
         STATE r = x + y;
         y ^= x;
