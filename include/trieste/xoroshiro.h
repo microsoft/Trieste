@@ -27,7 +27,7 @@ namespace xoroshiro
       }
 
     public:
-      typedef RESULT result_type;
+      using result_type = RESULT;
 
       XorOshiro(STATE x_ = 5489, STATE y_ = 0) : x(x_), y(y_)
       {
