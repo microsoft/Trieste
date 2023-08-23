@@ -681,6 +681,30 @@ namespace trieste
         return choice2 | choice1;
       }
 
+      inline Choice operator-(const Choice& choice, const Token& type)
+      {
+        Choice result{choice.types};
+        result.types.erase(
+          std::remove(result.types.begin(), result.types.end(), type),
+          result.types.end());
+        return result;
+      }
+
+      inline Choice operator-(const Choice& choice1, const Choice& choice2)
+      {
+        Choice result{choice1.types};
+        result.types.erase(
+          std::remove_if(
+            result.types.begin(),
+            result.types.end(),
+            [&](auto t) {
+              return std::find(choice2.types.begin(), choice2.types.end(), t) !=
+                choice2.types.end();
+            }),
+          result.types.end());
+        return result;
+      }
+
       inline Sequence operator++(const Token& type, int)
       {
         return Sequence{Choice{std::vector<Token>{type}}, 0};

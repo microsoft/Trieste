@@ -27,7 +27,7 @@ namespace infix
   // clang-format on
 
   inline const auto wf_expressions_tokens =
-    wf_literal | Ident | Add | Subtract | Divide | Multiply | Expression;
+    (wf_parse_tokens - (String | Paren | Print)) | Expression;
 
   // clang-format off
   inline const auto wf_pass_expressions =
@@ -58,8 +58,7 @@ namespace infix
     ;
   // clang-format on
 
-  inline const auto wf_operands_tokens =
-    wf_literal | Ident | Add | Subtract | Divide | Multiply;
+  inline const auto wf_operands_tokens = wf_expressions_tokens - Expression;
 
   // clang-format off
   inline const auto wf_pass_trim =
@@ -68,8 +67,7 @@ namespace infix
     ;
   //clang-format on
 
-  inline const auto wf_check_refs_tokens =
-    wf_literal | Ref | Add | Subtract | Multiply | Divide;
+  inline const auto wf_check_refs_tokens = (wf_operands_tokens - Ident) | Ref;
 
   // clang-format off
   inline const auto wf_pass_check_refs =
