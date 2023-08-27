@@ -18,12 +18,13 @@ namespace trieste
   class PassDef
   {
   public:
-    using PreF = std::function<size_t(Node)>;
-    using PostF = std::function<size_t(Node)>;
+    using F = std::function<size_t(Node)>;
 
   private:
-    std::map<Token, PreF> pre_;
-    std::map<Token, PostF> post_;
+    F pre_once;
+    F post_once;
+    std::map<Token, F> pre_;
+    std::map<Token, F> post_;
     dir::flag direction_;
     std::vector<detail::PatternEffect<Node>> rules_;
 
@@ -45,12 +46,22 @@ namespace trieste
       return std::make_shared<PassDef>(std::move(*this));
     }
 
-    void pre(const Token& type, PreF f)
+    void pre(F f)
+    {
+      pre_once = f;
+    }
+
+    void post(F f)
+    {
+      post_once = f;
+    }
+
+    void pre(const Token& type, F f)
     {
       pre_[type] = f;
     }
 
-    void post(const Token& type, PostF f)
+    void post(const Token& type, F f)
     {
       post_[type] = f;
     }
@@ -73,6 +84,9 @@ namespace trieste
       size_t changes_sum = 0;
       size_t count = 0;
 
+      if (pre_once)
+        changes += pre_once(node);
+
       // Because apply runs over child nodes, the top node is never visited.
       do
       {
@@ -88,6 +102,9 @@ namespace trieste
         if (flag(dir::once))
           break;
       } while (changes > 0);
+
+      if (post_once)
+        changes += post_once(node);
 
       return {node, count, changes_sum};
     }
