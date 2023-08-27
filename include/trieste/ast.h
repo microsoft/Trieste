@@ -485,6 +485,7 @@ namespace trieste
     bool equals(Node& node)
     {
       return (type_ == node->type()) &&
+        (!(type_ & flag::print) || (location_ == node->location_)) &&
         (std::equal(
           children.begin(),
           children.end(),
