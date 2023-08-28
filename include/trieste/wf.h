@@ -136,7 +136,7 @@ namespace trieste
 
         if (!ok)
         {
-          out << node->location().origin_linecol() << "unexpected "
+          out << node->location().origin_linecol() << ": unexpected "
               << node->type().str() << ", expected a ";
 
           for (size_t i = 0; i < types.size(); ++i)
@@ -222,7 +222,7 @@ namespace trieste
 
         if (!has_err && (node->size() < minlen))
         {
-          out << node->location().origin_linecol() << "expected at least "
+          out << node->location().origin_linecol() << ": expected at least "
               << minlen << " children, found " << node->size() << std::endl
               << node->location().str() << node << std::endl;
           ok = false;
@@ -310,7 +310,7 @@ namespace trieste
             if (find == defs.end())
             {
               out << child->location().origin_linecol()
-                  << "missing symbol table binding for " << node->type().str()
+                  << ": missing symbol table binding for " << node->type().str()
                   << std::endl
                   << child->location().str() << node << std::endl;
               ok = false;
@@ -322,7 +322,7 @@ namespace trieste
 
         if (!has_error && (node->size() != fields.size()))
         {
-          out << node->location().origin_linecol() << "expected "
+          out << node->location().origin_linecol() << ": expected "
               << fields.size() << " children, found " << node->size()
               << std::endl
               << node->location().str() << node << std::endl;
@@ -366,7 +366,7 @@ namespace trieste
             {
               auto defs = node->scope()->look(name);
               out << node->location().origin_linecol()
-                  << "conflicting definitions of `" << name.view()
+                  << ": conflicting definitions of `" << name.view()
                   << "`:" << std::endl;
 
               for (auto def : defs)
@@ -381,7 +381,7 @@ namespace trieste
           ++index;
         }
 
-        out << node->location().origin_linecol() << "no binding found for "
+        out << node->location().origin_linecol() << ": no binding found for "
             << node->type().str() << std::endl
             << node->location().str() << node << std::endl;
         return false;
@@ -472,7 +472,7 @@ namespace trieste
             return true;
 
           out << node->location().origin_linecol()
-              << "expected 0 children, found " << node->size() << std::endl
+              << ": expected 0 children, found " << node->size() << std::endl
               << node->location().str() << node << std::endl;
           return false;
         }
@@ -485,12 +485,12 @@ namespace trieste
           if (child->parent() != node.get())
           {
             out << child->location().origin_linecol()
-                << "this node appears in the AST multiple times:" << std::endl
+                << ": this node appears in the AST multiple times:" << std::endl
                 << child->location().str() << child << std::endl
-                << node->location().origin_linecol() << "here:" << std::endl
+                << node->location().origin_linecol() << ": here:" << std::endl
                 << node << std::endl
                 << child->parent()->location().origin_linecol()
-                << "and here:" << std::endl
+                << ": and here:" << std::endl
                 << child->parent() << std::endl
                 << "Your language implementation needs to explicitly clone "
                    "nodes if they're duplicated."

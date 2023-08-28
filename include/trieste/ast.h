@@ -556,37 +556,27 @@ namespace trieste
 
     bool errors(std::ostream& out) const
     {
-      if (type_ == Error)
-      {
-        auto msg = children.at(0);
-        auto ast = children.at(1);
-
-        if (ast->errors(out))
-          return true;
-
-        out << ast->location().origin_linecol() << msg->location().view()
-            << std::endl
-            << ast->location().str() << std::endl;
-
-        for (size_t i = 2; i < children.size(); ++i)
-        {
-          ast = children.at(i);
-          out << ast->location().origin_linecol() << std::endl
-              << ast->location().str() << std::endl;
-        }
-
-        return true;
-      }
-
       bool err = false;
 
       for (auto& child : children)
+        err = child->errors(out) || err;
+
+      // If an error wraps another error, print only the innermost error.
+      if (err || (type_ != Error))
+        return err;
+
+      for (auto& child : children)
       {
-        if (child->errors(out))
-          err = true;
+        if (child->type() == ErrorMsg)
+          out << child->location().view() << std::endl;
+        else
+          out << child->location().origin_linecol() << std::endl
+              << child->location().str();
       }
 
-      return err;
+      // Trailing blank line.
+      out << std::endl;
+      return true;
     }
 
   private:

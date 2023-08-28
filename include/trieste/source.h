@@ -146,7 +146,7 @@ namespace trieste
       if (source && !source->origin().empty())
       {
         auto [line, col] = linecol();
-        ss << source->origin() << ":" << (line + 1) << ":" << (col + 1) << " ";
+        ss << source->origin() << ":" << (line + 1) << ":" << (col + 1);
       }
 
       return ss.str();
