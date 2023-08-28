@@ -135,7 +135,7 @@ namespace trieste
       if (!re_iterator.consume(hd, re_match))
       {
         auto loc = re_iterator.current();
-        out << loc.origin_linecol() << "expected node" << std::endl
+        out << loc.origin_linecol() << ": expected node" << std::endl
             << loc.str() << std::endl;
         return {};
       }
@@ -146,7 +146,7 @@ namespace trieste
 
       if (type == Invalid)
       {
-        out << type_loc.origin_linecol() << "unknown type" << std::endl
+        out << type_loc.origin_linecol() << ": unknown type" << std::endl
             << type_loc.str() << std::endl;
         return {};
       }
@@ -189,7 +189,7 @@ namespace trieste
 
     // We never finished the AST, so it's an error.
     auto loc = re_iterator.current();
-    out << loc.origin_linecol() << "incomplete AST" << std::endl
+    out << loc.origin_linecol() << ": incomplete AST" << std::endl
         << loc.str() << std::endl;
     return {};
   }
