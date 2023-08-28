@@ -85,7 +85,7 @@ namespace trieste
       size_t count = 0;
 
       if (pre_once)
-        changes += pre_once(node);
+        changes_sum += pre_once(node);
 
       // Because apply runs over child nodes, the top node is never visited.
       do
@@ -104,7 +104,7 @@ namespace trieste
       } while (changes > 0);
 
       if (post_once)
-        changes += post_once(node);
+        changes_sum += post_once(node);
 
       return {node, count, changes_sum};
     }
