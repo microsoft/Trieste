@@ -118,6 +118,11 @@ namespace trieste
       return type_;
     }
 
+    bool in(const std::initializer_list<Token>& list) const
+    {
+      return type_.in(list);
+    }
+
     const Location& location() const
     {
       return location_;
@@ -655,6 +660,17 @@ namespace trieste
   operator==(const trieste::NodeDef* node, const trieste::Token& type)
   {
     return node->type() == type;
+  }
+
+  inline bool operator!=(const trieste::Node& node, const trieste::Token& type)
+  {
+    return node->type() != type;
+  }
+
+  inline bool
+  operator!=(const trieste::NodeDef* node, const trieste::Token& type)
+  {
+    return node->type() != type;
   }
 
   inline std::ostream& operator<<(std::ostream& os, const NodeDef* node)
