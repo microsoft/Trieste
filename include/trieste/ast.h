@@ -651,24 +651,22 @@ namespace trieste
     out << "}";
   }
 
-  inline bool operator==(const trieste::Node& node, const trieste::Token& type)
+  inline bool operator==(const Node& node, const Token& type)
   {
     return node->type() == type;
   }
 
-  inline bool
-  operator==(const trieste::NodeDef* node, const trieste::Token& type)
+  inline bool operator==(const NodeDef* node, const Token& type)
   {
     return node->type() == type;
   }
 
-  inline bool operator!=(const trieste::Node& node, const trieste::Token& type)
+  inline bool operator!=(const Node& node, const Token& type)
   {
     return node->type() != type;
   }
 
-  inline bool
-  operator!=(const trieste::NodeDef* node, const trieste::Token& type)
+  inline bool operator!=(const NodeDef* node, const Token& type)
   {
     return node->type() != type;
   }
