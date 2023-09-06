@@ -299,7 +299,7 @@ namespace trieste
 
         while (p)
         {
-          if (p->type() == type)
+          if (p == type)
             return true;
 
           if (!any)

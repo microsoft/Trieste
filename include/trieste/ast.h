@@ -113,12 +113,12 @@ namespace trieste
         type, (*range.first)->location_ * (*(range.second - 1))->location_));
     }
 
-    const Token& type()
+    const Token& type() const
     {
       return type_;
     }
 
-    const Location& location()
+    const Location& location() const
     {
       return location_;
     }
@@ -644,6 +644,17 @@ namespace trieste
     }
 
     out << "}";
+  }
+
+  inline bool operator==(const trieste::Node& node, const trieste::Token& type)
+  {
+    return node->type() == type;
+  }
+
+  inline bool
+  operator==(const trieste::NodeDef* node, const trieste::Token& type)
+  {
+    return node->type() == type;
   }
 
   inline std::ostream& operator<<(std::ostream& os, const NodeDef* node)

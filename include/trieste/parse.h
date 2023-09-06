@@ -70,7 +70,7 @@ namespace trieste
 
       bool in(const Token& type) const
       {
-        return node->type() == type;
+        return node == type;
       }
 
       bool previous(const Token& type) const
@@ -79,7 +79,7 @@ namespace trieste
           return false;
 
         auto n = node->back();
-        return n && (n->type() == type);
+        return n && (n == type);
       }
 
       void error(const std::string& msg, size_t index = 0)
@@ -108,7 +108,7 @@ namespace trieste
 
         auto p = node->parent();
 
-        if (p->type() == type)
+        if (p == type)
         {
           node = p->shared_from_this();
         }
@@ -144,7 +144,7 @@ namespace trieste
 
       void extend_before(const Token& type)
       {
-        if (!node->empty() && (node->front()->type() == type))
+        if (!node->empty() && (node->front() == type))
         {
           Location loc = re_match.at();
           loc.len = 0;
@@ -154,7 +154,7 @@ namespace trieste
 
       void extend(const Token& type, size_t index = 0)
       {
-        if (!node->empty() && (node->back()->type() == type))
+        if (!node->empty() && (node->back() == type))
           node->back()->extend(re_match.at(index));
         else
           add(type, index);
