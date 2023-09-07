@@ -7,6 +7,7 @@
 #include <cassert>
 #include <functional>
 #include <optional>
+#include <snmalloc/ds_core/defines.h>
 
 namespace trieste
 {
@@ -16,6 +17,7 @@ namespace trieste
   {
   private:
     Node in_node;
+    bool captures_set = false;
     std::map<Token, NodeRange> captures;
 
   public:
@@ -42,7 +44,17 @@ namespace trieste
 
     void operator+=(const Match& that)
     {
+      captures_set = true;
       captures.insert(that.captures.begin(), that.captures.end());
+    }
+
+    SNMALLOC_FAST_PATH void reset()
+    {
+      if (captures_set)
+      {
+        captures.clear();
+        captures_set = false;
+      }
     }
   };
 

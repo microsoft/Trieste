@@ -2,7 +2,6 @@
 
 #include "rewrite.h"
 #include <vector>
-#include <snmalloc/ds_core/defines.h>
 
 namespace trieste
 {
@@ -117,7 +116,7 @@ namespace trieste
       return (direction_ & f) != 0;
     }
 
-    size_t match_children(const Node& node)
+    size_t match_children(const Node& node, Match& match)
     {
       size_t changes = 0;
       auto it = node->begin();
@@ -135,9 +134,8 @@ namespace trieste
 
         for (auto& rule : rules_)
         {
-          auto match = Match(node);
           auto start = it;
-
+          match.reset();
           if (rule.first.match(it, node->end(), match))
           {
             // Replace [start, it) with whatever the rule builds.
@@ -208,6 +206,7 @@ namespace trieste
     size_t apply(Node root)
     {
       size_t changes = 0;
+      auto match = Match(root);
 
       std::vector<std::pair<Node, NodeIt>> path;
 
@@ -218,14 +217,14 @@ namespace trieste
         if (pre_f != pre_.end())
           changes += pre_f->second(node);
         if (flag(dir::topdown))
-          changes += match_children(node);
+          changes += match_children(node, match);
         path.push_back({node, node->begin()});
       };
 
       auto remove = [&]() SNMALLOC_FAST_PATH_LAMBDA {
         Node& node = path.back().first;
         if (flag(dir::bottomup))
-          changes += match_children(node);
+          changes += match_children(node, match);
         auto post_f = post_.find(node->type());
         if (post_f != post_.end())
           changes += post_f->second(node);
