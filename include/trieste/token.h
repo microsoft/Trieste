@@ -22,7 +22,7 @@ namespace trieste
     const char* name;
     flag fl;
 
-    TokenDef(const char* name, flag fl = 0) : name(name), fl(fl)
+    TokenDef(const char* name_, flag fl_ = 0) : name(name_), fl(fl_)
     {
       detail::register_token(*this);
     }
@@ -43,7 +43,7 @@ namespace trieste
     const TokenDef* def;
 
     Token() : def(nullptr) {}
-    Token(const TokenDef& def) : def(&def) {}
+    Token(const TokenDef& def_) : def(&def_) {}
 
     operator Node() const;
 
