@@ -152,7 +152,7 @@ namespace trieste
             // Replace [start, it) with whatever the rule builds.
             auto replace = rule.second(match);
 
-            if (replace && (replace->type() == NoChange))
+            if (replace && (replace == NoChange))
             {
               it = start;
               continue;
@@ -170,7 +170,7 @@ namespace trieste
             {
               replaced = 0;
             }
-            else if (replace->type() == Seq)
+            else if (replace == Seq)
             {
               // Unpack the sequence.
               std::for_each(replace->begin(), replace->end(), [&](Node n) {
@@ -243,7 +243,7 @@ namespace trieste
         bool advance = true;
         auto lifted = lift(*it);
 
-        if ((*it)->type() == Lift)
+        if (*it == Lift)
         {
           lifted.insert(lifted.begin(), *it);
           it = node->erase(it, it + 1);

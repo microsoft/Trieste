@@ -39,7 +39,7 @@ namespace infix
     }
 
     auto assign = defs.front();
-    return assign->back()->type() == Literal;
+    return assign->back() == Literal;
   }
 
   int get_int(const Node& node)

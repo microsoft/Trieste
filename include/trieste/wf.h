@@ -120,14 +120,14 @@ namespace trieste
 
       bool check(Node node, std::ostream& out) const
       {
-        if (node->type() == Error)
+        if (node == Error)
           return true;
 
         auto ok = false;
 
         for (auto& type : types)
         {
-          if (node->type() == type)
+          if (node == type)
           {
             ok = true;
             break;
@@ -216,7 +216,7 @@ namespace trieste
 
         for (auto& child : *node)
         {
-          has_err = has_err || (child->type() == Error);
+          has_err = has_err || (child == Error);
           ok = choice.check(child, out) && ok;
         }
 
@@ -290,7 +290,7 @@ namespace trieste
         {
           // A node that contains an Error node stops checking well-formedness
           // from that point.
-          if (child->type() == Error)
+          if (child == Error)
           {
             has_error = true;
             break;
@@ -460,7 +460,7 @@ namespace trieste
         if (!node)
           return false;
 
-        if (node->type() == Error)
+        if (node == Error)
           return true;
 
         auto find = shapes.find(node->type());
@@ -609,7 +609,7 @@ namespace trieste
         if (!node)
           return false;
 
-        if (node->type() == Error)
+        if (node == Error)
           return true;
 
         node->clear_symbols();
