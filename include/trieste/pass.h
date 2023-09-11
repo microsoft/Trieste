@@ -237,8 +237,9 @@ namespace trieste
         auto& [node,it] = path.back();
         if (it != node->end())
         {
-          add(*it);
+          Node curr = *it;
           it++;
+          add(curr);
         }
         else
         {
