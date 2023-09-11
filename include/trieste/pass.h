@@ -115,19 +115,11 @@ namespace trieste
       return (direction_ & f) != 0;
     }
 
-    size_t apply(Node node)
+    size_t match_children(const Node& node)
     {
-      if (node->type().in({Error, Lift}))
-        return 0;
-
       size_t changes = 0;
-
-      auto pre_f = pre_.find(node->type());
-      if (pre_f != pre_.end())
-        changes += pre_f->second(node);
-
       auto it = node->begin();
-
+      // Perform matching at this level
       while (it != node->end())
       {
         // Don't examine Error or Lift nodes.
@@ -136,9 +128,6 @@ namespace trieste
           ++it;
           continue;
         }
-
-        if (flag(dir::bottomup))
-          changes += apply(*it);
 
         ptrdiff_t replaced = -1;
 
@@ -195,20 +184,9 @@ namespace trieste
 
         if (flag(dir::once))
         {
-          if (flag(dir::topdown) && (replaced != 0))
-          {
-            // Move down the tree.
-            auto to = std::max(replaced, ptrdiff_t(1));
-
-            for (ptrdiff_t i = 0; i < to; ++i)
-              changes += apply(*(it + i));
-          }
-
-          // Skip over everything we examined or populated.
-          if (replaced >= 0)
-            it += replaced;
-          else
-            ++it;
+          // Skip over everything we populated, or if no change (-1) skip
+          // forwards to next term.
+          it += std::abs(replaced);
         }
         else if (replaced >= 0)
         {
@@ -217,15 +195,36 @@ namespace trieste
         }
         else
         {
-          // If we did nothing, move down the tree.
-          if (flag(dir::topdown))
-            changes += apply(*it);
-
           // Advance to the next node.
           ++it;
         }
       }
 
+      return changes;
+    }
+
+    size_t apply(Node node)
+    {
+      if (node->type().in({Error, Lift}))
+        return 0;
+
+      size_t changes = 0;
+
+      auto pre_f = pre_.find(node->type());
+      if (pre_f != pre_.end())
+        changes += pre_f->second(node);
+      if (flag(dir::topdown))
+        changes += match_children(node);
+
+      auto it = node->begin();
+      while (it != node->end())
+      {
+        changes += apply(*it);
+        it++;
+      }
+
+      if (flag(dir::bottomup))
+        changes += match_children(node);
       auto post_f = post_.find(node->type());
       if (post_f != post_.end())
         changes += post_f->second(node);
