@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rewrite.h"
+#include <vector>
 
 namespace trieste
 {
@@ -203,31 +204,47 @@ namespace trieste
       return changes;
     }
 
-    size_t apply(Node node)
+    size_t apply(Node root)
     {
-      if (node->type().in({Error, Lift}))
-        return 0;
-
       size_t changes = 0;
 
-      auto pre_f = pre_.find(node->type());
-      if (pre_f != pre_.end())
-        changes += pre_f->second(node);
-      if (flag(dir::topdown))
-        changes += match_children(node);
+      std::vector<std::pair<Node, NodeIt>> path;
 
-      auto it = node->begin();
-      while (it != node->end())
+      auto add = [&](const Node& node) {
+        if (node->type().in({Error, Lift}))
+          return;
+        auto pre_f = pre_.find(node->type());
+        if (pre_f != pre_.end())
+          changes += pre_f->second(node);
+        if (flag(dir::topdown))
+          changes += match_children(node);
+        path.push_back({node, node->begin()});
+      };
+
+      auto remove = [&]() {
+        Node& node = path.back().first;
+        if (flag(dir::bottomup))
+          changes += match_children(node);
+        auto post_f = post_.find(node->type());
+        if (post_f != post_.end())
+          changes += post_f->second(node);
+        path.pop_back();
+      };
+
+      add(root);
+      while (!path.empty())
       {
-        changes += apply(*it);
-        it++;
+        auto& [node,it] = path.back();
+        if (it != node->end())
+        {
+          add(*it);
+          it++;
+        }
+        else
+        {
+          remove();
+        }
       }
-
-      if (flag(dir::bottomup))
-        changes += match_children(node);
-      auto post_f = post_.find(node->type());
-      if (post_f != post_.end())
-        changes += post_f->second(node);
 
       return changes;
     }
