@@ -237,19 +237,17 @@ namespace trieste
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
-        auto match2 = match;
         auto begin = it;
 
-        if (!first->match(it, end, match2))
+        if (!first->match(it, end, match))
           return false;
 
-        if (!second->match(it, end, match2))
+        if (!second->match(it, end, match))
         {
           it = begin;
           return false;
         }
 
-        match += match2;
         return true;
       }
     };
@@ -266,19 +264,17 @@ namespace trieste
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
-        auto match2 = match;
+        auto backtrack_match = match;
 
-        if (first->match(it, end, match2))
+        if (first->match(it, end, match))
         {
-          match += match2;
           return true;
         }
 
-        auto match3 = match;
+        match = backtrack_match;
 
-        if (second->match(it, end, match3))
+        if (second->match(it, end, match))
         {
-          match += match3;
           return true;
         }
 
@@ -413,22 +409,20 @@ namespace trieste
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
-        auto match2 = match;
         auto begin = it;
 
-        if (!pattern->match(it, end, match2))
+        if (!pattern->match(it, end, match))
           return false;
 
         auto it2 = (*begin)->begin();
         auto end2 = (*begin)->end();
 
-        if (!children->match(it2, end2, match2))
+        if (!children->match(it2, end2, match))
         {
           it = begin;
           return false;
         }
 
-        match += match2;
         return true;
       }
     };
@@ -497,9 +491,8 @@ namespace trieste
       bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         auto begin = it;
-        auto match2 = match;
 
-        if (!pattern->match(it, end, match2))
+        if (!pattern->match(it, end, match))
           return false;
 
         if (!action({begin, it}))
@@ -508,7 +501,6 @@ namespace trieste
           return false;
         }
 
-        match += match2;
         return true;
       }
     };
