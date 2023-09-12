@@ -237,18 +237,10 @@ namespace trieste
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
-        auto begin = it;
-
         if (!first->match(it, end, match))
           return false;
 
-        if (!second->match(it, end, match))
-        {
-          it = begin;
-          return false;
-        }
-
-        return true;
+        return second->match(it, end, match);
       }
     };
 
@@ -265,6 +257,7 @@ namespace trieste
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
         auto backtrack_match = match;
+        auto begin = it;
 
         if (first->match(it, end, match))
         {
@@ -272,13 +265,9 @@ namespace trieste
         }
 
         match = backtrack_match;
+        it = begin;
 
-        if (second->match(it, end, match))
-        {
-          return true;
-        }
-
-        return false;
+        return second->match(it, end, match);
       }
     };
 
