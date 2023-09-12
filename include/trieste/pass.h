@@ -2,6 +2,7 @@
 
 #include "rewrite.h"
 #include <vector>
+#include <snmalloc/ds_core/defines.h>
 
 namespace trieste
 {
@@ -210,7 +211,7 @@ namespace trieste
 
       std::vector<std::pair<Node, NodeIt>> path;
 
-      auto add = [&](const Node& node) {
+      auto add = [&](const Node& node) SNMALLOC_FAST_PATH_LAMBDA {
         if (node->type().in({Error, Lift}))
           return;
         auto pre_f = pre_.find(node->type());
@@ -221,7 +222,7 @@ namespace trieste
         path.push_back({node, node->begin()});
       };
 
-      auto remove = [&]() {
+      auto remove = [&]() SNMALLOC_FAST_PATH_LAMBDA {
         Node& node = path.back().first;
         if (flag(dir::bottomup))
           changes += match_children(node);
