@@ -406,13 +406,7 @@ namespace trieste
         auto it2 = (*begin)->begin();
         auto end2 = (*begin)->end();
 
-        if (!children->match(it2, end2, match))
-        {
-          it = begin;
-          return false;
-        }
-
-        return true;
+        return children->match(it2, end2, match);
       }
     };
 

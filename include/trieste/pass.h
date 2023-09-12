@@ -132,9 +132,9 @@ namespace trieste
 
         ptrdiff_t replaced = -1;
 
+        auto start = it;
         for (auto& rule : rules_)
         {
-          auto start = it;
           match.reset();
           if (rule.first.match(it, node->end(), match))
           {
@@ -179,6 +179,10 @@ namespace trieste
 
             changes += replaced;
             break;
+          }
+          else
+          {
+            it = start;
           }
         }
 
