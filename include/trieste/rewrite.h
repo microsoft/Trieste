@@ -58,7 +58,7 @@ namespace trieste
         return false;
       }
 
-      virtual bool match(NodeIt&, NodeIt, Match&) const
+      virtual bool match(NodeIt&, const NodeIt&, Match&) const
       {
         return false;
       }
@@ -76,7 +76,7 @@ namespace trieste
       Cap(const Token& name, PatternPtr pattern) : name(name), pattern(pattern)
       {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         auto begin = it;
         auto match2 = match;
@@ -95,7 +95,7 @@ namespace trieste
     public:
       Anything() {}
 
-      bool match(NodeIt& it, NodeIt end, Match&) const override
+      bool match(NodeIt& it, const NodeIt& end, Match&) const override
       {
         if (it == end)
           return false;
@@ -113,7 +113,7 @@ namespace trieste
     public:
       TokenMatch(const Token& type) : type(type) {}
 
-      bool match(NodeIt& it, NodeIt end, Match&) const override
+      bool match(NodeIt& it, const NodeIt& end, Match&) const override
       {
         if ((it == end) || ((*it)->type() != type))
           return false;
@@ -133,7 +133,7 @@ namespace trieste
       RegexMatch(const Token& type, const std::string& r) : type(type), regex(r)
       {}
 
-      bool match(NodeIt& it, NodeIt end, Match&) const override
+      bool match(NodeIt& it, const NodeIt& end, Match&) const override
       {
         if ((it == end) || ((*it)->type() != type))
           return false;
@@ -154,7 +154,7 @@ namespace trieste
     public:
       Opt(PatternPtr pattern) : pattern(pattern) {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         auto match2 = match;
 
@@ -179,7 +179,7 @@ namespace trieste
         return true;
       }
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         while ((it != end) && pattern->match(it, end, match))
           ;
@@ -195,7 +195,7 @@ namespace trieste
     public:
       Not(PatternPtr pattern) : pattern(pattern) {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         if (it == end)
           return false;
@@ -223,7 +223,7 @@ namespace trieste
     public:
       Seq(PatternPtr first, PatternPtr second) : first(first), second(second) {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         auto match2 = match;
         auto begin = it;
@@ -252,7 +252,7 @@ namespace trieste
       Choice(PatternPtr first, PatternPtr second) : first(first), second(second)
       {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         auto match2 = match;
 
@@ -290,7 +290,7 @@ namespace trieste
         return true;
       }
 
-      bool match(NodeIt& it, NodeIt end, Match&) const override
+      bool match(NodeIt& it, const NodeIt& end, Match&) const override
       {
         if (it == end)
           return false;
@@ -328,7 +328,7 @@ namespace trieste
         return true;
       }
 
-      bool match(NodeIt& it, NodeIt end, Match&) const override
+      bool match(NodeIt& it, const NodeIt& end, Match&) const override
       {
         if (it == end)
           return false;
@@ -361,7 +361,7 @@ namespace trieste
         return true;
       }
 
-      bool match(NodeIt& it, NodeIt end, Match&) const override
+      bool match(NodeIt& it, const NodeIt& end, Match&) const override
       {
         if (it == end)
           return false;
@@ -382,7 +382,7 @@ namespace trieste
         return true;
       }
 
-      bool match(NodeIt& it, NodeIt end, Match&) const override
+      bool match(NodeIt& it, const NodeIt& end, Match&) const override
       {
         return it == end;
       }
@@ -399,7 +399,7 @@ namespace trieste
       : pattern(pattern), children(children)
       {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         auto match2 = match;
         auto begin = it;
@@ -435,7 +435,7 @@ namespace trieste
         return true;
       }
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         auto begin = it;
         auto match2 = match;
@@ -459,7 +459,7 @@ namespace trieste
         return true;
       }
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         auto begin = it;
         auto match2 = match;
@@ -482,7 +482,7 @@ namespace trieste
       : action(action), pattern(pattern)
       {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const override
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const override
       {
         auto begin = it;
         auto match2 = match;
@@ -517,7 +517,7 @@ namespace trieste
     public:
       Pattern(PatternPtr pattern) : pattern(pattern) {}
 
-      bool match(NodeIt& it, NodeIt end, Match& match) const
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const
       {
         return pattern->match(it, end, match);
       }
