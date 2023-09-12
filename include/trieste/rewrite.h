@@ -19,7 +19,7 @@ namespace trieste
     std::map<Token, NodeRange> captures;
 
   public:
-    Match(Node in_node) : in_node(in_node) {}
+    Match(Node in_node_) : in_node(in_node_) {}
 
     Location fresh(const Location& prefix = {})
     {
@@ -73,7 +73,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Cap(const Token& name, PatternPtr pattern) : name(name), pattern(pattern)
+      Cap(const Token& name_, PatternPtr pattern_) : name(name_), pattern(pattern_)
       {}
 
       bool match(NodeIt& it, NodeIt end, Match& match) const override
@@ -111,7 +111,7 @@ namespace trieste
       Token type;
 
     public:
-      TokenMatch(const Token& type) : type(type) {}
+      TokenMatch(const Token& type_) : type(type_) {}
 
       bool match(NodeIt& it, NodeIt end, Match&) const override
       {
@@ -130,7 +130,7 @@ namespace trieste
       RE2 regex;
 
     public:
-      RegexMatch(const Token& type, const std::string& r) : type(type), regex(r)
+      RegexMatch(const Token& type_, const std::string& re) : type(type_), regex(re)
       {}
 
       bool match(NodeIt& it, NodeIt end, Match&) const override
@@ -152,7 +152,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Opt(PatternPtr pattern) : pattern(pattern) {}
+      Opt(PatternPtr pattern_) : pattern(pattern_) {}
 
       bool match(NodeIt& it, NodeIt end, Match& match) const override
       {
@@ -171,7 +171,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Rep(PatternPtr pattern) : pattern(pattern) {}
+      Rep(PatternPtr pattern_) : pattern(pattern_) {}
 
       bool custom_rep() override
       {
@@ -193,7 +193,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Not(PatternPtr pattern) : pattern(pattern) {}
+      Not(PatternPtr pattern_) : pattern(pattern_) {}
 
       bool match(NodeIt& it, NodeIt end, Match& match) const override
       {
@@ -221,7 +221,7 @@ namespace trieste
       PatternPtr second;
 
     public:
-      Seq(PatternPtr first, PatternPtr second) : first(first), second(second) {}
+      Seq(PatternPtr first_, PatternPtr second_) : first(first_), second(second_) {}
 
       bool match(NodeIt& it, NodeIt end, Match& match) const override
       {
@@ -249,7 +249,7 @@ namespace trieste
       PatternPtr second;
 
     public:
-      Choice(PatternPtr first, PatternPtr second) : first(first), second(second)
+      Choice(PatternPtr first_, PatternPtr second_) : first(first_), second(second_)
       {}
 
       bool match(NodeIt& it, NodeIt end, Match& match) const override
@@ -281,7 +281,7 @@ namespace trieste
       bool any;
 
     public:
-      Inside(const Token& type) : type(type), any(false) {}
+      Inside(const Token& type_) : type(type_), any(false) {}
 
       bool custom_rep() override
       {
@@ -319,7 +319,7 @@ namespace trieste
       bool any;
 
     public:
-      InsideN(const std::vector<Token>& types) : types(types), any(false) {}
+      InsideN(const std::vector<Token>& types_) : types(types_), any(false) {}
 
       bool custom_rep() override
       {
@@ -395,8 +395,8 @@ namespace trieste
       PatternPtr children;
 
     public:
-      Children(PatternPtr pattern, PatternPtr children)
-      : pattern(pattern), children(children)
+      Children(PatternPtr pattern_, PatternPtr children_)
+      : pattern(pattern_), children(children_)
       {}
 
       bool match(NodeIt& it, NodeIt end, Match& match) const override
@@ -427,7 +427,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Pred(PatternPtr pattern) : pattern(pattern) {}
+      Pred(PatternPtr pattern_) : pattern(pattern_) {}
 
       bool custom_rep() override
       {
@@ -451,7 +451,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      NegPred(PatternPtr pattern) : pattern(pattern) {}
+      NegPred(PatternPtr pattern_) : pattern(pattern_) {}
 
       bool custom_rep() override
       {
@@ -478,8 +478,8 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Action(ActionFn action, PatternPtr pattern)
-      : action(action), pattern(pattern)
+      Action(ActionFn action_, PatternPtr pattern_)
+      : action(action_), pattern(pattern_)
       {}
 
       bool match(NodeIt& it, NodeIt end, Match& match) const override
@@ -515,7 +515,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Pattern(PatternPtr pattern) : pattern(pattern) {}
+      Pattern(PatternPtr pattern_) : pattern(pattern_) {}
 
       bool match(NodeIt& it, NodeIt end, Match& match) const
       {

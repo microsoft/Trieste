@@ -33,23 +33,23 @@ namespace trieste
 
   public:
     Driver(
-      const std::string& language_name,
-      Options* options,
-      Parse parser,
-      const wf::Wellformed& wfParser,
+      const std::string& language_name_,
+      Options* options_,
+      Parse parser_,
+      const wf::Wellformed& wfParser_,
       std::initializer_list<
-        std::tuple<std::string, Pass, const wf::Wellformed&>> passes)
-    : language_name(language_name),
-      app(language_name),
-      options(options),
-      parser(parser)
+        std::tuple<std::string, Pass, const wf::Wellformed&>> passes_)
+    : language_name(language_name_),
+      app(language_name_),
+      options(options_),
+      parser(parser_)
     {
-      if (wfParser)
-        this->wfParser = &wfParser;
+      if (wfParser_)
+        this->wfParser = &wfParser_;
 
       limits.push_back(parse_only);
 
-      for (auto& [name_, pass, wf] : passes)
+      for (auto& [name_, pass, wf] : passes_)
       {
         auto pwf = wf ? &wf : nullptr;
         this->passes.push_back({name_, pass, pwf});

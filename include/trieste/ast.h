@@ -16,7 +16,7 @@ namespace trieste
   {
     size_t level;
 
-    indent(size_t level) : level(level) {}
+    indent(size_t level_) : level(level_) {}
   };
 
   inline std::ostream& operator<<(std::ostream& out, const indent in)
@@ -72,7 +72,7 @@ namespace trieste
     size_t index;
 
     Index() : type(Invalid), index(std::numeric_limits<size_t>::max()) {}
-    Index(const Token& type, size_t index) : type(type), index(index) {}
+    Index(const Token& type_, size_t index_) : type(type_), index(index_) {}
   };
 
   class NodeDef : public std::enable_shared_from_this<NodeDef>

@@ -123,8 +123,8 @@ namespace trieste
 
     Location() = default;
 
-    Location(Source source, size_t pos, size_t len)
-    : source(source), pos(pos), len(len)
+    Location(Source source_, size_t pos_, size_t len_)
+    : source(source_), pos(pos_), len(len_)
     {}
 
     Location(const std::string& s)
