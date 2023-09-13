@@ -232,11 +232,14 @@ namespace trieste
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
         auto backtrack_it = it;
-        auto backtrack_match = match;
-        if (!pattern->match(it, end, match))
+        auto match2 = match;
+        if (!pattern->match(it, end, match2))
         {
           it = backtrack_it;
-          match = backtrack_match;
+        }
+        else
+        {
+          match = match2;
         }
         return match_continuation(it, end, match); 
       }
@@ -265,14 +268,13 @@ namespace trieste
       {
         NodeIt curr = it;
         auto match2 = match;
-        while ((it != end) && pattern->match(it, end, match))
+        while ((it != end) && pattern->match(it, end, match2))
         {
           curr = it;
-          match2 = match;
+          match = match2;
         }
         // Last match failed so backtrack it.
         it = curr;
-        match = match2;
         return match_continuation(it, end, match); 
       }
     };
@@ -320,15 +322,15 @@ namespace trieste
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
-        auto backtrack_match = match;
+        auto match2 = match;
         auto backtrack_it = it;
 
-        if (first->match(it, end, match))
+        if (first->match(it, end, match2))
         {
+          match = match2;
           return match_continuation(it, end, match);
         }
 
-        match = backtrack_match;
         it = backtrack_it;
 
         return second->match(it, end, match) && match_continuation(it, end, match);
