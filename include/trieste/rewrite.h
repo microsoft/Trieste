@@ -31,7 +31,7 @@ namespace trieste
 
     const NodeRange& operator[](const Token& token)
     {
-      for (size_t i = index; ; index-- )
+      for (size_t i = index; ; i-- )
       {
         const auto& [valid, map] = captures[i];
         if (valid)
@@ -45,8 +45,7 @@ namespace trieste
         if (index == 0)
           break;
       }
-      std::cout << "Looking up unset identifier:" << token << std::endl;
-      abort();
+      throw std::runtime_error("Looking up unset identifier!" + std::string(token.str()));
     }
 
     void set(const Token& token, const NodeRange& range)
@@ -63,7 +62,7 @@ namespace trieste
 
     Node operator()(const Token& token)
     {
-      for (size_t i = index; ; index-- )
+      for (size_t i = index; ; i-- )
       {
         const auto& [valid, map] = captures[i];
         if (valid)
@@ -313,10 +312,7 @@ namespace trieste
       Rep(PatternPtr pattern) : pattern(pattern)
       {  
         if (pattern->has_captures())
-        {
-          std::cout << "Captures not allowed inside iteration (Pattern++)!" << std::endl;
-          abort();
-        }
+          throw std::runtime_error("Captures not allowed inside iteration (Pattern++)!");
       }
 
       PatternPtr clone() const& override
@@ -352,10 +348,7 @@ namespace trieste
       Not(PatternPtr pattern) : pattern(pattern)
       {
         if (pattern->has_captures())
-        {
-          std::cout << "Captures not allowed inside Not (~Pattern)!" << std::endl;
-          abort();
-        }
+          throw std::runtime_error("Captures not allowed inside Not (~Pattern)!");
       }
 
       PatternPtr clone() const& override
@@ -593,10 +586,7 @@ namespace trieste
       Pred(PatternPtr pattern) : pattern(pattern)
       {
         if (pattern->has_captures())
-        {
-          std::cout << "Captures not allowed inside Pred (++Pattern)" << std::endl;
-          abort();
-        }
+          throw std::runtime_error("Captures not allowed inside Pred (++Pattern)!");
       }
 
       PatternPtr clone() const& override
@@ -626,10 +616,7 @@ namespace trieste
       NegPred(PatternPtr pattern) : pattern(pattern)
       {
         if (pattern->has_captures())
-        {
-          std::cout << "Captures not allowed inside NegPred (--Pattern)" << std::endl;
-          abort();
-        }
+          throw std::runtime_error("Captures not allowed inside NegPred (--Pattern)!");
       }
 
       PatternPtr clone() const& override
