@@ -12,7 +12,7 @@ namespace infix
   // use the testing system to discover edges cases, i.e. the testing will
   // not proceed to the next pass until all of the invalid subtrees have
   // been marked as `Error`.
-  auto err(NodeRange& r, const std::string& msg)
+  auto err(const NodeRange& r, const std::string& msg)
   {
     return Error << (ErrorMsg ^ msg) << (ErrorAst << r);
   }

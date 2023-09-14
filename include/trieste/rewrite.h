@@ -28,10 +28,15 @@ namespace trieste
       return in_node->fresh(prefix);
     }
 
-    NodeRange& operator[](const Token& token)
+    const NodeRange& operator[](const Token& token)
+    {
+      return captures[token];
+    }
+
+    void set(const Token& token, const NodeRange& range)
     {
       captures_set = true;
-      return captures[token];
+      captures[token] = range;
     }
 
     Node operator()(const Token& token)
@@ -138,7 +143,7 @@ namespace trieste
         if (!pattern->match(it, end, match))
           return false;
 
-        match[name] = {begin, it};
+        match.set(name, {begin, it});
         return match_continuation(it, end, match);
       }
     };
