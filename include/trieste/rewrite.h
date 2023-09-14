@@ -300,11 +300,9 @@ namespace trieste
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
         NodeIt curr = it;
-        auto match2 = match;
-        while ((it != end) && pattern->match(it, end, match2))
+        while ((it != end) && pattern->match(it, end, match))
         {
           curr = it;
-          match = match2;
         }
         // Last match failed so backtrack it.
         it = curr;
@@ -337,11 +335,10 @@ namespace trieste
         if (it == end)
           return false;
 
-        auto match2 = match;
         auto begin = it;
         it = begin + 1;
 
-        return !pattern->match(begin, end, match2) && match_continuation(it, end, match);
+        return !pattern->match(begin, end, match) && match_continuation(it, end, match);
       }
     };
 
@@ -584,8 +581,7 @@ namespace trieste
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
         auto begin = it;
-        auto match2 = match;
-        return pattern->match(begin, end, match2) && match_continuation(it, end, match);
+        return pattern->match(begin, end, match) && match_continuation(it, end, match);
       }
     };
 
@@ -618,8 +614,7 @@ namespace trieste
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
         auto begin = it;
-        auto match2 = match;
-        return !pattern->match(begin, end, match2) && match_continuation(it, end, match);
+        return !pattern->match(begin, end, match) && match_continuation(it, end, match);
       }
     };
 
