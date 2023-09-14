@@ -80,6 +80,16 @@ namespace trieste
         return false;
       }
 
+      virtual bool has_captures_local() const&
+      {
+        return false;
+      }
+
+      bool has_captures() const&
+      {   
+        return has_captures_local() || (continuation && continuation->has_captures());
+      }
+
       PatternDef(const PatternDef& copy)
       {
         if (copy.continuation)
@@ -130,6 +140,11 @@ namespace trieste
     public:
       Cap(const Token& name, PatternPtr pattern) : name(name), pattern(pattern)
       {}
+
+      bool has_captures_local() const& override
+      {
+        return true;
+      }
 
       PatternPtr clone() const& override
       {
@@ -230,6 +245,11 @@ namespace trieste
     public:
       Opt(PatternPtr pattern) : pattern(pattern) {}
 
+      bool has_captures_local() const& override
+      {
+        return pattern->has_captures();
+      }
+
       PatternPtr clone() const& override
       {
         return std::make_shared<Opt>(*this);
@@ -257,7 +277,14 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Rep(PatternPtr pattern) : pattern(pattern) {}
+      Rep(PatternPtr pattern) : pattern(pattern)
+      {  
+        if (pattern->has_captures())
+        {
+          std::cout << "Captures not allowed inside iteration (Pattern++)!" << std::endl;
+          abort();
+        }
+      }
 
       PatternPtr clone() const& override
       {
@@ -291,7 +318,14 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Not(PatternPtr pattern) : pattern(pattern) {}
+      Not(PatternPtr pattern) : pattern(pattern)
+      {
+        if (pattern->has_captures())
+        {
+          std::cout << "Captures not allowed inside Not (~Pattern)!" << std::endl;
+          abort();
+        }
+      }
 
       PatternPtr clone() const& override
       {
@@ -320,6 +354,11 @@ namespace trieste
     public:
       Choice(PatternPtr first, PatternPtr second) : first(first), second(second)
       {}
+
+      bool has_captures_local() const& override
+      {
+        return first->has_captures() || second->has_captures();
+      }
 
       PatternPtr clone() const& override
       {
@@ -489,6 +528,11 @@ namespace trieste
       : pattern(pattern), children(children)
       {}
 
+      bool has_captures_local() const& override
+      {
+        return pattern->has_captures() || children->has_captures();
+      }
+
       PatternPtr clone() const& override
       {
         return std::make_shared<Children>(*this);
@@ -517,7 +561,14 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Pred(PatternPtr pattern) : pattern(pattern) {}
+      Pred(PatternPtr pattern) : pattern(pattern)
+      {
+        if (pattern->has_captures())
+        {
+          std::cout << "Captures not allowed inside Pred (++Pattern)" << std::endl;
+          abort();
+        }
+      }
 
       PatternPtr clone() const& override
       {
@@ -544,7 +595,14 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      NegPred(PatternPtr pattern) : pattern(pattern) {}
+      NegPred(PatternPtr pattern) : pattern(pattern)
+      {
+        if (pattern->has_captures())
+        {
+          std::cout << "Captures not allowed inside NegPred (--Pattern)" << std::endl;
+          abort();
+        }
+      }
 
       PatternPtr clone() const& override
       {
