@@ -967,7 +967,7 @@ namespace trieste
 
         WFLookup& operator=(Node rhs)
         {
-          node->parent()->replace(node->parent()->at(index), rhs);
+          node->parent()->replace_at(index, rhs);
           node = rhs;
           return *this;
         }
