@@ -30,6 +30,7 @@ namespace trieste
 
     NodeRange& operator[](const Token& token)
     {
+      captures_set = true;
       return captures[token];
     }
 
@@ -39,7 +40,7 @@ namespace trieste
       if ((it != captures.end()) && *it->second.first)
         return *it->second.first;
 
-      return {};
+      return nullptr;
     }
 
     void operator+=(const Match& that)
