@@ -24,6 +24,8 @@ namespace trieste
   public:
     Match(Node in_node) : in_node(in_node) {}
 
+    Match(const Match&) = delete;
+
     Location fresh(const Location& prefix = {})
     {
       return in_node->fresh(prefix);
@@ -42,7 +44,7 @@ namespace trieste
             return it->second;
           }
         }
-        if (index == 0)
+        if (i == 0)
           break;
       }
       throw std::runtime_error("Looking up unset identifier!" + std::string(token.str()));
@@ -73,7 +75,7 @@ namespace trieste
             return *it->second.first;
           }
         }
-        if (index == 0)
+        if (i == 0)
           break;
       }
       return nullptr;
