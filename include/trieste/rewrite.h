@@ -17,8 +17,9 @@ namespace trieste
   {
   private:
     Node in_node;
-    bool captures_set = false;
-    std::map<Token, NodeRange> captures;
+    size_t index{0};
+    std::vector<std::pair<bool, std::map<Token, NodeRange>>> captures{16};
+    static constexpr NodeRange empty{};
 
   public:
     Match(Node in_node) : in_node(in_node) {}
@@ -30,37 +31,72 @@ namespace trieste
 
     const NodeRange& operator[](const Token& token)
     {
-      return captures[token];
+      for (size_t i = index; ; index-- )
+      {
+        const auto& [valid, map] = captures[i];
+        if (valid)
+        {
+          auto it = map.find(token);
+          if ((it != map.end()))
+          {
+            return it->second;
+          }
+        }
+        if (index == 0)
+          break;
+      }
+      std::cout << "Looking up unset identifier:" << token << std::endl;
+      abort();
     }
 
     void set(const Token& token, const NodeRange& range)
     {
-      captures_set = true;
-      captures[token] = range;
+      auto& [valid, map] = captures[index];
+      if (!valid)
+      {
+        map.clear();
+        valid = true;
+      }
+
+      map[token] = range;
     }
 
     Node operator()(const Token& token)
     {
-      auto it = captures.find(token);
-      if ((it != captures.end()) && *it->second.first)
-        return *it->second.first;
-
+      for (size_t i = index; ; index-- )
+      {
+        const auto& [valid, map] = captures[i];
+        if (valid)
+        {
+          auto it = map.find(token);
+          if ((it != map.end()) && *it->second.first)
+          {
+            return *it->second.first;
+          }
+        }
+        if (index == 0)
+          break;
+      }
       return nullptr;
     }
 
-    void operator+=(const Match& that)
+    SNMALLOC_FAST_PATH size_t add_frame()
     {
-      captures_set = true;
-      captures.insert(that.captures.begin(), that.captures.end());
+      index++;
+      if (SNMALLOC_UNLIKELY(captures.size() >= (size_t)index))
+      {
+        captures.resize(index*2);
+      }
+      else
+      {
+        captures[index].first = false; 
+      }
+      return index - 1;
     }
 
-    SNMALLOC_FAST_PATH void reset()
+    SNMALLOC_FAST_PATH void return_to_frame(size_t new_index)
     {
-      if (captures_set)
-      {
-        captures.clear();
-        captures_set = false;
-      }
+      index = new_index;
     }
   };
 
@@ -258,14 +294,11 @@ namespace trieste
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
         auto backtrack_it = it;
-        auto match2 = match;
-        if (!pattern->match(it, end, match2))
+        auto backtrack_frame = match.add_frame();
+        if (!pattern->match(it, end, match))
         {
           it = backtrack_it;
-        }
-        else
-        {
-          match = match2;
+          match.return_to_frame(backtrack_frame);
         }
         return match_continuation(it, end, match); 
       }
@@ -364,16 +397,15 @@ namespace trieste
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
-        auto match2 = match;
         auto backtrack_it = it;
-
-        if (first->match(it, end, match2))
+        auto backtrack_frame = match.add_frame();
+        if (first->match(it, end, match))
         {
-          match = match2;
           return match_continuation(it, end, match);
         }
 
         it = backtrack_it;
+        match.return_to_frame(backtrack_frame);
 
         return second->match(it, end, match) && match_continuation(it, end, match);
       }

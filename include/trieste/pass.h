@@ -135,7 +135,8 @@ namespace trieste
         auto start = it;
         for (auto& rule : rules_)
         {
-          match.reset();
+          match.return_to_frame(0);
+          match.add_frame();
           if (rule.first.match(it, node->end(), match))
           {
             // Replace [start, it) with whatever the rule builds.
