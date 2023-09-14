@@ -81,6 +81,8 @@ namespace trieste
 
     std::tuple<Node, size_t, size_t> run(Node node)
     {
+      Match match(node);
+
       size_t changes = 0;
       size_t changes_sum = 0;
       size_t count = 0;
@@ -91,7 +93,7 @@ namespace trieste
       // Because apply runs over child nodes, the top node is never visited.
       do
       {
-        changes = apply(node);
+        changes = apply(node, match);
 
         auto lifted = lift(node);
         if (!lifted.empty())
@@ -208,10 +210,9 @@ namespace trieste
       return changes;
     }
 
-    size_t apply(Node root)
+    size_t apply(Node root, Match& match)
     {
       size_t changes = 0;
-      auto match = Match(root);
 
       std::vector<std::pair<Node, NodeIt>> path;
 

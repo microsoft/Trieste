@@ -31,6 +31,11 @@ namespace trieste
       return in_node->fresh(prefix);
     }
 
+    void set_root(Node root)
+    {
+      in_node = root;
+    }
+
     const NodeRange& operator[](const Token& token)
     {
       for (size_t i = index; ; i-- )
