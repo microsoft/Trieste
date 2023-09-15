@@ -473,12 +473,12 @@ namespace trieste
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
-        if (it == end)
+        if (SNMALLOC_UNLIKELY(it == end))
           return false;
 
         auto p = (*it)->parent();
 
-        if (p && (p == type))
+        if (SNMALLOC_UNLIKELY(p == type))
           return match_continuation(it, end, match);
 
         return false;
@@ -550,7 +550,7 @@ namespace trieste
 
         auto p = (*it)->parent();
 
-        if (p && p->type().in(types))
+        if (p->type().in(types))
             return match_continuation(it, end, match);
 
         return false;
