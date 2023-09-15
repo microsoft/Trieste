@@ -84,7 +84,7 @@ namespace trieste
             
             if (token_terminal_distance.find(t) != token_terminal_distance.end())
             {
-              unsigned long distance = token_terminal_distance.at(t);
+              std::size_t distance = token_terminal_distance.at(t);
               return 1.0 /
                 (1.0 +
                 (alpha * (depth - target_depth) *
