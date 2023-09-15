@@ -81,10 +81,26 @@ namespace trieste
           tokens.end(),
           std::back_inserter(offsets),
           [&](const Token& t) {
-            return 1.0 /
-              (1.0 +
-               (alpha * (depth - target_depth) *
-                token_terminal_distance.at(t)));
+            
+            if (token_terminal_distance.find(t) != token_terminal_distance.end())
+            {
+              unsigned long distance = token_terminal_distance.at(t);
+              return 1.0 /
+                (1.0 +
+                (alpha * (depth - target_depth) *
+                  distance));
+            }else{
+              std::ostringstream err;
+              err << "Token " << t.str() << " not found in token_terminal_distance map" << std::endl;
+              err << "{";
+              std::string delim = "";
+              for(auto const& [key, val] : token_terminal_distance){
+                err << delim << key.str() << ":" << val;
+                delim = ", ";
+              }
+              err << "}" << std::endl;
+              throw std::runtime_error(err.str());
+            }
           });
 
         // compute the cumulative distribution of P(d | c, p)
@@ -165,7 +181,7 @@ namespace trieste
                  types.end(),
                  static_cast<std::size_t>(0),
                  [&](std::size_t acc, auto& type) {
-                   if (omit.contains(type))
+                   if (omit.find(type) != omit.end())
                    {
                      return acc + max_distance;
                    }
@@ -523,12 +539,12 @@ namespace trieste
         std::size_t max_distance,
         const Token& token) const
       {
-        if (distance.contains(token))
+        if (distance.find(token) != distance.end())
         {
           return distance[token];
         }
 
-        if (!shapes.contains(token))
+        if (shapes.find(token) == shapes.end())
         {
           distance[token] = 0;
         }
