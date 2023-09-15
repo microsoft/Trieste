@@ -414,22 +414,22 @@ namespace trieste
     };
 
     template <size_t N>
-    class InsideNStar : public PatternDef
+    class InsideStar : public PatternDef
     {
     private:
       std::array<Token, N> types;
 
     public:
-      InsideNStar(const std::array<Token, N>& types_) : types(types_) {}
+      InsideStar(const std::array<Token, N>& types_) : types(types_) {}
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<InsideNStar>(*this);
+        return std::make_shared<InsideStar>(*this);
       }
 
       PatternPtr custom_rep() override
       {
-        throw std::runtime_error("Rep(InsideNStar) not allowed! ((In(T,...)++)++");
+        throw std::runtime_error("Rep(InsideStar) not allowed! ((In(T,...)++)++");
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
@@ -453,24 +453,24 @@ namespace trieste
     };
 
     template <size_t N>
-    class InsideN : public PatternDef
+    class Inside : public PatternDef
     {
     private:
       std::array<Token, N> types;
 
     public:
-      InsideN(const std::array<Token, N>& types_) : types(types_) {}
+      Inside(const std::array<Token, N>& types_) : types(types_) {}
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<InsideN>(*this);
+        return std::make_shared<Inside>(*this);
       }
 
       PatternPtr custom_rep() override
       {
-        // Rep(InsideN) -> InsideNStar
+        // Rep(Inside) -> InsideStar
         if (no_continuation())
-          return std::make_shared<InsideNStar<N>>(types);
+          return std::make_shared<InsideStar<N>>(types);
         return {};
       }
 
@@ -794,7 +794,7 @@ namespace trieste
   In(const Token& type1,  const Ts&... types)
   {
     std::array<Token, 1+sizeof...(types)> types_ = {type1, types...};
-    return detail::Pattern(std::make_shared<detail::InsideN<1+sizeof...(types)>>(types_));
+    return detail::Pattern(std::make_shared<detail::Inside<1+sizeof...(types)>>(types_));
   }
 
   inline detail::EphemeralNode operator-(Node node)
