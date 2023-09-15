@@ -81,7 +81,8 @@ namespace trieste
 
     std::tuple<Node, size_t, size_t> run(Node node)
     {
-      Match match(node);
+      static thread_local Match match(node);
+      match.set_root(node);
 
       size_t changes = 0;
       size_t changes_sum = 0;

@@ -89,7 +89,7 @@ namespace trieste
     SNMALLOC_FAST_PATH size_t add_frame()
     {
       index++;
-      if (SNMALLOC_UNLIKELY(captures.size() >= (size_t)index))
+      if (SNMALLOC_UNLIKELY(captures.size() == (size_t)index))
       {
         captures.resize(index*2);
       }
