@@ -117,9 +117,9 @@ namespace trieste
     public:
       virtual ~PatternDef() = default;
 
-      virtual bool custom_rep()
+      virtual PatternPtr custom_rep()
       {
-        return false;
+        return {};
       }
 
       virtual bool has_captures_local() const&
@@ -327,10 +327,12 @@ namespace trieste
         return std::make_shared<Rep>(*this);
       }
 
-      bool custom_rep() override
+      PatternPtr custom_rep() override
       {
-        // Rep(Rep(...)) is treated as Rep(...).
-        return true;
+        // Rep(Rep(P)) -> Rep(P)
+        if (no_continuation())
+          return clone();
+        return {};
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
@@ -411,25 +413,22 @@ namespace trieste
       }
     };
 
-    class Inside : public PatternDef
+    class InsideStar : public PatternDef
     {
     private:
       Token type;
-      bool any;
 
     public:
-      Inside(const Token& type_) : type(type_), any(false) {}
+      InsideStar(const Token& type_) : type(type_) {}
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Inside>(*this);
+        return std::make_shared<InsideStar>(*this);
       }
 
-      bool custom_rep() override
+      PatternPtr custom_rep() override
       {
-        // Rep(Inside) checks for any parent, not just the immediate parent.
-        any = true;
-        return true;
+        throw std::runtime_error("Rep(InsideStar) not allowed! ((In(T)++)++");
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
@@ -444,9 +443,6 @@ namespace trieste
           if (p == type)
             return match_continuation(it, end, match);
 
-          if (!any)
-            break;
-
           p = p->parent();
         }
 
@@ -454,25 +450,57 @@ namespace trieste
       }
     };
 
-    class InsideN : public PatternDef
+    class Inside : public PatternDef
     {
     private:
-      std::vector<Token> types;
-      bool any;
+      Token type;
 
     public:
-      InsideN(const std::vector<Token>& types_) : types(types_), any(false) {}
+      Inside(const Token& type_) : type(type_) {}
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<InsideN>(*this);
+        return std::make_shared<Inside>(*this);
       }
 
-      bool custom_rep() override
+      PatternPtr custom_rep() override
       {
-        // Rep(InsideN) checks for any parent, not just the immediate parent.
-        any = true;
-        return true;
+        // Rep(Inside) checks for any parent, not just the immediate parent.
+        if(no_continuation())
+          return std::make_shared<InsideStar>(type);
+        return {};
+      }
+
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      {
+        if (it == end)
+          return false;
+
+        auto p = (*it)->parent();
+
+        if (p && (p == type))
+          return match_continuation(it, end, match);
+
+        return false;
+      }
+    };
+
+    class InsideNStar : public PatternDef
+    {
+    private:
+      std::vector<Token> types;
+
+    public:
+      InsideNStar(const std::vector<Token>& types_) : types(types_) {}
+
+      PatternPtr clone() const& override
+      {
+        return std::make_shared<InsideNStar>(*this);
+      }
+
+      PatternPtr custom_rep() override
+      {
+        throw std::runtime_error("Rep(InsideNStar) not allowed! ((In(T,...)++)++");
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
@@ -487,11 +515,43 @@ namespace trieste
           if (p->type().in(types))
             return match_continuation(it, end, match);
 
-          if (!any)
-            break;
-
           p = p->parent();
         }
+
+        return false;
+      }
+    };
+
+    class InsideN : public PatternDef
+    {
+    private:
+      std::vector<Token> types;
+
+    public:
+      InsideN(const std::vector<Token>& types_) : types(types_) {}
+
+      PatternPtr clone() const& override
+      {
+        return std::make_shared<InsideN>(*this);
+      }
+
+      PatternPtr custom_rep() override
+      {
+        // Rep(InsideN) -> InsideNStar
+        if (no_continuation())
+          return std::make_shared<InsideNStar>(types);
+        return {};
+      }
+
+      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      {
+        if (it == end)
+          return false;
+
+        auto p = (*it)->parent();
+
+        if (p && p->type().in(types))
+            return match_continuation(it, end, match);
 
         return false;
       }
@@ -507,10 +567,9 @@ namespace trieste
         return std::make_shared<First>(*this);
       }
 
-      bool custom_rep() override
+      PatternPtr custom_rep() override
       {
-        // Rep(First) is treated as First.
-        return true;
+        throw std::runtime_error("Rep(First) not allowed! (Start)++");
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
@@ -533,10 +592,14 @@ namespace trieste
         return std::make_shared<Last>(*this);
       }
 
-      bool custom_rep() override
+      PatternPtr custom_rep() override
       {
+        throw std::runtime_error("Rep(Last) not allowed! (End)++");
+
         // Rep(Last) is treated as Last.
-        return true;
+        if (no_continuation())
+          return clone();
+        return {};
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match&) const& override
@@ -601,10 +664,9 @@ namespace trieste
         return std::make_shared<Pred>(*this);
       }
 
-      bool custom_rep() override
+      PatternPtr custom_rep() override
       {
-        // Rep(Pred(...)) is treated as Pred(...).
-        return true;
+        throw std::runtime_error("Rep(Pred) not allowed! (++Pattern)++");
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
@@ -631,10 +693,9 @@ namespace trieste
         return std::make_shared<NegPred>(*this);
       }
 
-      bool custom_rep() override
+      PatternPtr custom_rep() override
       {
-        // Rep(NegPred(...)) is treated as NegPred(...).
-        return true;
+        throw std::runtime_error("Rep(NegPred) not allowed! (--Pattern)++");
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
@@ -721,8 +782,9 @@ namespace trieste
 
       Pattern operator++(int) const
       {
-        if (pattern->custom_rep())
-          return {pattern};
+        auto result = pattern->custom_rep();
+        if (result)
+          return {result};
 
         return {std::make_shared<Rep>(pattern)};
       }
