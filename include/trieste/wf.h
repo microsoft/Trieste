@@ -49,16 +49,16 @@ namespace trieste
        * $c$ and $t$ is the target depth.
        */
       Gen(
-        TokenTerminalDistance token_terminal_distance,
-        GenNodeLocationF gloc,
-        Seed seed,
-        size_t target_depth,
-        double alpha = 1)
-      : token_terminal_distance(token_terminal_distance),
-        gloc(gloc),
-        rand(seed),
-        target_depth(target_depth),
-        alpha(alpha)
+        TokenTerminalDistance token_terminal_distance_,
+        GenNodeLocationF gloc_,
+        Seed seed_,
+        size_t target_depth_,
+        double alpha_ = 1)
+      : token_terminal_distance(token_terminal_distance_),
+        gloc(gloc_),
+        rand(seed_),
+        target_depth(target_depth_),
+        alpha(alpha_)
       {}
 
       Token choose(const std::vector<Token>& tokens, std::size_t depth)
@@ -542,9 +542,9 @@ namespace trieste
               if constexpr (std::is_same_v<T, Sequence>)
               {
                 return arg.choice.expected_distance_to_terminal(
-                  current, max_distance, std::function([&](const Token& token) {
+                  current, max_distance, std::function([&](const Token& token_) {
                     return min_dist_to_terminal(
-                      distance, current, max_distance, token);
+                      distance, current, max_distance, token_);
                   }));
               }
               else if constexpr (std::is_same_v<T, Fields>)
@@ -558,9 +558,9 @@ namespace trieste
                       field.choice.expected_distance_to_terminal(
                         current,
                         max_distance,
-                        std::function([&](const Token& token) {
+                        std::function([&](const Token& token_) {
                           return min_dist_to_terminal(
-                            distance, current, max_distance, token);
+                            distance, current, max_distance, token_);
                         }));
                     return std::max(acc, expected_dist);
                   });

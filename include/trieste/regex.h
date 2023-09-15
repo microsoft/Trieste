@@ -87,7 +87,7 @@ namespace trieste
     re2::StringPiece sp;
 
   public:
-    REIterator(Source source) : source(source), sp(source->view()) {}
+    REIterator(Source source_) : source(source_), sp(source_->view()) {}
 
     bool empty()
     {

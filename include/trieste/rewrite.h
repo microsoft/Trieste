@@ -22,7 +22,7 @@ namespace trieste
     static constexpr NodeRange empty{};
 
   public:
-    Match(Node in_node) : in_node(in_node) {}
+    Match(Node in_node_) : in_node(in_node_) {}
 
     Match(const Match&) = delete;
 
@@ -180,7 +180,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Cap(const Token& name, PatternPtr pattern) : name(name), pattern(pattern)
+      Cap(const Token& name_, PatternPtr pattern_) : name(name_), pattern(pattern_)
       {}
 
       bool has_captures_local() const& override
@@ -233,7 +233,7 @@ namespace trieste
       Token type;
 
     public:
-      TokenMatch(const Token& type) : type(type) {}
+      TokenMatch(const Token& type_) : type(type_) {}
 
       PatternPtr clone() const& override
       {
@@ -258,7 +258,7 @@ namespace trieste
       std::shared_ptr<RE2> regex;
 
     public:
-      RegexMatch(const Token& type, const std::string& r) : type(type), regex(std::make_shared<RE2>(r))
+      RegexMatch(const Token& type_, const std::string& re) : type(type_), regex(std::make_shared<RE2>(re))
       {}
 
       PatternPtr clone() const& override
@@ -285,7 +285,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Opt(PatternPtr pattern) : pattern(pattern) {}
+      Opt(PatternPtr pattern_) : pattern(pattern_) {}
 
       bool has_captures_local() const& override
       {
@@ -316,7 +316,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Rep(PatternPtr pattern) : pattern(pattern)
+      Rep(PatternPtr pattern_) : pattern(pattern_)
       {  
         if (pattern->has_captures())
           throw std::runtime_error("Captures not allowed inside iteration (Pattern++)!");
@@ -352,7 +352,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Not(PatternPtr pattern) : pattern(pattern)
+      Not(PatternPtr pattern_) : pattern(pattern_)
       {
         if (pattern->has_captures())
           throw std::runtime_error("Captures not allowed inside Not (~Pattern)!");
@@ -382,7 +382,7 @@ namespace trieste
       PatternPtr second;
 
     public:
-      Choice(PatternPtr first, PatternPtr second) : first(first), second(second)
+      Choice(PatternPtr first_, PatternPtr second_) : first(first_), second(second_)
       {}
 
       bool has_captures_local() const& override
@@ -418,7 +418,7 @@ namespace trieste
       bool any;
 
     public:
-      Inside(const Token& type) : type(type), any(false) {}
+      Inside(const Token& type_) : type(type_), any(false) {}
 
       PatternPtr clone() const& override
       {
@@ -461,7 +461,7 @@ namespace trieste
       bool any;
 
     public:
-      InsideN(const std::vector<Token>& types) : types(types), any(false) {}
+      InsideN(const std::vector<Token>& types_) : types(types_), any(false) {}
 
       PatternPtr clone() const& override
       {
@@ -553,8 +553,8 @@ namespace trieste
       PatternPtr children;
 
     public:
-      Children(PatternPtr pattern, PatternPtr children)
-      : pattern(pattern), children(children)
+      Children(PatternPtr pattern_, PatternPtr children_)
+      : pattern(pattern_), children(children_)
       {}
 
       bool has_captures_local() const& override
@@ -590,7 +590,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Pred(PatternPtr pattern) : pattern(pattern)
+      Pred(PatternPtr pattern_) : pattern(pattern_)
       {
         if (pattern->has_captures())
           throw std::runtime_error("Captures not allowed inside Pred (++Pattern)!");
@@ -620,7 +620,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      NegPred(PatternPtr pattern) : pattern(pattern)
+      NegPred(PatternPtr pattern_) : pattern(pattern_)
       {
         if (pattern->has_captures())
           throw std::runtime_error("Captures not allowed inside NegPred (--Pattern)!");
@@ -653,8 +653,8 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Action(ActionFn action, PatternPtr pattern)
-      : action(action), pattern(pattern)
+      Action(ActionFn action_, PatternPtr pattern_)
+      : action(action_), pattern(pattern_)
       {}
 
       PatternPtr clone() const& override
@@ -687,7 +687,7 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Pattern(PatternPtr pattern) : pattern(pattern) {}
+      Pattern(PatternPtr pattern_) : pattern(pattern_) {}
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const
       {

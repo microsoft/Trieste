@@ -27,8 +27,8 @@ namespace trieste
       ParseEffect effect;
 
     public:
-      RuleDef(const std::string& s, ParseEffect effect)
-      : regex(s), effect(effect)
+      RuleDef(const std::string& s, ParseEffect effect_)
+      : regex(s), effect(effect_)
       {}
     };
 
@@ -237,7 +237,7 @@ namespace trieste
     std::map<Token, GenLocationF> gens;
 
   public:
-    Parse(depth depth_) : depth_(depth_) {}
+    Parse(depth depth) : depth_(depth) {}
 
     Parse& operator()(
       const std::string& mode, const std::initializer_list<detail::Rule> r)

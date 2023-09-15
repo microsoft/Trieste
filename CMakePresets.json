@@ -1,0 +1,49 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "debug-clang",
+            "displayName": "Debug Build using clang",
+            "description": "Sets up a debug build that uses Clang++",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/dist",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "TRIESTE_BUILD_SAMPLES": "ON"
+            }
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug Build",
+            "description": "Sets up a debug build that uses the default compiler and generator",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/dist",
+                "TRIESTE_BUILD_SAMPLES": "ON"
+            }
+        },
+        {
+            "name": "release-clang",
+            "displayName": "Release Build using clang",
+            "description": "Sets up a release build that uses Clang++",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/dist",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "TRIESTE_BUILD_SAMPLES": "ON"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release Build",
+            "description": "Sets up a release build that uses the default compiler and generator",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/dist",
+                "TRIESTE_BUILD_SAMPLES": "ON"
+            }
+        }
+    ]
+}
