@@ -162,7 +162,7 @@ namespace trieste
       {
         if (!continuation)
           return true;
-        return continuation->match(it, end, match);        
+        return continuation->match(it, end, match);   
       }
 
       bool no_continuation() const&
@@ -413,85 +413,14 @@ namespace trieste
       }
     };
 
-    class InsideStar : public PatternDef
-    {
-    private:
-      Token type;
-
-    public:
-      InsideStar(const Token& type_) : type(type_) {}
-
-      PatternPtr clone() const& override
-      {
-        return std::make_shared<InsideStar>(*this);
-      }
-
-      PatternPtr custom_rep() override
-      {
-        throw std::runtime_error("Rep(InsideStar) not allowed! ((In(T)++)++");
-      }
-
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
-      {
-        if (it == end)
-          return false;
-
-        auto p = (*it)->parent();
-
-        while (p)
-        {
-          if (p == type)
-            return match_continuation(it, end, match);
-
-          p = p->parent();
-        }
-
-        return false;
-      }
-    };
-
-    class Inside : public PatternDef
-    {
-    private:
-      Token type;
-
-    public:
-      Inside(const Token& type_) : type(type_) {}
-
-      PatternPtr clone() const& override
-      {
-        return std::make_shared<Inside>(*this);
-      }
-
-      PatternPtr custom_rep() override
-      {
-        // Rep(Inside) checks for any parent, not just the immediate parent.
-        if(no_continuation())
-          return std::make_shared<InsideStar>(type);
-        return {};
-      }
-
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
-      {
-        if (SNMALLOC_UNLIKELY(it == end))
-          return false;
-
-        auto p = (*it)->parent();
-
-        if (SNMALLOC_UNLIKELY(p == type))
-          return match_continuation(it, end, match);
-
-        return false;
-      }
-    };
-
+    template <size_t N>
     class InsideNStar : public PatternDef
     {
     private:
-      std::vector<Token> types;
+      std::array<Token, N> types;
 
     public:
-      InsideNStar(const std::vector<Token>& types_) : types(types_) {}
+      InsideNStar(const std::array<Token, N>& types_) : types(types_) {}
 
       PatternPtr clone() const& override
       {
@@ -512,8 +441,9 @@ namespace trieste
 
         while (p)
         {
-          if (p->type().in(types))
-            return match_continuation(it, end, match);
+          for (const auto& type: types)
+            if (p->type() == type)
+              return match_continuation(it, end, match);
 
           p = p->parent();
         }
@@ -522,13 +452,14 @@ namespace trieste
       }
     };
 
+    template <size_t N>
     class InsideN : public PatternDef
     {
     private:
-      std::vector<Token> types;
+      std::array<Token, N> types;
 
     public:
-      InsideN(const std::vector<Token>& types_) : types(types_) {}
+      InsideN(const std::array<Token, N>& types_) : types(types_) {}
 
       PatternPtr clone() const& override
       {
@@ -539,7 +470,7 @@ namespace trieste
       {
         // Rep(InsideN) -> InsideNStar
         if (no_continuation())
-          return std::make_shared<InsideNStar>(types);
+          return std::make_shared<InsideNStar<N>>(types);
         return {};
       }
 
@@ -550,8 +481,11 @@ namespace trieste
 
         auto p = (*it)->parent();
 
-        if (p->type().in(types))
-            return match_continuation(it, end, match);
+        for (const auto& type: types)
+        {
+          if (p->type() == type)
+              return match_continuation(it, end, match);
+        }
 
         return false;
       }
@@ -855,17 +789,12 @@ namespace trieste
     return detail::Pattern(std::make_shared<detail::RegexMatch>(type, r));
   }
 
-  inline detail::Pattern In(const Token& type)
-  {
-    return detail::Pattern(std::make_shared<detail::Inside>(type));
-  }
-
   template<typename... Ts>
   inline detail::Pattern
-  In(const Token& type1, const Token& type2, const Ts&... types)
+  In(const Token& type1,  const Ts&... types)
   {
-    std::vector<Token> t = {type1, type2, types...};
-    return detail::Pattern(std::make_shared<detail::InsideN>(t));
+    std::array<Token, 1+sizeof...(types)> types_ = {type1, types...};
+    return detail::Pattern(std::make_shared<detail::InsideN<1+sizeof...(types)>>(types_));
   }
 
   inline detail::EphemeralNode operator-(Node node)
