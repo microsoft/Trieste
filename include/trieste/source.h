@@ -41,7 +41,7 @@ namespace trieste
 
       auto source = std::make_shared<SourceDef>();
       source->origin_ = file.string();
-      source->contents.resize(size);
+      source->contents.resize(static_cast<std::size_t>(size));
       f.read(&source->contents[0], size);
 
       if (!f)
