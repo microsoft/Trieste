@@ -531,9 +531,6 @@ namespace trieste
         throw std::runtime_error("Rep(Last) not allowed! (End)++");
 
         // Rep(Last) is treated as Last.
-        if (no_continuation())
-          return clone();
-        return {};
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match&) const& override
