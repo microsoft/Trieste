@@ -529,8 +529,6 @@ namespace trieste
       PatternPtr custom_rep() override
       {
         throw std::runtime_error("Rep(Last) not allowed! (End)++");
-
-        // Rep(Last) is treated as Last.
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match&) const& override
