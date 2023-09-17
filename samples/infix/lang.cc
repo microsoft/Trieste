@@ -54,7 +54,7 @@ namespace infix
     return std::stod(text);
   }
 
-  inline const auto Number = T(Int) / T(Float);
+  inline const auto Number = T(Int, Float);
 
   PassDef expressions()
   {
@@ -120,7 +120,7 @@ namespace infix
     };
   }
 
-  inline const auto ExpressionArg = T(Expression) / Number / T(Ident);
+  inline const auto ExpressionArg = T(Expression, Ident) / Number;
 
   PassDef multiply_divide()
   {
@@ -130,13 +130,13 @@ namespace infix
       // replace it with a single <expr> node that has the triplet as
       // its children.
       In(Expression) *
-          (ExpressionArg[Lhs] * (T(Multiply) / T(Divide))[Op] *
+          (ExpressionArg[Lhs] * (T(Multiply, Divide))[Op] *
            ExpressionArg[Rhs]) >>
         [](Match& _) {
           return Expression
             << (_(Op) << (Expression << _(Lhs)) << (Expression << _[Rhs]));
         },
-      (T(Multiply) / T(Divide))[Op] << End >>
+      (T(Multiply, Divide))[Op] << End >>
         [](Match& _) { return err(_(Op), "No arguments"); },
     };
   }
@@ -145,13 +145,13 @@ namespace infix
   {
     return {
       In(Expression) *
-          (ExpressionArg[Lhs] * (T(Add) / T(Subtract))[Op] *
+          (ExpressionArg[Lhs] * (T(Add, Subtract))[Op] *
            ExpressionArg[Rhs]) >>
         [](Match& _) {
           return Expression
             << (_(Op) << (Expression << _(Lhs)) << (Expression << _[Rhs]));
         },
-      (T(Add) / T(Subtract))[Op] << End >>
+      (T(Add, Subtract))[Op] << End >>
         [](Match& _) { return err(_(Op), "No arguments"); },
     };
   }

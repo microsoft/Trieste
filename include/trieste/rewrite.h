@@ -227,13 +227,14 @@ namespace trieste
       }
     };
 
+    template<size_t N>
     class TokenMatch : public PatternDef
     {
     private:
-      Token type;
+      std::array<Token, N> types;
 
     public:
-      TokenMatch(const Token& type_) : type(type_) {}
+      TokenMatch(const std::array<Token, N>& types_) : types(types_) {}
 
       PatternPtr clone() const& override
       {
@@ -242,12 +243,18 @@ namespace trieste
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
-        if ((it == end) || ((*it)->type() != type))
+        if (it == end)
           return false;
 
-        ++it;
-        
-        return match_continuation(it, end, match); 
+        for (const auto& t: types)
+        {
+          if ((*it)->type() == t)
+          {
+            ++it;
+            return match_continuation(it, end, match);
+          }
+        }
+        return false; 
       }
     };
 
@@ -774,9 +781,11 @@ namespace trieste
   inline const auto Start = detail::Pattern(std::make_shared<detail::First>());
   inline const auto End = detail::Pattern(std::make_shared<detail::Last>());
 
-  inline detail::Pattern T(const Token& type)
+  template<typename... Ts>
+  inline detail::Pattern T(const Token& type1, const Ts&... types)
   {
-    return detail::Pattern(std::make_shared<detail::TokenMatch>(type));
+    std::array<Token, 1+sizeof...(types)> types_ = {type1, types...};
+    return detail::Pattern(std::make_shared<detail::TokenMatch<1+sizeof...(types)>>(types_));
   }
 
   inline detail::Pattern T(const Token& type, const std::string& r)
