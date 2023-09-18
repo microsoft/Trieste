@@ -688,7 +688,7 @@ namespace trieste
       return result;
     }
 
-    bool get_and_reset_contains_lift()
+    bool get_and_reset_contains_lift() const
     {
       bool result = flags_.contains_lift();
       flags_.reset_contains_lift();
