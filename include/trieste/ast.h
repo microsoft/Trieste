@@ -28,7 +28,7 @@ namespace trieste
   }
 
   using Nodes = std::vector<Node>;
-  using NodeIt = Nodes::const_iterator;
+  using NodeIt = Nodes::iterator;
   using NodeRange = std::pair<NodeIt, NodeIt>;
   using NodeSet = std::set<Node, std::owner_less<>>;
 
@@ -167,24 +167,44 @@ namespace trieste
       location_ *= loc;
     }
 
-    NodeIt begin()
+    auto begin()
     {
       return children.begin();
     }
 
-    NodeIt end()
+    auto end()
     {
       return children.end();
     }
 
-    const Nodes::const_reverse_iterator rbegin()
+    auto rbegin()
     {
       return children.rbegin();
     }
 
-    const Nodes::const_reverse_iterator rend()
+    auto rend()
     {
       return children.rend();
+    }
+
+    auto cbegin()
+    {
+      return children.cbegin();
+    }
+
+    auto cend()
+    {
+      return children.cend();
+    }
+
+    auto crbegin()
+    {
+      return children.crbegin();
+    }
+
+    auto crend()
+    {
+      return children.crend();
     }
 
     auto find(Node node)
