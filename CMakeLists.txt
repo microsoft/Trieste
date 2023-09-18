@@ -1,9 +1,24 @@
 cmake_minimum_required(VERSION 3.14.0)
 project(trieste VERSION 1.0.0 LANGUAGES CXX)
 
+# #############################################
+# Options
+option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
+option(TRIESTE_USE_CXX17 "Specifies whether to target the C++17 standard" OFF)
+
+set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
+
+# #############################################
+# Dependencies
+
 include(FetchContent)
 
-set(CMAKE_CXX_STANDARD 20)
+if(TRIESTE_USE_CXX17)
+  set(CMAKE_CXX_STANDARD 17)
+else()
+  set(CMAKE_CXX_STANDARD 20)
+endif()
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SNMALLOC_BUILD_TESTING OFF CACHE INTERNAL "Turn off snmalloc tests")
@@ -12,6 +27,7 @@ if (MSVC)
 else()
   set(SNMALLOC_STATIC_LIBRARY_PREFIX "")
 endif()
+set(SNMALLOC_USE_CXX17 ${TRIESTE_USE_CXX17})
 
 set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
 
@@ -43,12 +59,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(cli11)
 
 # #############################################
-# Options
-option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
-
-set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
-
-# #############################################
 # Create target and set properties
 add_library(trieste INTERFACE)
 
@@ -68,7 +78,11 @@ target_link_libraries(trieste
   CLI11::CLI11
 )
 
-target_compile_features(trieste INTERFACE cxx_std_20)
+if(TRIESTE_USE_CXX17)
+  target_compile_definitions(trieste INTERFACE cxx_std_17)
+else()
+  target_compile_definitions(trieste INTERFACE cxx_std_20)
+endif()
 
 if(MSVC)
   target_compile_options(trieste INTERFACE /W4 /WX /wd5030 /bigobj)

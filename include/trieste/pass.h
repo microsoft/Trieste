@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rewrite.h"
+
 #include <vector>
 
 namespace trieste
@@ -11,7 +12,7 @@ namespace trieste
     constexpr flag bottomup = 1 << 0;
     constexpr flag topdown = 1 << 1;
     constexpr flag once = 1 << 2;
-  };
+  }
 
   class PassDef;
   using Pass = std::shared_ptr<PassDef>;
@@ -234,7 +235,7 @@ namespace trieste
       add(root);
       while (!path.empty())
       {
-        auto& [node,it] = path.back();
+        auto& [node, it] = path.back();
         if (it != node->end())
         {
           Node curr = *it;
