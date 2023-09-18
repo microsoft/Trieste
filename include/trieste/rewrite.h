@@ -38,6 +38,8 @@ namespace trieste
 
     const NodeRange& operator[](const Token& token)
     {
+      static const NodeRange empty;
+
       for (size_t i = index;; i--)
       {
         const auto& [valid, map] = captures[i];
@@ -52,8 +54,8 @@ namespace trieste
         if (i == 0)
           break;
       }
-      throw std::runtime_error(
-        "Looking up unset identifier!" + std::string(token.str()));
+
+      return empty;
     }
 
     void set(const Token& token, const NodeRange& range)
