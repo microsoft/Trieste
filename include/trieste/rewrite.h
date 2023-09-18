@@ -4,6 +4,7 @@
 
 #include "ast.h"
 
+#include <array>
 #include <cassert>
 #include <functional>
 #include <optional>
