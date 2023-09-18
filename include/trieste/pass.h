@@ -82,6 +82,9 @@ namespace trieste
 
     std::tuple<Node, size_t, size_t> run(Node node)
     {
+      static thread_local Match match(node);
+      match.set_root(node);
+
       size_t changes = 0;
       size_t changes_sum = 0;
       size_t count = 0;
@@ -92,7 +95,7 @@ namespace trieste
       // Because apply runs over child nodes, the top node is never visited.
       do
       {
-        changes = apply(node);
+        changes = apply(node, match);
 
         auto lifted = lift(node);
         if (!lifted.empty())
@@ -117,7 +120,7 @@ namespace trieste
       return (direction_ & f) != 0;
     }
 
-    size_t match_children(const Node& node)
+    size_t match_children(const Node& node, Match& match)
     {
       size_t changes = 0;
       auto it = node->begin();
@@ -133,11 +136,11 @@ namespace trieste
 
         ptrdiff_t replaced = -1;
 
+        auto start = it;
         for (auto& rule : rules_)
         {
-          auto match = Match(node);
-          auto start = it;
-
+          match.return_to_frame(0);
+          match.add_frame();
           if (rule.first.match(it, node->end(), match))
           {
             // Replace [start, it) with whatever the rule builds.
@@ -182,6 +185,10 @@ namespace trieste
             changes += replaced;
             break;
           }
+          else
+          {
+            it = start;
+          }
         }
 
         if (flag(dir::once))
@@ -205,27 +212,27 @@ namespace trieste
       return changes;
     }
 
-    size_t apply(Node root)
+    size_t apply(Node root, Match& match)
     {
       size_t changes = 0;
 
       std::vector<std::pair<Node, NodeIt>> path;
 
-      auto add = [&](const Node& node) {
+      auto add = [&](const Node& node) SNMALLOC_FAST_PATH_LAMBDA {
         if (node->type().in({Error, Lift}))
           return;
         auto pre_f = pre_.find(node->type());
         if (pre_f != pre_.end())
           changes += pre_f->second(node);
         if (flag(dir::topdown))
-          changes += match_children(node);
+          changes += match_children(node, match);
         path.push_back({node, node->begin()});
       };
 
-      auto remove = [&]() {
+      auto remove = [&]() SNMALLOC_FAST_PATH_LAMBDA {
         Node& node = path.back().first;
         if (flag(dir::bottomup))
-          changes += match_children(node);
+          changes += match_children(node, match);
         auto post_f = post_.find(node->type());
         if (post_f != post_.end())
           changes += post_f->second(node);
