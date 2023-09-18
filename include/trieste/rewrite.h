@@ -38,7 +38,7 @@ namespace trieste
 
     const NodeRange& operator[](const Token& token)
     {
-      for (size_t i = index; ; i-- )
+      for (size_t i = index;; i--)
       {
         const auto& [valid, map] = captures[i];
         if (valid)
@@ -52,7 +52,8 @@ namespace trieste
         if (i == 0)
           break;
       }
-      throw std::runtime_error("Looking up unset identifier!" + std::string(token.str()));
+      throw std::runtime_error(
+        "Looking up unset identifier!" + std::string(token.str()));
     }
 
     void set(const Token& token, const NodeRange& range)
@@ -69,7 +70,7 @@ namespace trieste
 
     Node operator()(const Token& token)
     {
-      for (size_t i = index; ; i-- )
+      for (size_t i = index;; i--)
       {
         const auto& [valid, map] = captures[i];
         if (valid)
@@ -91,11 +92,11 @@ namespace trieste
       index++;
       if (SNMALLOC_UNLIKELY(captures.size() == (size_t)index))
       {
-        captures.resize(index*2);
+        captures.resize(index * 2);
       }
       else
       {
-        captures[index].first = false; 
+        captures[index].first = false;
       }
       return index - 1;
     }
@@ -114,6 +115,7 @@ namespace trieste
     class PatternDef
     {
       PatternPtr continuation{};
+
     public:
       virtual ~PatternDef() = default;
 
@@ -128,8 +130,9 @@ namespace trieste
       }
 
       bool has_captures() const&
-      {   
-        return has_captures_local() || (continuation && continuation->has_captures());
+      {
+        return has_captures_local() ||
+          (continuation && continuation->has_captures());
       }
 
       PatternDef(const PatternDef& copy)
@@ -158,11 +161,12 @@ namespace trieste
         }
       }
 
-      SNMALLOC_FAST_PATH bool match_continuation(NodeIt& it, const NodeIt& end, Match& match) const&
+      SNMALLOC_FAST_PATH bool
+      match_continuation(NodeIt& it, const NodeIt& end, Match& match) const&
       {
         if (!continuation)
           return true;
-        return continuation->match(it, end, match);   
+        return continuation->match(it, end, match);
       }
 
       bool no_continuation() const&
@@ -180,7 +184,8 @@ namespace trieste
       PatternPtr pattern;
 
     public:
-      Cap(const Token& name_, PatternPtr pattern_) : name(name_), pattern(pattern_)
+      Cap(const Token& name_, PatternPtr pattern_)
+      : name(name_), pattern(pattern_)
       {}
 
       bool has_captures_local() const& override
@@ -215,12 +220,11 @@ namespace trieste
         return std::make_shared<Anything>(*this);
       }
 
-
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
         if (it == end)
           return false;
-        
+
         ++it;
 
         return match_continuation(it, end, match);
@@ -246,7 +250,7 @@ namespace trieste
         if (it == end)
           return false;
 
-        for (const auto& t: types)
+        for (const auto& t : types)
         {
           if ((*it)->type() == t)
           {
@@ -254,7 +258,7 @@ namespace trieste
             return match_continuation(it, end, match);
           }
         }
-        return false; 
+        return false;
       }
     };
 
@@ -265,7 +269,8 @@ namespace trieste
       std::shared_ptr<RE2> regex;
 
     public:
-      RegexMatch(const Token& type_, const std::string& re) : type(type_), regex(std::make_shared<RE2>(re))
+      RegexMatch(const Token& type_, const std::string& re)
+      : type(type_), regex(std::make_shared<RE2>(re))
       {}
 
       PatternPtr clone() const& override
@@ -282,7 +287,7 @@ namespace trieste
           return false;
 
         ++it;
-        return match_continuation(it, end, match); 
+        return match_continuation(it, end, match);
       }
     };
 
@@ -313,7 +318,7 @@ namespace trieste
           it = backtrack_it;
           match.return_to_frame(backtrack_frame);
         }
-        return match_continuation(it, end, match); 
+        return match_continuation(it, end, match);
       }
     };
 
@@ -324,9 +329,10 @@ namespace trieste
 
     public:
       Rep(PatternPtr pattern_) : pattern(pattern_)
-      {  
+      {
         if (pattern->has_captures())
-          throw std::runtime_error("Captures not allowed inside iteration (Pattern++)!");
+          throw std::runtime_error(
+            "Captures not allowed inside iteration (Pattern++)!");
       }
 
       PatternPtr clone() const& override
@@ -351,7 +357,7 @@ namespace trieste
         }
         // Last match failed so backtrack it.
         it = curr;
-        return match_continuation(it, end, match); 
+        return match_continuation(it, end, match);
       }
     };
 
@@ -364,7 +370,8 @@ namespace trieste
       Not(PatternPtr pattern_) : pattern(pattern_)
       {
         if (pattern->has_captures())
-          throw std::runtime_error("Captures not allowed inside Not (~Pattern)!");
+          throw std::runtime_error(
+            "Captures not allowed inside Not (~Pattern)!");
       }
 
       PatternPtr clone() const& override
@@ -380,7 +387,8 @@ namespace trieste
         auto begin = it;
         it = begin + 1;
 
-        return !pattern->match(begin, end, match) && match_continuation(it, end, match);
+        return !pattern->match(begin, end, match) &&
+          match_continuation(it, end, match);
       }
     };
 
@@ -391,7 +399,8 @@ namespace trieste
       PatternPtr second;
 
     public:
-      Choice(PatternPtr first_, PatternPtr second_) : first(first_), second(second_)
+      Choice(PatternPtr first_, PatternPtr second_)
+      : first(first_), second(second_)
       {}
 
       bool has_captures_local() const& override
@@ -416,11 +425,12 @@ namespace trieste
         it = backtrack_it;
         match.return_to_frame(backtrack_frame);
 
-        return second->match(it, end, match) && match_continuation(it, end, match);
+        return second->match(it, end, match) &&
+          match_continuation(it, end, match);
       }
     };
 
-    template <size_t N>
+    template<size_t N>
     class InsideStar : public PatternDef
     {
     private:
@@ -436,7 +446,8 @@ namespace trieste
 
       PatternPtr custom_rep() override
       {
-        throw std::runtime_error("Rep(InsideStar) not allowed! ((In(T,...)++)++");
+        throw std::runtime_error(
+          "Rep(InsideStar) not allowed! ((In(T,...)++)++");
       }
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
@@ -448,7 +459,7 @@ namespace trieste
 
         while (p)
         {
-          for (const auto& type: types)
+          for (const auto& type : types)
             if (p->type() == type)
               return match_continuation(it, end, match);
 
@@ -459,7 +470,7 @@ namespace trieste
       }
     };
 
-    template <size_t N>
+    template<size_t N>
     class Inside : public PatternDef
     {
     private:
@@ -488,10 +499,10 @@ namespace trieste
 
         auto p = (*it)->parent();
 
-        for (const auto& type: types)
+        for (const auto& type : types)
         {
           if (p->type() == type)
-              return match_continuation(it, end, match);
+            return match_continuation(it, end, match);
         }
 
         return false;
@@ -592,7 +603,8 @@ namespace trieste
       Pred(PatternPtr pattern_) : pattern(pattern_)
       {
         if (pattern->has_captures())
-          throw std::runtime_error("Captures not allowed inside Pred (++Pattern)!");
+          throw std::runtime_error(
+            "Captures not allowed inside Pred (++Pattern)!");
       }
 
       PatternPtr clone() const& override
@@ -608,7 +620,8 @@ namespace trieste
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
         auto begin = it;
-        return pattern->match(begin, end, match) && match_continuation(it, end, match);
+        return pattern->match(begin, end, match) &&
+          match_continuation(it, end, match);
       }
     };
 
@@ -621,7 +634,8 @@ namespace trieste
       NegPred(PatternPtr pattern_) : pattern(pattern_)
       {
         if (pattern->has_captures())
-          throw std::runtime_error("Captures not allowed inside NegPred (--Pattern)!");
+          throw std::runtime_error(
+            "Captures not allowed inside NegPred (--Pattern)!");
       }
 
       PatternPtr clone() const& override
@@ -637,7 +651,8 @@ namespace trieste
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
         auto begin = it;
-        return !pattern->match(begin, end, match) && match_continuation(it, end, match);
+        return !pattern->match(begin, end, match) &&
+          match_continuation(it, end, match);
       }
     };
 
@@ -781,11 +796,19 @@ namespace trieste
   inline const auto Start = detail::Pattern(std::make_shared<detail::First>());
   inline const auto End = detail::Pattern(std::make_shared<detail::Last>());
 
-  template<typename... Ts>
-  inline detail::Pattern T(const Token& type1, const Ts&... types)
+  inline detail::Pattern T(const Token& type)
   {
-    std::array<Token, 1+sizeof...(types)> types_ = {type1, types...};
-    return detail::Pattern(std::make_shared<detail::TokenMatch<1+sizeof...(types)>>(types_));
+    std::array<Token, 1> types_ = {type};
+    return detail::Pattern(std::make_shared<detail::TokenMatch<1>>(types_));
+  }
+
+  template<typename... Ts>
+  inline detail::Pattern
+  T(const Token& type1, const Token& type2, const Ts&... types)
+  {
+    std::array<Token, 2 + sizeof...(types)> types_ = {type1, type2, types...};
+    return detail::Pattern(
+      std::make_shared<detail::TokenMatch<2 + sizeof...(types)>>(types_));
   }
 
   inline detail::Pattern T(const Token& type, const std::string& r)
@@ -794,11 +817,11 @@ namespace trieste
   }
 
   template<typename... Ts>
-  inline detail::Pattern
-  In(const Token& type1,  const Ts&... types)
+  inline detail::Pattern In(const Token& type1, const Ts&... types)
   {
-    std::array<Token, 1+sizeof...(types)> types_ = {type1, types...};
-    return detail::Pattern(std::make_shared<detail::Inside<1+sizeof...(types)>>(types_));
+    std::array<Token, 1 + sizeof...(types)> types_ = {type1, types...};
+    return detail::Pattern(
+      std::make_shared<detail::Inside<1 + sizeof...(types)>>(types_));
   }
 
   inline detail::EphemeralNode operator-(Node node)
