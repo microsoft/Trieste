@@ -20,7 +20,6 @@ namespace trieste
     Node in_node;
     size_t index{0};
     std::vector<std::pair<bool, std::map<Token, NodeRange>>> captures{16};
-    static constexpr NodeRange empty{};
 
   public:
     Match(Node in_node_) : in_node(in_node_) {}
