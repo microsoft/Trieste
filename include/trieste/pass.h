@@ -260,6 +260,9 @@ namespace trieste
 
     Nodes lift(Node node)
     {
+      if (!node->get_and_reset_contains_lift())
+        return {};
+
       Nodes uplift;
       auto it = node->begin();
 

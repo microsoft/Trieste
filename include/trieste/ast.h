@@ -75,6 +75,41 @@ namespace trieste
     Index(const Token& type_, size_t index_) : type(type_), index(index_) {}
   };
 
+  class Flags
+  {
+    char flags{0};
+  public:
+    void set_contains_error()
+    {
+      flags |= 1 << 0;
+    }
+
+    void set_contains_lift()
+    {
+      flags |= 1 << 1;
+    }
+
+    void reset_contains_error()
+    {
+      flags &= ~(1 << 0);
+    }
+
+    void reset_contains_lift()
+    {
+      flags &= ~(1 << 1);
+    }
+
+    bool contains_error()
+    {
+      return flags & (1 << 0);
+    }
+
+    bool contains_lift()
+    {
+      return flags & (1 << 1);
+    }
+  };
+
   class NodeDef : public std::enable_shared_from_this<NodeDef>
   {
   private:
@@ -82,6 +117,7 @@ namespace trieste
     Location location_;
     Symtab symtab_;
     NodeDef* parent_;
+    Flags flags_{};
     Nodes children;
 
     NodeDef(const Token& type, Location location)
@@ -89,6 +125,31 @@ namespace trieste
     {
       if (type_ & flag::symtab)
         symtab_ = std::make_shared<SymtabDef>();
+    }
+
+    void add_flags()
+    {
+      if (type_ == Error || flags_.contains_error())
+      {
+        auto curr = parent_;
+        while(curr != nullptr)
+        {
+          if (curr->flags_.contains_error())
+            break;
+          curr->flags_.set_contains_error();
+          curr = curr->parent_;
+        }
+      } else if (type_ == Lift || flags_.contains_lift())
+      {
+        auto curr = parent_;
+        while(curr != nullptr)
+        {
+          if (curr->flags_.contains_lift())
+            break;
+          curr->flags_.set_contains_lift();
+          curr = curr->parent_;
+        }
+      }
     }
 
   public:
@@ -244,6 +305,7 @@ namespace trieste
 
       children.insert(children.begin(), node);
       node->parent_ = this;
+      node->add_flags();
     }
 
     void push_back(Node node)
@@ -253,6 +315,7 @@ namespace trieste
 
       children.push_back(node);
       node->parent_ = this;
+      node->add_flags();
     }
 
     void push_back(NodeIt it)
@@ -310,6 +373,7 @@ namespace trieste
         return pos;
 
       node->parent_ = this;
+      node->add_flags();
       return children.insert(pos, node);
     }
 
@@ -319,7 +383,10 @@ namespace trieste
         return pos;
 
       for (auto it = first; it != last; ++it)
+      {
         (*it)->parent_ = this;
+        (*it)->add_flags();
+      }
 
       return children.insert(pos, first, last);
     }
@@ -497,6 +564,7 @@ namespace trieste
         node1->parent_ = nullptr;
         node2->parent_ = this;
         it->swap(node2);
+        node2->add_flags();
       }
       else
       {
@@ -510,6 +578,7 @@ namespace trieste
       node1->parent_ = nullptr;
       node2->parent_ = this;
       node1 = node2;
+      node2->add_flags();
     }
 
     bool equals(Node& node)
@@ -584,8 +653,11 @@ namespace trieste
       out << ")";
     }
 
-    bool errors(std::ostream& out) const
+    bool errors(std::ostream& out)
     {
+      if (!get_and_reset_contains_error())
+        return false;
+
       bool err = false;
 
       for (auto& child : children)
@@ -607,6 +679,20 @@ namespace trieste
       // Trailing blank line.
       out << std::endl;
       return true;
+    }
+
+    bool get_and_reset_contains_error()
+    {
+      bool result = flags_.contains_error();
+      flags_.reset_contains_error();
+      return result;
+    }
+
+    bool get_and_reset_contains_lift()
+    {
+      bool result = flags_.contains_lift();
+      flags_.reset_contains_lift();
+      return result;
     }
 
   private:
