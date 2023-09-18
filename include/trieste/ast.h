@@ -653,7 +653,7 @@ namespace trieste
       out << ")";
     }
 
-    bool errors(std::ostream& out) const
+    bool errors(std::ostream& out)
     {
       if (!get_and_reset_contains_error())
         return false;
