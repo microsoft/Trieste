@@ -681,7 +681,7 @@ namespace trieste
       return true;
     }
 
-    bool get_and_reset_contains_error() const
+    bool get_and_reset_contains_error()
     {
       bool result = flags_.contains_error();
       flags_.reset_contains_error();
