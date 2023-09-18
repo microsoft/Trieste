@@ -749,7 +749,7 @@ namespace trieste
       {
         auto result = pattern->clone();
         result->set_continuation(rhs.pattern);
-        return std::move(result);
+        return result;
       }
 
       Pattern operator/(Pattern rhs) const
