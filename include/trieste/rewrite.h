@@ -107,6 +107,12 @@ namespace trieste
     {
       index = new_index;
     }
+
+    SNMALLOC_FAST_PATH void reset()
+    {
+      index = 0;
+      captures[0].first = false;
+    }
   };
 
   namespace detail
