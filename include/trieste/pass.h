@@ -213,11 +213,6 @@ namespace trieste
           // forwards to next term.
           it += replaced;
         }
-        else
-        {
-          // If we did something, reexamine from the beginning.
-          it = node->begin();
-        }
       }
 
       return changes;
