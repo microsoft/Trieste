@@ -655,7 +655,7 @@ namespace trieste
 
     bool errors(std::ostream& out)
     {
-      if (!get_and_reset_contains_error())
+      if (!get_and_reset_contains_error() && type_ != Error)
         return false;
 
       bool err = false;
