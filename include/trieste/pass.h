@@ -209,8 +209,7 @@ namespace trieste
         }
         else if (flag(dir::once))
         {
-          // Skip over everything we populated, or if no change (-1) skip
-          // forwards to next term.
+          // Skip over everything we populated.
           it += replaced;
         }
       }
