@@ -120,6 +120,55 @@ namespace trieste
       return (direction_ & f) != 0;
     }
 
+    SNMALLOC_SLOW_PATH ptrdiff_t replace(
+      Match& match,
+      detail::Effect<Node>& rule_replace,
+      const NodeIt& start,
+      NodeIt& it,
+      const Node& node)
+    {
+      ptrdiff_t replaced = -1;
+      // Replace [start, it) with whatever the rule builds.
+      auto replace = rule_replace(match);
+
+      if (replace && (replace == NoChange))
+      {
+        return replaced;
+      }
+
+      auto loc = (*start)->location();
+
+      for (auto i = start + 1; i < it; ++i)
+        loc = loc * (*i)->location();
+
+      it = node->erase(start, it);
+
+      // If we return nothing, just remove the matched nodes.
+      if (!replace)
+      {
+        replaced = 0;
+      }
+      else if (replace == Seq)
+      {
+        // Unpack the sequence.
+        std::for_each(replace->begin(), replace->end(), [&](Node n) {
+          n->set_location(loc);
+        });
+
+        replaced = replace->size();
+        it = node->insert(it, replace->begin(), replace->end());
+      }
+      else
+      {
+        // Replace with a single node.
+        replaced = 1;
+        replace->set_location(loc);
+        it = node->insert(it, replace);
+      }
+
+      return replaced;
+    }
+
     size_t match_children(const Node& node, Match& match)
     {
       size_t changes = 0;
@@ -127,6 +176,7 @@ namespace trieste
       // Perform matching at this level
       while (it != node->end())
       {
+        const auto& end = node->end();
         // Don't examine Error or Lift nodes.
         if ((*it)->type().in({Error, Lift}))
         {
@@ -139,73 +189,34 @@ namespace trieste
         auto start = it;
         for (auto& rule : rules_)
         {
-          match.return_to_frame(0);
-          match.add_frame();
-          if (rule.first.match(it, node->end(), match))
+          match.reset();
+          if (SNMALLOC_UNLIKELY(rule.first.match(it, end, match)))
           {
-            // Replace [start, it) with whatever the rule builds.
-            auto replace = rule.second(match);
-
-            if (replace && (replace == NoChange))
+            replaced = replace(match, rule.second, start, it, node);
+            if (replaced != -1)
             {
-              it = start;
-              continue;
+              changes += replaced;
+              break;
             }
-
-            auto loc = (*start)->location();
-
-            for (auto i = start + 1; i < it; ++i)
-              loc = loc * (*i)->location();
-
-            it = node->erase(start, it);
-
-            // If we return nothing, just remove the matched nodes.
-            if (!replace)
-            {
-              replaced = 0;
-            }
-            else if (replace == Seq)
-            {
-              // Unpack the sequence.
-              std::for_each(replace->begin(), replace->end(), [&](Node n) {
-                n->set_location(loc);
-              });
-
-              replaced = replace->size();
-              it = node->insert(it, replace->begin(), replace->end());
-            }
-            else
-            {
-              // Replace with a single node.
-              replaced = 1;
-              replace->set_location(loc);
-              it = node->insert(it, replace);
-            }
-
-            changes += replaced;
-            break;
           }
-          else
-          {
-            it = start;
-          }
+          it = start;
         }
 
-        if (flag(dir::once))
+        if (replaced == -1)
+        {
+          // If we didn't do anything, advance to the next node.
+          ++it;
+        }
+        else if (flag(dir::once))
         {
           // Skip over everything we populated, or if no change (-1) skip
           // forwards to next term.
-          it += std::abs(replaced);
-        }
-        else if (replaced >= 0)
-        {
-          // If we did something, reexamine from the beginning.
-          it = node->begin();
+          it += replaced;
         }
         else
         {
-          // Advance to the next node.
-          ++it;
+          // If we did something, reexamine from the beginning.
+          it = node->begin();
         }
       }
 
