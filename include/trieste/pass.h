@@ -212,6 +212,11 @@ namespace trieste
           // Skip over everything we populated.
           it += replaced;
         }
+        else
+        {
+          // Otherwise, start again from the beginning.
+          it = node->begin();
+        }
       }
 
       return changes;
