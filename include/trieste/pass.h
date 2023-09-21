@@ -314,8 +314,6 @@ namespace trieste
       // Perform matching at this level
       while (it != node->end())
       {
-        const auto& end = node->end();
-
         ptrdiff_t replaced = -1;
 
         auto start = it;
@@ -324,7 +322,7 @@ namespace trieste
         for (auto& rule : specific_rules)
         {
           match.reset();
-          if (SNMALLOC_UNLIKELY(rule.first.match(it, end, match)))
+          if (SNMALLOC_UNLIKELY(rule.first.match(it, node, match)))
           {
             replaced = replace(match, rule.second, start, it, node);
             if (replaced != -1)

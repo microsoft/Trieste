@@ -315,7 +315,7 @@ namespace trieste
 
       PatternDef() = default;
 
-      virtual bool match(NodeIt&, const NodeIt&, Match&) const& = 0;
+      virtual bool match(NodeIt&, const Node&, Match&) const& = 0;
 
       virtual PatternPtr clone() const& = 0;
 
@@ -332,11 +332,11 @@ namespace trieste
       }
 
       SNMALLOC_FAST_PATH bool
-      match_continuation(NodeIt& it, const NodeIt& end, Match& match) const&
+      match_continuation(NodeIt& it, const Node& parent, Match& match) const&
       {
         if (!continuation)
           return true;
-        return continuation->match(it, end, match);
+        return continuation->match(it, parent, match);
       }
 
       bool no_continuation() const&
@@ -375,15 +375,15 @@ namespace trieste
         return std::make_shared<Cap>(*this);
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
         auto begin = it;
 
-        if (!pattern->match(it, end, match))
+        if (!pattern->match(it, parent, match))
           return false;
 
         match.set(name, {begin, it});
-        return match_continuation(it, end, match);
+        return match_continuation(it, parent, match);
       }
     };
 
@@ -397,14 +397,14 @@ namespace trieste
         return std::make_shared<Anything>(*this);
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
-        if (it == end)
+        if (it == parent->end())
           return false;
 
         ++it;
 
-        return match_continuation(it, end, match);
+        return match_continuation(it, parent, match);
       }
     };
 
@@ -421,9 +421,9 @@ namespace trieste
         return std::make_shared<TokenMatch>(*this);
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
-        if (it == end)
+        if (it == parent->end())
           return false;
 
         for (const auto& t : types)
@@ -431,7 +431,7 @@ namespace trieste
           if ((*it)->type() == t)
           {
             ++it;
-            return match_continuation(it, end, match);
+            return match_continuation(it, parent, match);
           }
         }
         return false;
@@ -463,16 +463,16 @@ namespace trieste
         return std::make_shared<RegexMatch>(*this);
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
-        if ((it == end) || ((*it)->type() != type))
+        if ((it == parent->end()) || ((*it)->type() != type))
           return false;
 
         if (!RE2::FullMatch((*it)->location().view(), *regex))
           return false;
 
         ++it;
-        return match_continuation(it, end, match);
+        return match_continuation(it, parent, match);
       }
     };
 
@@ -494,16 +494,16 @@ namespace trieste
         return std::make_shared<Opt>(*this);
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
         auto backtrack_it = it;
         auto backtrack_frame = match.add_frame();
-        if (!pattern->match(it, end, match))
+        if (!pattern->match(it, parent, match))
         {
           it = backtrack_it;
           match.return_to_frame(backtrack_frame);
         }
-        return match_continuation(it, end, match);
+        return match_continuation(it, parent, match);
       }
     };
 
@@ -533,16 +533,17 @@ namespace trieste
         return {};
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
         NodeIt curr = it;
-        while ((it != end) && pattern->match(it, end, match))
+        auto end = parent->end();
+        while ((it != end) && pattern->match(it, parent, match))
         {
           curr = it;
         }
         // Last match failed so backtrack it.
         it = curr;
-        return match_continuation(it, end, match);
+        return match_continuation(it, parent, match);
       }
     };
 
@@ -564,16 +565,16 @@ namespace trieste
         return std::make_shared<Not>(*this);
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
-        if (it == end)
+        if (it == parent->end())
           return false;
 
         auto begin = it;
         it = begin + 1;
 
-        return !pattern->match(begin, end, match) &&
-          match_continuation(it, end, match);
+        return !pattern->match(begin, parent, match) &&
+          match_continuation(it, parent, match);
       }
     };
 
@@ -602,7 +603,7 @@ namespace trieste
         return std::make_shared<Choice>(*this);
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
         auto backtrack_it = it;
         size_t backtrack_frame;
@@ -610,9 +611,9 @@ namespace trieste
         if constexpr (CapturesLeft)
           backtrack_frame = match.add_frame();
   
-        if (first->match(it, end, match))
+        if (first->match(it, parent, match))
         {
-          return match_continuation(it, end, match);
+          return match_continuation(it, parent, match);
         }
 
         it = backtrack_it;
@@ -620,8 +621,8 @@ namespace trieste
         if constexpr (CapturesLeft)
           match.return_to_frame(backtrack_frame);
 
-        return second->match(it, end, match) &&
-          match_continuation(it, end, match);
+        return second->match(it, parent, match) &&
+          match_continuation(it, parent, match);
       }
     };
 
@@ -645,18 +646,15 @@ namespace trieste
           "Rep(InsideStar) not allowed! ((In(T,...)++)++");
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
-        if (it == end)
-          return false;
-
-        auto p = (*it)->parent();
+        NodeDef* p = &*parent;
 
         while (p)
         {
           for (const auto& type : types)
             if (p->type() == type)
-              return match_continuation(it, end, match);
+              return match_continuation(it, parent, match);
 
           p = p->parent();
         }
@@ -687,17 +685,12 @@ namespace trieste
         return {};
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
-        if (it == end)
-          return false;
-
-        auto p = (*it)->parent();
-
         for (const auto& type : types)
         {
-          if (p->type() == type)
-            return match_continuation(it, end, match);
+          if (parent->type() == type)
+            return match_continuation(it, parent, match);
         }
 
         return false;
@@ -719,13 +712,9 @@ namespace trieste
         throw std::runtime_error("Rep(First) not allowed! (Start)++");
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
-        if (it == end)
-          return false;
-
-        auto p = (*it)->parent();
-        return p && (it == p->begin()) && match_continuation(it, end, match);
+        return (it == parent->begin()) && match_continuation(it, parent, match);
       }
     };
 
@@ -744,10 +733,10 @@ namespace trieste
         throw std::runtime_error("Rep(Last) not allowed! (End)++");
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match&) const& override
+      bool match(NodeIt& it, const Node& parent, Match&) const& override
       {
         assert(no_continuation());
-        return it == end;
+        return it == parent->end();
       }
     };
 
@@ -772,20 +761,19 @@ namespace trieste
         return std::make_shared<Children>(*this);
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
         auto begin = it;
 
-        if (!pattern->match(it, end, match))
+        if (!pattern->match(it, parent, match))
           return false;
 
         auto it2 = (*begin)->begin();
-        auto end2 = (*begin)->end();
 
-        if (!children->match(it2, end2, match))
+        if (!children->match(it2, *begin, match))
           return false;
 
-        return match_continuation(it, end, match);
+        return match_continuation(it, parent, match);
       }
     };
 
@@ -812,11 +800,11 @@ namespace trieste
         throw std::runtime_error("Rep(Pred) not allowed! (++Pattern)++");
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
         auto begin = it;
-        return pattern->match(begin, end, match) &&
-          match_continuation(it, end, match);
+        return pattern->match(begin, parent, match) &&
+          match_continuation(it, parent, match);
       }
     };
 
@@ -843,11 +831,11 @@ namespace trieste
         throw std::runtime_error("Rep(NegPred) not allowed! (--Pattern)++");
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
         auto begin = it;
-        return !pattern->match(begin, end, match) &&
-          match_continuation(it, end, match);
+        return !pattern->match(begin, parent, match) &&
+          match_continuation(it, parent, match);
       }
     };
 
@@ -869,14 +857,14 @@ namespace trieste
         return std::make_shared<Action>(*this);
       }
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
         auto begin = it;
 
-        if (!pattern->match(it, end, match))
+        if (!pattern->match(it, parent, match))
           return false;
 
-        return action({begin, it}) && match_continuation(it, end, match);
+        return action({begin, it}) && match_continuation(it, parent, match);
       }
     };
 
@@ -899,9 +887,9 @@ namespace trieste
       : pattern(pattern_), fast_pattern(fast_pattern_)
       {}
 
-      bool match(NodeIt& it, const NodeIt& end, Match& match) const
+      bool match(NodeIt& it, const Node& parent, Match& match) const
       {
-        return pattern->match(it, end, match);
+        return pattern->match(it, parent, match);
       }
 
       Pattern operator()(ActionFn action) const
