@@ -562,6 +562,7 @@ namespace trieste
       }
     };
 
+    template <bool CapturesLeft>
     class Choice : public PatternDef
     {
     private:
@@ -571,7 +572,10 @@ namespace trieste
     public:
       Choice(PatternPtr first_, PatternPtr second_)
       : first(first_), second(second_)
-      {}
+      {
+        if (CapturesLeft != first->has_captures())
+          throw std::runtime_error("Static and dynamic view of captures disagree.");
+      }
 
       bool has_captures_local() const& override
       {
@@ -586,14 +590,20 @@ namespace trieste
       bool match(NodeIt& it, const NodeIt& end, Match& match) const& override
       {
         auto backtrack_it = it;
-        auto backtrack_frame = match.add_frame();
+        size_t backtrack_frame;
+  
+        if constexpr (CapturesLeft)
+          backtrack_frame = match.add_frame();
+  
         if (first->match(it, end, match))
         {
           return match_continuation(it, end, match);
         }
 
         it = backtrack_it;
-        match.return_to_frame(backtrack_frame);
+  
+        if constexpr (CapturesLeft)
+          match.return_to_frame(backtrack_frame);
 
         return second->match(it, end, match) &&
           match_continuation(it, end, match);
@@ -932,9 +942,14 @@ namespace trieste
 
       Pattern operator/(Pattern rhs) const
       {
-        return {
-          std::make_shared<Choice>(pattern, rhs.pattern),
-          FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
+        if (pattern->has_captures())
+          return {
+            std::make_shared<Choice<true>>(pattern, rhs.pattern),
+            FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
+        else
+          return {
+            std::make_shared<Choice<false>>(pattern, rhs.pattern),
+            FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
       }
 
       Pattern operator<<(Pattern rhs) const
