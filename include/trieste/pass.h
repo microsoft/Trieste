@@ -177,12 +177,6 @@ namespace trieste
       while (it != node->end())
       {
         const auto& end = node->end();
-        // Don't examine Error or Lift nodes.
-        if ((*it)->type().in({Error, Lift}))
-        {
-          ++it;
-          continue;
-        }
 
         ptrdiff_t replaced = -1;
 
@@ -257,6 +251,9 @@ namespace trieste
         {
           Node curr = *it;
           it++;
+          // Don't examine Error or Lift nodes.
+          if (curr->type().in({Error, Lift}))
+            continue;
           add(curr);
         }
         else
