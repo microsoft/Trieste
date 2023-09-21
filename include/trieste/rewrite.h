@@ -118,7 +118,8 @@ namespace trieste
   namespace detail
   {
     /**
-     * FastPattern tracks a quickly checkable pattern for whether a parent and start node could be satisfied be a possible match.
+     * FastPattern tracks a quickly checkable pattern for whether a parent and
+     * start node could be satisfied be a possible match.
      */
     class FastPattern
     {
@@ -127,11 +128,12 @@ namespace trieste
        *
        * T(foo)        -> FastPattern({foo}, {}, false)
        *   There is no pass through, and the first can only be a `foo`.
-       * Opt(T(foo))  -> FastPattern({foo}, {}, true) 
-       *   As this is optional, it is a pass through, and the first can be a `foo` or whatever the continuation allows.
-       * Opt(T(foo)) * T(bar) -> FastPattern({foo,bar}, {}, false)
-       *   This can start with foo or bar, and has no pass-through. 
-       * 
+       * Opt(T(foo))  -> FastPattern({foo}, {}, true)
+       *   As this is optional, it is a pass through, and the first can be a
+       * `foo` or whatever the continuation allows. Opt(T(foo)) * T(bar) ->
+       * FastPattern({foo,bar}, {}, false) This can start with foo or bar, and
+       * has no pass-through.
+       *
        * In(foo)     -> FastPattern({}, {foo}, true)
        *   This can start with any token, and must have a parent of foo.
        * In(foo) * T(bar) -> FastPattern({bar}, {foo}, false)
@@ -252,9 +254,17 @@ namespace trieste
         else
         {
           new_parent = lhs.parents;
-          std::erase_if(new_parent, [&](const Token& t) {
-            return !rhs.parents.contains(t);
-          });
+          for (auto it = new_parent.begin(); it != new_parent.end();)
+          {
+            if (rhs.parents.find(*it) == rhs.parents.end())
+            {
+              it = new_parent.erase(it);
+            }
+            else
+            {
+              ++it;
+            }
+          }
         }
 
         return FastPattern(new_first, new_parent, new_pass_through);
@@ -264,7 +274,7 @@ namespace trieste
       {
         if (pattern.any_first())
           return pattern;
-        
+
         return FastPattern(pattern.starts, {}, true);
       }
 
@@ -578,7 +588,7 @@ namespace trieste
       }
     };
 
-    template <bool CapturesLeft>
+    template<bool CapturesLeft>
     class Choice : public PatternDef
     {
     private:
@@ -590,7 +600,8 @@ namespace trieste
       : first(first_), second(second_)
       {
         if (CapturesLeft != first->has_captures())
-          throw std::runtime_error("Static and dynamic view of captures disagree.");
+          throw std::runtime_error(
+            "Static and dynamic view of captures disagree.");
       }
 
       bool has_captures_local() const& override
@@ -607,17 +618,17 @@ namespace trieste
       {
         auto backtrack_it = it;
         size_t backtrack_frame;
-  
+
         if constexpr (CapturesLeft)
           backtrack_frame = match.add_frame();
-  
+
         if (first->match(it, parent, match))
         {
           return match_continuation(it, parent, match);
         }
 
         it = backtrack_it;
-  
+
         if constexpr (CapturesLeft)
           match.return_to_frame(backtrack_frame);
 
@@ -924,8 +935,7 @@ namespace trieste
         if (result)
           // With a custom rep many things can happen.  We overapproximate here.
           // We could do better, but it's not worth the effort.
-          return {
-            result, FastPattern::match_any()};
+          return {result, FastPattern::match_any()};
 
         return {
           std::make_shared<Rep>(pattern), FastPattern::match_opt(fast_pattern)};
@@ -953,8 +963,9 @@ namespace trieste
           tokens.reserve(lhs_tokens.size() + rhs_tokens.size());
           tokens.insert(tokens.end(), lhs_tokens.begin(), lhs_tokens.end());
           tokens.insert(tokens.end(), rhs_tokens.begin(), rhs_tokens.end());
-          return {std::make_shared<TokenMatch>(tokens),
-                  FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
+          return {
+            std::make_shared<TokenMatch>(tokens),
+            FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
         }
 
         if (pattern->has_captures())

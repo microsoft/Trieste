@@ -178,7 +178,8 @@ namespace trieste
         const auto& starts = rule.first.get_starts();
         const auto& parents = rule.first.get_parents();
 
-        //  This is used to add a rule under a specific parent, or to the default.
+        //  This is used to add a rule under a specific parent, or to the
+        //  default.
         auto add =
           [&](DefaultMap<std::vector<detail::PatternEffect<Node>>>& rules) {
             if (starts.empty())
