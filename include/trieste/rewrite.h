@@ -117,6 +117,168 @@ namespace trieste
 
   namespace detail
   {
+    /**
+     * FastPattern tracks a quickly checkable pattern for whether a parent and start node could be satisfied be a possible match.
+     */
+    class FastPattern
+    {
+      /**
+       * Here are a few patterns and what they are in FastPattern:
+       *
+       * T(foo)        -> FastPattern({foo}, {}, false)
+       *   There is no pass through, and the first can only be a `foo`.
+       * Opt(T(foo))  -> FastPattern({foo}, {}, true) 
+       *   As this is optional, it is a pass through, and the first can be a `foo` or whatever the continuation allows.
+       * Opt(T(foo)) * T(bar) -> FastPattern({foo,bar}, {}, false)
+       *   This can start with foo or bar, and has no pass-through. 
+       * 
+       * In(foo)     -> FastPattern({}, {foo}, true)
+       *   This can start with any token, and must have a parent of foo.
+       * In(foo) * T(bar) -> FastPattern({bar}, {foo}, false)
+       *   This can start with bar, and must have a parent of foo.
+       * In(foo) / In(bar) -> FastPattern({}, {foo,bar}, true)
+       *  This can start with any token, and must have a parent of foo or bar.
+       */
+
+      // Empty set means match anything.
+      std::set<Token> starts;
+
+      // Empty set means match any parent.
+      std::set<Token> parents;
+
+      // True, if pattern can consume nothing
+      bool pass_through;
+
+      FastPattern(
+        std::set<Token> first_, std::set<Token> parent_, bool pass_through_)
+      : starts(first_), parents(parent_), pass_through(pass_through_)
+      {}
+
+      bool any_first() const
+      {
+        return starts.empty() && !pass_through;
+      }
+
+    public:
+      static FastPattern match_any()
+      {
+        return FastPattern({}, {}, false);
+      }
+
+      static FastPattern match_pred()
+      {
+        return FastPattern({}, {}, true);
+      }
+
+      static FastPattern match_token(std::set<Token> token)
+      {
+        return FastPattern(token, {}, false);
+      }
+
+      static FastPattern match_parent(std::set<Token> token)
+      {
+        return FastPattern({}, token, true);
+      }
+
+      static FastPattern
+      match_choice(const FastPattern& lhs, const FastPattern& rhs)
+      {
+        bool new_pass_through = lhs.pass_through || rhs.pass_through;
+        std::set<Token> new_first;
+        // any_first is annihilator for choice, so special cases required.
+        // otherwise, we treat it as union
+        if (!rhs.any_first() && !lhs.any_first())
+        {
+          new_first = lhs.starts;
+          new_first.insert(rhs.starts.begin(), rhs.starts.end());
+        }
+        else
+        {
+          // Any first is true of one disjunct, so set pass_through to
+          // false, and first to empty, to continue the any_first property.
+          new_pass_through = false;
+        }
+
+        std::set<Token> new_parent;
+        // Empty is treat as universal parent, so maintain universal
+        // otherwise, we treat it as union
+        if (!rhs.parents.empty() && !lhs.parents.empty())
+        {
+          new_parent = lhs.parents;
+          new_parent.insert(rhs.parents.begin(), rhs.parents.end());
+        }
+
+        return FastPattern(new_first, new_parent, new_pass_through);
+      }
+
+      static FastPattern
+      match_seq(const FastPattern& lhs, const FastPattern& rhs)
+      {
+        std::set<Token> new_first;
+        bool new_pass_through = false;
+        if (lhs.pass_through)
+        {
+          if (rhs.any_first())
+          {
+            // Pass through followed by an annihilator is an annihilator.
+            // Set pass through to false, and new_first to empty,
+            // as this can accept any first token.
+            new_pass_through = false;
+          }
+          else
+          {
+            // Union starts.
+            new_first = lhs.starts;
+            new_first.insert(rhs.starts.begin(), rhs.starts.end());
+          }
+        }
+        else
+        {
+          // Ignore right hand side if not a pass through.
+          new_first = lhs.starts;
+        }
+
+        std::set<Token> new_parent;
+        // Perform intersection
+        // empty is universal, so special cases required.
+        if (lhs.parents.empty())
+        {
+          new_parent = rhs.parents;
+        }
+        else if (rhs.parents.empty())
+        {
+          new_parent = lhs.parents;
+        }
+        else
+        {
+          new_parent = lhs.parents;
+          std::erase_if(new_parent, [&](const Token& t) {
+            return !rhs.parents.contains(t);
+          });
+        }
+
+        return FastPattern(new_first, new_parent, new_pass_through);
+      }
+
+      static FastPattern match_opt(const FastPattern& pattern)
+      {
+        if (pattern.any_first())
+          return pattern;
+        
+        return FastPattern(pattern.starts, {}, true);
+      }
+
+      const std::set<Token>& get_starts() const
+      {
+        return starts;
+      }
+
+      const std::set<Token>& get_parents() const
+      {
+        return parents;
+      }
+    };
+
     class PatternDef;
     using PatternPtr = std::shared_ptr<PatternDef>;
 
@@ -705,9 +867,12 @@ namespace trieste
     {
     private:
       PatternPtr pattern;
+      FastPattern fast_pattern;
 
     public:
-      Pattern(PatternPtr pattern_) : pattern(pattern_) {}
+      Pattern(PatternPtr pattern_, FastPattern fast_pattern_)
+      : pattern(pattern_), fast_pattern(fast_pattern_)
+      {}
 
       bool match(NodeIt& it, const NodeIt& end, Match& match) const
       {
@@ -716,58 +881,75 @@ namespace trieste
 
       Pattern operator()(ActionFn action) const
       {
-        return {std::make_shared<Action>(action, pattern)};
+        return {std::make_shared<Action>(action, pattern), fast_pattern};
       }
 
       Pattern operator[](const Token& name) const
       {
-        return {std::make_shared<Cap>(name, pattern)};
+        return {std::make_shared<Cap>(name, pattern), fast_pattern};
       }
 
       Pattern operator~() const
       {
-        return {std::make_shared<Opt>(pattern)};
+        return {
+          std::make_shared<Opt>(pattern), FastPattern::match_opt(fast_pattern)};
       }
 
       Pattern operator++() const
       {
-        return {std::make_shared<Pred>(pattern)};
+        return {std::make_shared<Pred>(pattern), FastPattern::match_pred()};
       }
 
       Pattern operator--() const
       {
-        return {std::make_shared<NegPred>(pattern)};
+        return {std::make_shared<NegPred>(pattern), FastPattern::match_pred()};
       }
 
       Pattern operator++(int) const
       {
         auto result = pattern->custom_rep();
         if (result)
-          return {result};
+          // With a custom rep many things can happen.  We overapproximate here.
+          // We could do better, but it's not worth the effort.
+          return {
+            result, FastPattern::match_any()};
 
-        return {std::make_shared<Rep>(pattern)};
+        return {
+          std::make_shared<Rep>(pattern), FastPattern::match_opt(fast_pattern)};
       }
 
       Pattern operator!() const
       {
-        return {std::make_shared<Not>(pattern)};
+        return {std::make_shared<Not>(pattern), FastPattern::match_pred()};
       }
 
       Pattern operator*(Pattern rhs) const
       {
         auto result = pattern->clone();
         result->set_continuation(rhs.pattern);
-        return result;
+        return {result, FastPattern::match_seq(fast_pattern, rhs.fast_pattern)};
       }
 
       Pattern operator/(Pattern rhs) const
       {
-        return {std::make_shared<Choice>(pattern, rhs.pattern)};
+        return {
+          std::make_shared<Choice>(pattern, rhs.pattern),
+          FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
       }
 
       Pattern operator<<(Pattern rhs) const
       {
-        return {std::make_shared<Children>(pattern, rhs.pattern)};
+        return {std::make_shared<Children>(pattern, rhs.pattern), fast_pattern};
+      }
+
+      const std::set<Token>& get_starts() const
+      {
+        return fast_pattern.get_starts();
+      }
+
+      const std::set<Token>& get_parents() const
+      {
+        return fast_pattern.get_parents();
       }
     };
 
@@ -800,14 +982,19 @@ namespace trieste
     return {pattern, effect};
   }
 
-  inline const auto Any = detail::Pattern(std::make_shared<detail::Anything>());
-  inline const auto Start = detail::Pattern(std::make_shared<detail::First>());
-  inline const auto End = detail::Pattern(std::make_shared<detail::Last>());
+  inline const auto Any = detail::Pattern(
+    std::make_shared<detail::Anything>(), detail::FastPattern::match_any());
+  inline const auto Start = detail::Pattern(
+    std::make_shared<detail::First>(), detail::FastPattern::match_pred());
+  inline const auto End = detail::Pattern(
+    std::make_shared<detail::Last>(), detail::FastPattern::match_pred());
 
   inline detail::Pattern T(const Token& type)
   {
     std::array<Token, 1> types_ = {type};
-    return detail::Pattern(std::make_shared<detail::TokenMatch<1>>(types_));
+    return detail::Pattern(
+      std::make_shared<detail::TokenMatch<1>>(types_),
+      detail::FastPattern::match_token({type}));
   }
 
   template<typename... Ts>
@@ -816,12 +1003,15 @@ namespace trieste
   {
     std::array<Token, 2 + sizeof...(types)> types_ = {type1, type2, types...};
     return detail::Pattern(
-      std::make_shared<detail::TokenMatch<2 + sizeof...(types)>>(types_));
+      std::make_shared<detail::TokenMatch<2 + sizeof...(types)>>(types_),
+      detail::FastPattern::match_token({type1, type2, types...}));
   }
 
   inline detail::Pattern T(const Token& type, const std::string& r)
   {
-    return detail::Pattern(std::make_shared<detail::RegexMatch>(type, r));
+    return detail::Pattern(
+      std::make_shared<detail::RegexMatch>(type, r),
+      detail::FastPattern::match_token({type}));
   }
 
   template<typename... Ts>
@@ -829,7 +1019,8 @@ namespace trieste
   {
     std::array<Token, 1 + sizeof...(types)> types_ = {type1, types...};
     return detail::Pattern(
-      std::make_shared<detail::Inside<1 + sizeof...(types)>>(types_));
+      std::make_shared<detail::Inside<1 + sizeof...(types)>>(types_),
+      detail::FastPattern::match_parent({type1, types...}));
   }
 
   inline detail::EphemeralNode operator-(Node node)
