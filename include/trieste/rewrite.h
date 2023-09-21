@@ -343,6 +343,13 @@ namespace trieste
       {
         return !continuation;
       }
+
+      // If this pattern is only a TokenMatch node then return the tokens
+      // Otherwise, return an empty vector
+      virtual std::vector<Token> only_tokens() const
+      {
+        return {};
+      }
     };
 
     using PatternPtr = std::shared_ptr<PatternDef>;
@@ -401,14 +408,13 @@ namespace trieste
       }
     };
 
-    template<size_t N>
     class TokenMatch : public PatternDef
     {
     private:
-      std::array<Token, N> types;
+      std::vector<Token> types;
 
     public:
-      TokenMatch(const std::array<Token, N>& types_) : types(types_) {}
+      TokenMatch(std::vector<Token> types_) : types(types_) {}
 
       PatternPtr clone() const& override
       {
@@ -429,6 +435,15 @@ namespace trieste
           }
         }
         return false;
+      }
+
+      std::vector<Token> only_tokens() const override
+      {
+        if (no_continuation())
+        {
+          return types;
+        }
+        return {};
       }
     };
 
@@ -942,6 +957,18 @@ namespace trieste
 
       Pattern operator/(Pattern rhs) const
       {
+        auto lhs_tokens = pattern->only_tokens();
+        auto rhs_tokens = rhs.pattern->only_tokens();
+        if (!lhs_tokens.empty() && !rhs_tokens.empty())
+        {
+          std::vector<Token> tokens;
+          tokens.reserve(lhs_tokens.size() + rhs_tokens.size());
+          tokens.insert(tokens.end(), lhs_tokens.begin(), lhs_tokens.end());
+          tokens.insert(tokens.end(), rhs_tokens.begin(), rhs_tokens.end());
+          return {std::make_shared<TokenMatch>(tokens),
+                  FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
+        }
+
         if (pattern->has_captures())
           return {
             std::make_shared<Choice<true>>(pattern, rhs.pattern),
@@ -1006,9 +1033,9 @@ namespace trieste
 
   inline detail::Pattern T(const Token& type)
   {
-    std::array<Token, 1> types_ = {type};
+    std::vector<Token> types = {type};
     return detail::Pattern(
-      std::make_shared<detail::TokenMatch<1>>(types_),
+      std::make_shared<detail::TokenMatch>(types),
       detail::FastPattern::match_token({type}));
   }
 
@@ -1016,9 +1043,9 @@ namespace trieste
   inline detail::Pattern
   T(const Token& type1, const Token& type2, const Ts&... types)
   {
-    std::array<Token, 2 + sizeof...(types)> types_ = {type1, type2, types...};
+    std::vector<Token> types_ = {type1, type2, types...};
     return detail::Pattern(
-      std::make_shared<detail::TokenMatch<2 + sizeof...(types)>>(types_),
+      std::make_shared<detail::TokenMatch>(types_),
       detail::FastPattern::match_token({type1, type2, types...}));
   }
 
