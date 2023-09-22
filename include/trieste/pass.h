@@ -205,10 +205,12 @@ namespace trieste
           rule_map.modify_all(add);
         }
         else
+        {
           for (const auto& parent : parents)
           {
             add(rule_map.modify(parent));
           }
+        }
       }
     }
 
@@ -264,9 +266,7 @@ namespace trieste
       auto replace = rule_replace(match);
 
       if (replace && (replace == NoChange))
-      {
         return replaced;
-      }
 
       auto loc = (*start)->location();
 

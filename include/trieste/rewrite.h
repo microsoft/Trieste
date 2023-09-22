@@ -142,13 +142,17 @@ namespace trieste
        *  This can start with any token, and must have a parent of foo or bar.
        */
 
-      // Empty set means match anything.
+      // Empty set means any first token can be consumed by this pattern,
+      // however, if pass_through is true, then we treat it as consuming no
+      // tokens.  Predicates will typically set starts to {} and pass_through to
+      // true.
       std::set<Token> starts;
 
       // Empty set means match any parent.
       std::set<Token> parents;
 
-      // True, if pattern can consume nothing
+      // True, if pattern can consume nothing, and hence the continuation
+      // can also consume the first token.
       bool pass_through;
 
       FastPattern(
@@ -850,8 +854,7 @@ namespace trieste
       }
     };
 
-
-    template <typename F>
+    template<typename F>
     class Action : public PatternDef
     {
     private:
@@ -905,10 +908,12 @@ namespace trieste
         return pattern->match(it, parent, match);
       }
 
-      template <typename F>
+      template<typename F>
       Pattern operator()(F&& action) const
       {
-        return {std::make_shared<Action<F>>(std::forward<F>(action), pattern), fast_pattern};
+        return {
+          std::make_shared<Action<F>>(std::forward<F>(action), pattern),
+          fast_pattern};
       }
 
       Pattern operator[](const Token& name) const
