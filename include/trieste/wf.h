@@ -247,7 +247,7 @@ namespace trieste
         return ok;
       }
 
-      bool build_st(Node, std::ostream&) const
+      bool build_st(Node&, std::ostream&) const
       {
         // Do nothing.
         return true;
@@ -359,7 +359,7 @@ namespace trieste
         }
       }
 
-      bool build_st(Node node, std::ostream& out) const
+      bool build_st(Node& node, std::ostream& out) const
       {
         if (binding == Invalid)
           return true;
@@ -620,7 +620,7 @@ namespace trieste
           gen_node(g, depth + 1, child);
       }
 
-      bool build_st(Node node, std::ostream& out) const
+      bool build_st(Node& node, std::ostream& out) const
       {
         if (!node)
           return false;
