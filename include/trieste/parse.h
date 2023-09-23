@@ -438,6 +438,7 @@ namespace trieste
       }
 
       auto top = NodeDef::create(Directory, {dir.stem().string()});
+      ast::detail::top_node() = top;
 
       for (auto& subdir : dirs)
         top->push_back(parse_directory(subdir));

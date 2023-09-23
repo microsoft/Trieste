@@ -530,9 +530,10 @@ namespace trieste
           seed,
           target_depth);
 
-        auto node = NodeDef::create(Top);
-        gen_node(g, 0, node);
-        return node;
+        auto top = NodeDef::create(Top);
+        ast::detail::top_node() = top;
+        gen_node(g, 0, top);
+        return top;
       }
 
       std::size_t min_dist_to_terminal(
