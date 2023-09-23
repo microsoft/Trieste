@@ -353,7 +353,10 @@ namespace trieste
 
       auto node = children.back();
       children.pop_back();
-      node->parent_ = nullptr;
+
+      if (node->parent_ == this)
+        node->parent_ = nullptr;
+
       return node;
     }
 
@@ -558,7 +561,9 @@ namespace trieste
 
       if (node2)
       {
-        node1->parent_ = nullptr;
+        if (node1->parent_ == this)
+          node1->parent_ = nullptr;
+
         node2->parent_ = this;
         it->swap(node2);
         node2->add_flags();
