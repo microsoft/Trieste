@@ -17,23 +17,16 @@ namespace trieste
   class Match
   {
   private:
-    Node in_node;
     size_t index{0};
     std::vector<std::pair<bool, std::map<Token, NodeRange>>> captures{16};
 
   public:
-    Match(Node in_node_) : in_node(in_node_) {}
-
+    Match() {}
     Match(const Match&) = delete;
 
     Location fresh(const Location& prefix = {})
     {
-      return in_node->fresh(prefix);
-    }
-
-    void set_root(Node root)
-    {
-      in_node = root;
+      return ast::fresh(prefix);
     }
 
     const NodeRange& operator[](const Token& token)

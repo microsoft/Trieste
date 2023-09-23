@@ -15,7 +15,7 @@ namespace trieste
 {
   struct Options
   {
-    virtual void configure(CLI::App& cli) = 0;
+    virtual void configure(CLI::App&) {}
   };
 
   class Driver
@@ -27,8 +27,7 @@ namespace trieste
     CLI::App app;
     Options* options;
     Parse parser;
-    const wf::Wellformed* wfParser;
-    std::vector<std::tuple<std::string, Pass, const wf::Wellformed*>> passes;
+    std::vector<Pass> passes;
     std::vector<std::string> limits;
 
   public:
@@ -36,25 +35,17 @@ namespace trieste
       const std::string& language_name_,
       Options* options_,
       Parse parser_,
-      const wf::Wellformed& wfParser_,
-      std::initializer_list<
-        std::tuple<std::string, Pass, const wf::Wellformed&>> passes_)
+      std::vector<Pass> passes_)
     : language_name(language_name_),
       app(language_name_),
       options(options_),
-      parser(parser_)
+      parser(parser_),
+      passes(passes_)
     {
-      if (wfParser_)
-        this->wfParser = &wfParser_;
-
       limits.push_back(parse_only);
 
-      for (auto& [name_, pass, wf] : passes_)
-      {
-        auto pwf = wf ? &wf : nullptr;
-        this->passes.push_back({name_, pass, pwf});
-        limits.push_back(name_);
-      }
+      for (auto& pass : passes)
+        limits.push_back(pass->name());
     }
 
     int run(int argc, char** argv)
@@ -159,14 +150,10 @@ namespace trieste
             start_pass++;
 
             // Build the symbol table and check well-formedness.
-            auto wf = std::get<2>(passes.at(start_pass - 1));
-
-            if (wf)
-            {
-              wf::push_back(wf);
-              ok = ok && wf->build_st(ast, std::cout);
-              ok = ok && wf->check(ast, std::cout);
-            }
+            auto& wf = passes.at(start_pass - 1)->wf();
+            wf::push_back(wf);
+            ok = ok && wf.build_st(ast, std::cout);
+            ok = ok && wf.check(ast, std::cout);
 
             if (!ok)
               return -1;
@@ -181,12 +168,9 @@ namespace trieste
             bool ok = !!ast;
 
             // Build the symbol table and check well-formedness.
-            if (wfParser)
-            {
-              wf::push_back(wfParser);
-              ok = ok && wfParser->build_st(ast, std::cout);
-              ok = ok && wfParser->check(ast, std::cout);
-            }
+            wf::push_back(parser.wf());
+            ok = ok && parser.wf().build_st(ast, std::cout);
+            ok = ok && parser.wf().check(ast, std::cout);
 
             if (!ok)
               return -1;
@@ -200,16 +184,12 @@ namespace trieste
           else
             std::cout << "File not found: " << path << std::endl;
 
+          wf::push_back(parser.wf());
           bool ok = bool(ast);
+          ok = ok && parser.wf().build_st(ast, std::cout);
 
-          if (wfParser)
-          {
-            wf::push_back(wfParser);
-            ok = ok && wfParser->build_st(ast, std::cout);
-
-            if (wfcheck)
-              ok = ok && wfParser->check(ast, std::cout);
-          }
+          if (wfcheck)
+            ok = ok && parser.wf().check(ast, std::cout);
 
           if (!ok)
           {
@@ -221,7 +201,8 @@ namespace trieste
         for (auto i = start_pass; i <= end_pass; i++)
         {
           // Run the pass until it reaches a fixed point.
-          auto& [pass_name, pass, wf] = passes.at(i - 1);
+          auto& pass = passes.at(i - 1);
+          auto& wf = pass->wf();
           wf::push_back(wf);
 
           auto [new_ast, count, changes] = pass->run(ast);
@@ -230,7 +211,7 @@ namespace trieste
 
           if (diag)
           {
-            std::cout << "Pass " << pass_name << ": " << count
+            std::cout << "Pass " << pass->name() << ": " << count
                       << " iterations, " << changes << " nodes rewritten."
                       << std::endl;
           }
@@ -243,10 +224,10 @@ namespace trieste
 
           if (wf)
           {
-            auto ok = wf->build_st(ast, std::cout);
+            auto ok = wf.build_st(ast, std::cout);
 
             if (wfcheck)
-              ok = wf->check(ast, std::cout) && ok;
+              ok = wf.check(ast, std::cout) && ok;
 
             if (!ok)
             {
@@ -297,16 +278,17 @@ namespace trieste
 
         for (auto i = start_pass; i <= end_pass; i++)
         {
-          auto& [pass_name, pass, wf] = passes.at(i - 1);
-          auto& prev = i > 1 ? std::get<2>(passes.at(i - 2)) : wfParser;
+          auto& pass = passes.at(i - 1);
+          auto& wf = pass->wf();
+          auto& prev = i > 1 ? passes.at(i - 2)->wf() : parser.wf();
 
           if (!prev || !wf)
           {
-            std::cout << "Skipping pass: " << pass_name << std::endl;
+            std::cout << "Skipping pass: " << pass->name() << std::endl;
             continue;
           }
 
-          std::cout << "Testing pass: " << pass_name << std::endl;
+          std::cout << "Testing pass: " << pass->name() << std::endl;
           wf::push_back(prev);
           wf::push_back(wf);
 
@@ -316,9 +298,9 @@ namespace trieste
             std::stringstream ss1;
             std::stringstream ss2;
 
-            auto ast = prev->gen(parser.generators(), seed, test_max_depth);
+            auto ast = prev.gen(parser.generators(), seed, test_max_depth);
             ss1 << "============" << std::endl
-                << "Pass: " << pass_name << ", seed: " << seed << std::endl
+                << "Pass: " << pass->name() << ", seed: " << seed << std::endl
                 << "------------" << std::endl
                 << ast << "------------" << std::endl;
 
@@ -333,8 +315,8 @@ namespace trieste
 
             std::stringstream ss3;
 
-            auto ok = wf->build_st(new_ast, ss3);
-            ok = wf->check(new_ast, ss3) && ok;
+            auto ok = wf.build_st(new_ast, ss3);
+            ok = wf.check(new_ast, ss3) && ok;
 
             if (!ok)
             {
@@ -342,7 +324,7 @@ namespace trieste
                 std::cout << ss1.str() << ss2.str();
 
               std::cout << ss3.str() << "============" << std::endl
-                        << "Failed pass: " << pass_name << ", seed: " << seed
+                        << "Failed pass: " << pass->name() << ", seed: " << seed
                         << std::endl;
               ret = -1;
 
@@ -367,7 +349,7 @@ namespace trieste
 
       for (size_t i = 0; i < passes.size(); i++)
       {
-        if (std::get<0>(passes[i]) == name_)
+        if (passes[i]->name() == name_)
           return i + 1;
       }
 

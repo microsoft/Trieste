@@ -78,6 +78,7 @@ namespace trieste
   class Flags
   {
     char flags{0};
+
   public:
     void set_contains_error()
     {
@@ -132,17 +133,18 @@ namespace trieste
       if (type_ == Error || flags_.contains_error())
       {
         auto curr = parent_;
-        while(curr != nullptr)
+        while (curr != nullptr)
         {
           if (curr->flags_.contains_error())
             break;
           curr->flags_.set_contains_error();
           curr = curr->parent_;
         }
-      } else if (type_ == Lift || flags_.contains_lift())
+      }
+      else if (type_ == Lift || flags_.contains_lift())
       {
         auto curr = parent_;
-        while(curr != nullptr)
+        while (curr != nullptr)
         {
           if (curr->flags_.contains_lift())
             break;
@@ -526,15 +528,10 @@ namespace trieste
     Location fresh(const Location& prefix = {})
     {
       // This actually returns a unique name, rather than a fresh one.
-      auto p = this;
+      if (type_ == Top)
+        return symtab_->fresh(prefix);
 
-      while (p->parent_)
-        p = p->parent_;
-
-      if (p->type_ != Top)
-        throw std::runtime_error("No Top node");
-
-      return p->symtab_->fresh(prefix);
+      return parent(Top)->fresh(prefix);
     }
 
     Node clone()
@@ -804,6 +801,28 @@ namespace trieste
       (*it)->str(os, 0);
 
     return os;
+  }
+
+  namespace ast
+  {
+    namespace detail
+    {
+      inline Node& top_node()
+      {
+        static thread_local Node top;
+        return top;
+      }
+    }
+
+    inline Node top()
+    {
+      return detail::top_node();
+    }
+
+    inline Location fresh(const Location& prefix = {})
+    {
+      return ast::top()->fresh(prefix);
+    }
   }
 
   [[gnu::used]] inline void print(const NodeDef* node)

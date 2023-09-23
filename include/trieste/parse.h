@@ -5,6 +5,7 @@
 #include "ast.h"
 #include "gen.h"
 #include "regex.h"
+#include "wf.h"
 
 #include <filesystem>
 #include <functional>
@@ -224,8 +225,9 @@ namespace trieste
       std::function<void(const Parse&, const std::filesystem::path&, Node)>;
 
   private:
-    std::filesystem::path exe;
     depth depth_;
+    const wf::Wellformed& wf_ = wf::empty;
+    std::filesystem::path exe;
 
     PreF prefile_;
     PreF predir_;
@@ -238,6 +240,13 @@ namespace trieste
 
   public:
     Parse(depth depth) : depth_(depth) {}
+
+    Parse(depth depth, const wf::Wellformed& wf) : depth_(depth), wf_(wf) {}
+
+    const wf::Wellformed& wf()
+    {
+      return wf_;
+    }
 
     Parse& operator()(
       const std::string& mode, const std::initializer_list<detail::Rule> r)
@@ -259,7 +268,7 @@ namespace trieste
       return [this](Rand& rnd, Node node) {
         auto find = gens.find(node->type());
         if (find == gens.end())
-          return node->fresh();
+          return ast::fresh();
 
         return Location(find->second(rnd));
       };
