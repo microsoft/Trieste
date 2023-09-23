@@ -565,8 +565,8 @@ namespace trieste
           node1->parent_ = nullptr;
 
         node2->parent_ = this;
-        it->swap(node2);
         node2->add_flags();
+        it->swap(node2);
       }
       else
       {
