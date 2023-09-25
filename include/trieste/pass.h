@@ -325,7 +325,7 @@ namespace trieste
       return replaced;
     }
 
-    size_t match_children(const Node& node, Match& match)
+    SNMALLOC_FAST_PATH size_t match_children(const Node& node, Match& match)
     {
       size_t changes = 0;
 
