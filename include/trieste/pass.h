@@ -29,7 +29,7 @@ namespace trieste
     T def{};
 
     // The map of specific values for tokens.
-    std::array<T*, TokenDef::HASH_SIZE> map;
+    std::array<T*, TokenDef::DEFAULT_MAP_TABLE_SIZE> map;
 
     // If this is true, then the map is empty, and the default value has not
     // been modified.
@@ -42,7 +42,7 @@ namespace trieste
 
     size_t token_index(const Token& t) const
     {
-      return t.hash();
+      return t.default_map_hash();
     }
 
   public:

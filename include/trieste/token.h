@@ -22,13 +22,18 @@ namespace trieste
     using flag = uint32_t;
     const char* name;
     flag fl;
-    uint32_t hash_id;
-    static constexpr size_t HASH_SIZE{128};
+
+    // Hash id for this token.  This is used to determine the hash function for
+    // the default map for the main rewrite loop.  This is not a general purpose
+    // hash function.
+    uint32_t default_map_id;
+    static constexpr size_t DEFAULT_MAP_TABLE_SIZE{128};
 
     TokenDef(const char* name_, flag fl_ = 0) : name(name_), fl(fl_)
     {
       static std::atomic<uint32_t> next_id = 0;
-      hash_id = (next_id++ % HASH_SIZE) * sizeof(void*);
+      default_map_id = (next_id++ % DEFAULT_MAP_TABLE_SIZE) * sizeof(void*);
+      
       detail::register_token(*this);
     }
 
@@ -53,12 +58,13 @@ namespace trieste
     operator Node() const;
 
     /**
-     * Special hash for looking up in tables of size HASH_SIZE with
+     * Special hash for looking up in tables of size DEFAULT_MAP_TABLE_SIZE with
      * elements of size sizeof(void*).
      */
-    uint32_t hash() const
+    uint32_t default_map_hash() const
     {
-      return def->hash_id / sizeof(void*);
+
+      return def->default_map_id / sizeof(void*);
     }
 
     bool operator&(TokenDef::flag f) const
