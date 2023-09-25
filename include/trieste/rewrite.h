@@ -621,29 +621,22 @@ namespace trieste
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
         auto backtrack_it = it;
+        size_t backtrack_frame;
 
         if constexpr (CapturesLeft)
-        {
-          size_t backtrack_frame;
           backtrack_frame = match.add_frame();
 
-          if (first->match(it, parent, match))
-          {
-            return match_continuation(it, parent, match);
-          }
-
-          it = backtrack_it;
-          match.return_to_frame(backtrack_frame);
-        }
-        else
+        if (first->match(it, parent, match))
         {
-          if (first->match(it, parent, match))
-          {
-            return match_continuation(it, parent, match);
-          }
-
-          it = backtrack_it;
+          return match_continuation(it, parent, match);
         }
+
+        it = backtrack_it;
+
+        if constexpr (CapturesLeft)
+          match.return_to_frame(backtrack_frame);
+        else
+          snmalloc::UNUSED(backtrack_frame);
 
         return second->match(it, parent, match) &&
           match_continuation(it, parent, match);
