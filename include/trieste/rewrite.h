@@ -635,6 +635,8 @@ namespace trieste
 
         if constexpr (CapturesLeft)
           match.return_to_frame(backtrack_frame);
+        else
+          snmalloc::UNUSED(backtrack_frame);
 
         return second->match(it, parent, match) &&
           match_continuation(it, parent, match);
