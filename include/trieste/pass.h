@@ -333,7 +333,7 @@ namespace trieste
       auto& rules = rule_map.get(node->type());
 
       // No rules apply under this specific parent, so skip it.
-      if (rules.empty())
+      if (SNMALLOC_UNLIKELY(rules.empty()))
         return changes;
 
       auto it = node->begin();
