@@ -417,6 +417,8 @@ namespace trieste
         Node& node = path.back().first;
         if constexpr (!Topdown)
           changes += match_children(node, match);
+        else
+          snmalloc::UNUSED(node);
         if constexpr (Post)
         {
           auto post_f = post_.find(node->type());
