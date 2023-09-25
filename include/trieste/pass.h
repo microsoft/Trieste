@@ -26,10 +26,10 @@ namespace trieste
   {
     // The default value for this map. This is returned when a specific value
     // has has not been set for the looked up token.
-    std::shared_ptr<T> def;
+    T def{};
 
     // The map of specific values for tokens.
-    std::array<std::shared_ptr<T>, TokenDef::HASH_SIZE> map;
+    std::array<T*, TokenDef::HASH_SIZE> map;
 
     // If this is true, then the map is empty, and the default value has not
     // been modified.
@@ -37,7 +37,7 @@ namespace trieste
 
     bool is_index_default(size_t index) const
     {
-      return map[index] == def;
+      return map[index] == &def;
     }
 
     size_t token_index(const Token& t) const
@@ -46,20 +46,19 @@ namespace trieste
     }
 
   public:
-    DefaultMap() : def(std::make_shared<T>())
+    DefaultMap()
     {
-      map.fill(def);
+      map.fill(&def);
     }
 
-    DefaultMap(const DefaultMap& dm)
-    : def(std::make_shared<T>(*dm.def)), empty_(dm.empty_)
+    DefaultMap(const DefaultMap& dm) : def(dm.def), empty_(dm.empty_)
     {
       for (size_t index = 0; index < map.size(); index++)
       {
         if (dm.is_index_default(index))
-          map[index] = def;
+          map[index] = &def;
         else
-          map[index] = std::make_shared<T>(*dm.map[index]);
+          map[index] = new T(*dm.map[index]);
       }
     }
 
@@ -76,7 +75,7 @@ namespace trieste
       for (size_t i = 0; i < map.size(); i++)
         if (!is_index_default(i))
           f(*map[i]);
-      f(*def);
+      f(def);
     }
 
     /**
@@ -89,7 +88,7 @@ namespace trieste
       empty_ = false;
       // Use existing default set of rules.
       if (is_index_default(i))
-        map[i] = std::make_shared<T>(*def);
+        map[i] = new T(def);
       return *map[i];
     }
 
@@ -108,8 +107,20 @@ namespace trieste
     void clear()
     {
       empty_ = true;
-      map.fill(def);
-      def->clear();
+      for (size_t i = 0; i < map.size(); i++)
+      {
+        if (!is_index_default(i))
+        {
+          delete map[i];
+          map[i] = &def;
+        }
+      }
+      def.clear();
+    }
+
+    ~DefaultMap()
+    {
+      clear();
     }
 
     /**
