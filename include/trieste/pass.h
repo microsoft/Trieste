@@ -355,7 +355,8 @@ namespace trieste
       return changes;
     }
 
-    size_t apply(Node root, Match& match)
+    template<bool Topdown, bool Pre, bool Post>
+    size_t apply_special(Node root, Match& match)
     {
       size_t changes = 0;
 
@@ -365,21 +366,27 @@ namespace trieste
         // Don't examine Error or Lift nodes.
         if (node->type() & flag::internal)
           return;
-        auto pre_f = pre_.find(node->type());
-        if (pre_f != pre_.end())
-          changes += pre_f->second(node);
-        if (flag(dir::topdown))
+        if constexpr (Pre)
+        {
+          auto pre_f = pre_.find(node->type());
+          if (pre_f != pre_.end())
+            changes += pre_f->second(node);
+        }
+        if constexpr (Topdown)
           changes += match_children(node, match);
         path.push_back({node, node->begin()});
       };
 
       auto remove = [&]() SNMALLOC_FAST_PATH_LAMBDA {
         Node& node = path.back().first;
-        if (flag(dir::bottomup))
+        if constexpr (!Topdown)
           changes += match_children(node, match);
-        auto post_f = post_.find(node->type());
-        if (post_f != post_.end())
-          changes += post_f->second(node);
+        if constexpr (Post)
+        {
+          auto post_f = post_.find(node->type());
+          if (post_f != post_.end())
+            changes += post_f->second(node);
+        }
         path.pop_back();
       };
 
@@ -400,6 +407,60 @@ namespace trieste
       }
 
       return changes;
+    }
+
+    size_t apply(Node root, Match& match)
+    {
+      if (flag(dir::topdown))
+      {
+        if (pre_.empty())
+        {
+          if (post_.empty())
+          {
+            return apply_special<true, false, false>(root, match);
+          }
+          else
+          {
+            return apply_special<true, false, true>(root, match);
+          }
+        }
+        else
+        {
+          if (post_.empty())
+          {
+            return apply_special<true, true, false>(root, match);
+          }
+          else
+          {
+            return apply_special<true, true, true>(root, match);
+          }
+        }
+      }
+      else
+      {
+        if (pre_.empty())
+        {
+          if (post_.empty())
+          {
+            return apply_special<false, false, false>(root, match);
+          }
+          else
+          {
+            return apply_special<false, false, true>(root, match);
+          }
+        }
+        else
+        {
+          if (post_.empty())
+          {
+            return apply_special<false, true, false>(root, match);
+          }
+          else
+          {
+            return apply_special<false, true, true>(root, match);
+          }
+        }
+      }
     }
 
     Nodes lift(Node node)
