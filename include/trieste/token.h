@@ -5,6 +5,7 @@
 #include "source.h"
 
 #include <map>
+#include <atomic>
 
 namespace trieste
 {
@@ -21,9 +22,13 @@ namespace trieste
     using flag = uint32_t;
     const char* name;
     flag fl;
+    uint32_t hash_id;
+    static constexpr size_t HASH_SIZE{128};
 
     TokenDef(const char* name_, flag fl_ = 0) : name(name_), fl(fl_)
     {
+      static std::atomic<uint32_t> next_id = 0;
+      hash_id = (next_id++ % HASH_SIZE) * sizeof(void*);
       detail::register_token(*this);
     }
 
@@ -46,6 +51,16 @@ namespace trieste
     Token(const TokenDef& def_) : def(&def_) {}
 
     operator Node() const;
+
+    /**
+     * Special hash for looking up in tables of size HASH_SIZE with
+     * elements of size sizeof(void*).
+     */
+    uint32_t hash() const
+    {
+      __builtin_assume((def->hash_id & (sizeof(void*) - 1)) == 0);
+      return def->hash_id / sizeof(void*);
+    }
 
     bool operator&(TokenDef::flag f) const
     {

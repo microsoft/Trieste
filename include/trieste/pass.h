@@ -26,16 +26,42 @@ namespace trieste
   {
     // The default value for this map. This is returned when a specific value
     // has has not been set for the looked up token.
-    T def;
+    std::shared_ptr<T> def;
 
     // The map of specific values for tokens.
-    std::map<Token, T> map;
+    std::array<std::shared_ptr<T>, TokenDef::HASH_SIZE> map;
 
     // If this is true, then the map is empty, and the default value has not
     // been modified.
     bool empty_{true};
 
+    bool is_index_default(size_t index) const
+    {
+      return &*map[index] == &*def;
+    }
+
+    size_t token_index(const Token& t) const
+    {
+      return t.hash();
+    }
+
   public:
+    DefaultMap() : def(std::make_shared<T>())
+    {
+      map.fill(def);
+    }
+
+    DefaultMap(const DefaultMap& dm) : def(std::make_shared<T>(*dm.def)), empty_(dm.empty_)
+    {
+      for (size_t index = 0; index < map.size(); index++)
+      {
+        if (dm.is_index_default(index))
+          map[index] = def;
+        else
+          map[index] = std::make_shared<T>(*dm.map[index]);
+      }
+    }
+
     /**
      *  Modify all values in the map, including the default value.
      *
@@ -46,9 +72,10 @@ namespace trieste
     void modify_all(F f)
     {
       empty_ = false;
-      for (auto& [t, v] : map)
-        f(v);
-      f(def);
+      for (size_t i = 0; i < map.size(); i++)
+        if (!is_index_default(i))
+          f(*map[i]);
+      f(*def);
     }
 
     /**
@@ -57,12 +84,12 @@ namespace trieste
      */
     T& modify(const Token& t)
     {
+      auto i = token_index(t);
       empty_ = false;
       // Use existing default set of rules.
-      if (map.find(t) == map.end())
-        map[t] = def;
-
-      return map[t];
+      if (is_index_default(i))
+        map[i] = std::make_shared<T>(*def);
+      return *map[i];
     }
 
     /**
@@ -71,10 +98,7 @@ namespace trieste
      */
     T& get(const Token& t)
     {
-      auto it = map.find(t);
-      if (it == map.end())
-        return def;
-      return it->second;
+      return *map[token_index(t)];
     }
 
     /**
@@ -83,8 +107,8 @@ namespace trieste
     void clear()
     {
       empty_ = true;
-      map.clear();
-      def.clear();
+      map.fill(def);
+      def->clear();
     }
 
     /**
