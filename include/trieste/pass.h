@@ -37,7 +37,7 @@ namespace trieste
 
     bool is_index_default(size_t index) const
     {
-      return &*map[index] == &*def;
+      return map[index] == def;
     }
 
     size_t token_index(const Token& t) const
@@ -51,7 +51,8 @@ namespace trieste
       map.fill(def);
     }
 
-    DefaultMap(const DefaultMap& dm) : def(std::make_shared<T>(*dm.def)), empty_(dm.empty_)
+    DefaultMap(const DefaultMap& dm)
+    : def(std::make_shared<T>(*dm.def)), empty_(dm.empty_)
     {
       for (size_t index = 0; index < map.size(); index++)
       {
