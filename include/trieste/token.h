@@ -123,6 +123,10 @@ namespace trieste
     // If a definition of this type in a symbol table, it can be found when
     // looking down.
     constexpr TokenDef::flag lookdown = 1 << 5;
+
+    // Used for AST nodes to represent internal Trieste features.  Rewriting
+    // should not occur inside an internal node.
+    constexpr TokenDef::flag internal = 1 << 6;
   }
 
   inline const auto Invalid = TokenDef("invalid");
@@ -131,10 +135,10 @@ namespace trieste
   inline const auto File = TokenDef("file");
   inline const auto Directory = TokenDef("directory");
   inline const auto Seq = TokenDef("seq");
-  inline const auto Lift = TokenDef("lift");
+  inline const auto Lift = TokenDef("lift", flag::internal);
   inline const auto NoChange = TokenDef("nochange");
   inline const auto Include = TokenDef("include");
-  inline const auto Error = TokenDef("error");
+  inline const auto Error = TokenDef("error", flag::internal);
   inline const auto ErrorMsg = TokenDef("errormsg", flag::print);
   inline const auto ErrorAst = TokenDef("errorast");
 

@@ -362,7 +362,8 @@ namespace trieste
       std::vector<std::pair<Node, NodeIt>> path;
 
       auto add = [&](const Node& node) SNMALLOC_FAST_PATH_LAMBDA {
-        if (node->type().in({Error, Lift}))
+        // Don't examine Error or Lift nodes.
+        if (node->type() & flag::internal)
           return;
         auto pre_f = pre_.find(node->type());
         if (pre_f != pre_.end())
@@ -390,9 +391,6 @@ namespace trieste
         {
           Node curr = *it;
           it++;
-          // Don't examine Error or Lift nodes.
-          if (curr->type().in({Error, Lift}))
-            continue;
           add(curr);
         }
         else
