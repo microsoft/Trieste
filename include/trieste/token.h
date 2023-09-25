@@ -4,6 +4,7 @@
 
 #include "source.h"
 
+#include <atomic>
 #include <map>
 
 namespace trieste
@@ -22,8 +23,17 @@ namespace trieste
     const char* name;
     flag fl;
 
+    // Hash id for this token.  This is used to determine the hash function for
+    // the default map for the main rewrite loop.  This is not a general purpose
+    // hash function.
+    uint32_t default_map_id;
+    static constexpr size_t DEFAULT_MAP_TABLE_SIZE{128};
+
     TokenDef(const char* name_, flag fl_ = 0) : name(name_), fl(fl_)
     {
+      static std::atomic<uint32_t> next_id = 0;
+      default_map_id = (next_id++ % DEFAULT_MAP_TABLE_SIZE) * sizeof(void*);
+
       detail::register_token(*this);
     }
 
@@ -46,6 +56,15 @@ namespace trieste
     Token(const TokenDef& def_) : def(&def_) {}
 
     operator Node() const;
+
+    /**
+     * Special hash for looking up in tables of size DEFAULT_MAP_TABLE_SIZE with
+     * elements of size sizeof(void*).
+     */
+    uint32_t default_map_hash() const
+    {
+      return def->default_map_id / sizeof(void*);
+    }
 
     bool operator&(TokenDef::flag f) const
     {
@@ -123,6 +142,10 @@ namespace trieste
     // If a definition of this type in a symbol table, it can be found when
     // looking down.
     constexpr TokenDef::flag lookdown = 1 << 5;
+
+    // Used for AST nodes to represent internal Trieste features.  Rewriting
+    // should not occur inside an internal node.
+    constexpr TokenDef::flag internal = 1 << 6;
   }
 
   inline const auto Invalid = TokenDef("invalid");
@@ -131,10 +154,10 @@ namespace trieste
   inline const auto File = TokenDef("file");
   inline const auto Directory = TokenDef("directory");
   inline const auto Seq = TokenDef("seq");
-  inline const auto Lift = TokenDef("lift");
+  inline const auto Lift = TokenDef("lift", flag::internal);
   inline const auto NoChange = TokenDef("nochange");
   inline const auto Include = TokenDef("include");
-  inline const auto Error = TokenDef("error");
+  inline const auto Error = TokenDef("error", flag::internal);
   inline const auto ErrorMsg = TokenDef("errormsg", flag::print);
   inline const auto ErrorAst = TokenDef("errorast");
 

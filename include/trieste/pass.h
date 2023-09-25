@@ -26,16 +26,42 @@ namespace trieste
   {
     // The default value for this map. This is returned when a specific value
     // has has not been set for the looked up token.
-    T def;
+    T def{};
 
     // The map of specific values for tokens.
-    std::map<Token, T> map;
+    std::array<T*, TokenDef::DEFAULT_MAP_TABLE_SIZE> map;
 
     // If this is true, then the map is empty, and the default value has not
     // been modified.
     bool empty_{true};
 
+    bool is_index_default(size_t index) const
+    {
+      return map[index] == &def;
+    }
+
+    size_t token_index(const Token& t) const
+    {
+      return t.default_map_hash();
+    }
+
   public:
+    DefaultMap()
+    {
+      map.fill(&def);
+    }
+
+    DefaultMap(const DefaultMap& dm) : def(dm.def), empty_(dm.empty_)
+    {
+      for (size_t index = 0; index < map.size(); index++)
+      {
+        if (dm.is_index_default(index))
+          map[index] = &def;
+        else
+          map[index] = new T(*dm.map[index]);
+      }
+    }
+
     /**
      *  Modify all values in the map, including the default value.
      *
@@ -46,8 +72,9 @@ namespace trieste
     void modify_all(F f)
     {
       empty_ = false;
-      for (auto& [t, v] : map)
-        f(v);
+      for (size_t i = 0; i < map.size(); i++)
+        if (!is_index_default(i))
+          f(*map[i]);
       f(def);
     }
 
@@ -57,12 +84,12 @@ namespace trieste
      */
     T& modify(const Token& t)
     {
+      auto i = token_index(t);
       empty_ = false;
       // Use existing default set of rules.
-      if (map.find(t) == map.end())
-        map[t] = def;
-
-      return map[t];
+      if (is_index_default(i))
+        map[i] = new T(def);
+      return *map[i];
     }
 
     /**
@@ -71,10 +98,7 @@ namespace trieste
      */
     T& get(const Token& t)
     {
-      auto it = map.find(t);
-      if (it == map.end())
-        return def;
-      return it->second;
+      return *map[token_index(t)];
     }
 
     /**
@@ -83,8 +107,20 @@ namespace trieste
     void clear()
     {
       empty_ = true;
-      map.clear();
+      for (size_t i = 0; i < map.size(); i++)
+      {
+        if (!is_index_default(i))
+        {
+          delete map[i];
+          map[i] = &def;
+        }
+      }
       def.clear();
+    }
+
+    ~DefaultMap()
+    {
+      clear();
     }
 
     /**
@@ -301,14 +337,14 @@ namespace trieste
       return replaced;
     }
 
-    size_t match_children(const Node& node, Match& match)
+    SNMALLOC_FAST_PATH size_t match_children(const Node& node, Match& match)
     {
       size_t changes = 0;
 
       auto& rules = rule_map.get(node->type());
 
       // No rules apply under this specific parent, so skip it.
-      if (rules.empty())
+      if (SNMALLOC_UNLIKELY(rules.empty()))
         return changes;
 
       auto it = node->begin();
@@ -355,30 +391,40 @@ namespace trieste
       return changes;
     }
 
-    size_t apply(Node root, Match& match)
+    template<bool Topdown, bool Pre, bool Post>
+    size_t apply_special(Node root, Match& match)
     {
       size_t changes = 0;
 
-      std::vector<std::pair<Node, NodeIt>> path;
+      std::vector<std::pair<Node&, NodeIt>> path;
 
-      auto add = [&](const Node& node) SNMALLOC_FAST_PATH_LAMBDA {
-        if (node->type().in({Error, Lift}))
+      auto add = [&](Node& node) SNMALLOC_FAST_PATH_LAMBDA {
+        // Don't examine Error or Lift nodes.
+        if (node->type() & flag::internal)
           return;
-        auto pre_f = pre_.find(node->type());
-        if (pre_f != pre_.end())
-          changes += pre_f->second(node);
-        if (flag(dir::topdown))
+        if constexpr (Pre)
+        {
+          auto pre_f = pre_.find(node->type());
+          if (pre_f != pre_.end())
+            changes += pre_f->second(node);
+        }
+        if constexpr (Topdown)
           changes += match_children(node, match);
         path.push_back({node, node->begin()});
       };
 
       auto remove = [&]() SNMALLOC_FAST_PATH_LAMBDA {
         Node& node = path.back().first;
-        if (flag(dir::bottomup))
+        if constexpr (!Topdown)
           changes += match_children(node, match);
-        auto post_f = post_.find(node->type());
-        if (post_f != post_.end())
-          changes += post_f->second(node);
+        else
+          snmalloc::UNUSED(node);
+        if constexpr (Post)
+        {
+          auto post_f = post_.find(node->type());
+          if (post_f != post_.end())
+            changes += post_f->second(node);
+        }
         path.pop_back();
       };
 
@@ -388,11 +434,8 @@ namespace trieste
         auto& [node, it] = path.back();
         if (it != node->end())
         {
-          Node curr = *it;
+          Node& curr = *it;
           it++;
-          // Don't examine Error or Lift nodes.
-          if (curr->type().in({Error, Lift}))
-            continue;
           add(curr);
         }
         else
@@ -402,6 +445,60 @@ namespace trieste
       }
 
       return changes;
+    }
+
+    size_t apply(Node root, Match& match)
+    {
+      if (flag(dir::topdown))
+      {
+        if (pre_.empty())
+        {
+          if (post_.empty())
+          {
+            return apply_special<true, false, false>(root, match);
+          }
+          else
+          {
+            return apply_special<true, false, true>(root, match);
+          }
+        }
+        else
+        {
+          if (post_.empty())
+          {
+            return apply_special<true, true, false>(root, match);
+          }
+          else
+          {
+            return apply_special<true, true, true>(root, match);
+          }
+        }
+      }
+      else
+      {
+        if (pre_.empty())
+        {
+          if (post_.empty())
+          {
+            return apply_special<false, false, false>(root, match);
+          }
+          else
+          {
+            return apply_special<false, false, true>(root, match);
+          }
+        }
+        else
+        {
+          if (post_.empty())
+          {
+            return apply_special<false, true, false>(root, match);
+          }
+          else
+          {
+            return apply_special<false, true, true>(root, match);
+          }
+        }
+      }
     }
 
     Nodes lift(Node node)
