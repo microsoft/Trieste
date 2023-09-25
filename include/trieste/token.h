@@ -6,7 +6,6 @@
 
 #include <atomic>
 #include <map>
-#include <snmalloc/ds_core/defines.h>
 
 namespace trieste
 {
@@ -59,7 +58,6 @@ namespace trieste
      */
     uint32_t hash() const
     {
-      SNMALLOC_ASSUME((def->hash_id & (sizeof(void*) - 1)) == 0);
       return def->hash_id / sizeof(void*);
     }
 
