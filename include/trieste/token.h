@@ -33,7 +33,7 @@ namespace trieste
     {
       static std::atomic<uint32_t> next_id = 0;
       default_map_id = (next_id++ % DEFAULT_MAP_TABLE_SIZE) * sizeof(void*);
-      
+
       detail::register_token(*this);
     }
 
@@ -63,7 +63,6 @@ namespace trieste
      */
     uint32_t default_map_hash() const
     {
-
       return def->default_map_id / sizeof(void*);
     }
 
