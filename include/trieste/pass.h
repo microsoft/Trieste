@@ -1,6 +1,8 @@
 #pragma once
 
+#include "defaultmap.h"
 #include "rewrite.h"
+#include "wf.h"
 
 #include <vector>
 
@@ -14,124 +16,6 @@ namespace trieste
     constexpr flag once = 1 << 2;
   }
 
-  /**
-   * Maps tokens to values, with a modifiable default value.
-   *
-   * This is used by matching system.  If a rule applies generally, it is added
-   * to all tokens, and if it applies to a specific token, it is added to that
-   * token only.
-   */
-  template<typename T>
-  class DefaultMap
-  {
-    // The default value for this map. This is returned when a specific value
-    // has has not been set for the looked up token.
-    T def{};
-
-    // The map of specific values for tokens.
-    std::array<T*, TokenDef::DEFAULT_MAP_TABLE_SIZE> map;
-
-    // If this is true, then the map is empty, and the default value has not
-    // been modified.
-    bool empty_{true};
-
-    bool is_index_default(size_t index) const
-    {
-      return map[index] == &def;
-    }
-
-    size_t token_index(const Token& t) const
-    {
-      return t.default_map_hash();
-    }
-
-  public:
-    DefaultMap()
-    {
-      map.fill(&def);
-    }
-
-    DefaultMap(const DefaultMap& dm) : def(dm.def), empty_(dm.empty_)
-    {
-      for (size_t index = 0; index < map.size(); index++)
-      {
-        if (dm.is_index_default(index))
-          map[index] = &def;
-        else
-          map[index] = new T(*dm.map[index]);
-      }
-    }
-
-    /**
-     *  Modify all values in the map, including the default value.
-     *
-     *  This is used for adding rules that do not specify an explicit start
-     * token, or an explicit parent, so they need to apply generally.
-     */
-    template<typename F>
-    void modify_all(F f)
-    {
-      empty_ = false;
-      for (size_t i = 0; i < map.size(); i++)
-        if (!is_index_default(i))
-          f(*map[i]);
-      f(def);
-    }
-
-    /**
-     * Get a mutable reference to the value for a token.  If this does not have
-     * a current value, first fill it with the current default value.
-     */
-    T& modify(const Token& t)
-    {
-      auto i = token_index(t);
-      empty_ = false;
-      // Use existing default set of rules.
-      if (is_index_default(i))
-        map[i] = new T(def);
-      return *map[i];
-    }
-
-    /**
-     * Get the value for a token. If this token has no specific value, return
-     * the default value.
-     */
-    T& get(const Token& t)
-    {
-      return *map[token_index(t)];
-    }
-
-    /**
-     * Clear all the values in the map, and the default value.
-     */
-    void clear()
-    {
-      empty_ = true;
-      for (size_t i = 0; i < map.size(); i++)
-      {
-        if (!is_index_default(i))
-        {
-          delete map[i];
-          map[i] = &def;
-        }
-      }
-      def.clear();
-    }
-
-    ~DefaultMap()
-    {
-      clear();
-    }
-
-    /**
-     * Returns true if modify has not been called since the last clear.
-     */
-    bool empty() const
-    {
-      return empty_;
-    }
-  };
-
   class PassDef;
   using Pass = std::shared_ptr<PassDef>;
 
@@ -141,13 +25,19 @@ namespace trieste
     using F = std::function<size_t(Node)>;
 
   private:
+    std::string name_;
+    const wf::Wellformed& wf_ = wf::empty;
+    dir::flag direction_;
+
+    std::vector<detail::PatternEffect<Node>> rules_;
+    detail::DefaultMap<
+      detail::DefaultMap<std::vector<detail::PatternEffect<Node>>>>
+      rule_map;
+
     F pre_once;
     F post_once;
     std::map<Token, F> pre_;
     std::map<Token, F> post_;
-    dir::flag direction_;
-    std::vector<detail::PatternEffect<Node>> rules_;
-    DefaultMap<DefaultMap<std::vector<detail::PatternEffect<Node>>>> rule_map;
 
   public:
     PassDef(dir::flag direction = dir::topdown) : direction_(direction) {}
@@ -166,9 +56,29 @@ namespace trieste
       compile_rules();
     }
 
+    PassDef(
+      const std::string& name,
+      const wf::Wellformed& wf,
+      dir::flag direction,
+      const std::initializer_list<detail::PatternEffect<Node>>& r)
+    : name_(name), wf_(wf), direction_(direction), rules_(r)
+    {
+      compile_rules();
+    }
+
     operator Pass() const
     {
       return std::make_shared<PassDef>(std::move(*this));
+    }
+
+    const std::string& name()
+    {
+      return name_;
+    }
+
+    const wf::Wellformed& wf()
+    {
+      return wf_;
     }
 
     void pre(F f)
@@ -186,9 +96,21 @@ namespace trieste
       pre_[type] = f;
     }
 
+    void pre(const std::initializer_list<Token>& types, F f)
+    {
+      for (const auto& type : types)
+        pre_[type] = f;
+    }
+
     void post(const Token& type, F f)
     {
       post_[type] = f;
+    }
+
+    void post(const std::initializer_list<Token>& types, F f)
+    {
+      for (const auto& type : types)
+        post_[type] = f;
     }
 
     template<typename... Ts>
@@ -205,55 +127,10 @@ namespace trieste
       compile_rules();
     }
 
-    void compile_rules()
-    {
-      rule_map.clear();
-
-      for (auto& rule : rules_)
-      {
-        const auto& starts = rule.first.get_starts();
-        const auto& parents = rule.first.get_parents();
-
-        //  This is used to add a rule under a specific parent, or to the
-        //  default.
-        auto add =
-          [&](DefaultMap<std::vector<detail::PatternEffect<Node>>>& rules) {
-            if (starts.empty())
-            {
-              // If there are no starts, then this rule applies to all tokens.
-              rules.modify_all(
-                [&](std::vector<detail::PatternEffect<Node>>& v) {
-                  v.push_back(rule);
-                });
-            }
-            else
-            {
-              for (const auto& start : starts)
-              {
-                // Add the rule to the specific start token.
-                rules.modify(start).push_back(rule);
-              }
-            }
-          };
-
-        if (parents.empty())
-        {
-          rule_map.modify_all(add);
-        }
-        else
-        {
-          for (const auto& parent : parents)
-          {
-            add(rule_map.modify(parent));
-          }
-        }
-      }
-    }
-
     std::tuple<Node, size_t, size_t> run(Node node)
     {
-      static thread_local Match match(node);
-      match.set_root(node);
+      static thread_local Match match;
+      ast::detail::top_node() = node;
 
       size_t changes = 0;
       size_t changes_sum = 0;
@@ -285,6 +162,50 @@ namespace trieste
     }
 
   private:
+    void compile_rules()
+    {
+      rule_map.clear();
+
+      for (auto& rule : rules_)
+      {
+        const auto& starts = rule.first.get_starts();
+        const auto& parents = rule.first.get_parents();
+
+        //  This is used to add a rule under a specific parent, or to the
+        //  default.
+        auto add = [&](detail::DefaultMap<
+                       std::vector<detail::PatternEffect<Node>>>& rules) {
+          if (starts.empty())
+          {
+            // If there are no starts, then this rule applies to all tokens.
+            rules.modify_all([&](std::vector<detail::PatternEffect<Node>>& v) {
+              v.push_back(rule);
+            });
+          }
+          else
+          {
+            for (const auto& start : starts)
+            {
+              // Add the rule to the specific start token.
+              rules.modify(start).push_back(rule);
+            }
+          }
+        };
+
+        if (parents.empty())
+        {
+          rule_map.modify_all(add);
+        }
+        else
+        {
+          for (const auto& parent : parents)
+          {
+            add(rule_map.modify(parent));
+          }
+        }
+      }
+    }
+
     bool flag(dir::flag f) const
     {
       return (direction_ & f) != 0;

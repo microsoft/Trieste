@@ -7,7 +7,6 @@
 #include "regex.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <deque>
 #include <numeric>
@@ -473,6 +472,9 @@ namespace trieste
 
       bool check(Node node, std::ostream& out) const
       {
+        if (shapes.empty())
+          return true;
+
         if (!node)
           return false;
 
@@ -528,9 +530,10 @@ namespace trieste
           seed,
           target_depth);
 
-        auto node = NodeDef::create(Top);
-        gen_node(g, 0, node);
-        return node;
+        auto top = NodeDef::create(Top);
+        ast::detail::top_node() = top;
+        gen_node(g, 0, top);
+        return top;
       }
 
       std::size_t min_dist_to_terminal(
@@ -1006,9 +1009,11 @@ namespace trieste
       };
     }
 
-    inline void push_back(const Wellformed* wf)
+    inline const Wellformed empty;
+
+    inline void push_back(const Wellformed& wf)
     {
-      detail::wf_current.push_back(wf);
+      detail::wf_current.push_back(&wf);
     }
 
     inline void pop_front()

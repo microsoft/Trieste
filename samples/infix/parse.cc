@@ -1,4 +1,5 @@
 #include "lang.h"
+#include "wf.h"
 
 namespace infix
 {
@@ -6,7 +7,7 @@ namespace infix
 
   Parse parser()
   {
-    Parse p(depth::file);
+    Parse p(depth::file, wf_parser);
     auto indent = std::make_shared<std::vector<size_t>>();
 
     p("start", // this indicates the 'mode' these rules are associated with
