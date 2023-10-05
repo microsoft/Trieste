@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "logging.h"
 #include "source.h"
 
 #include <re2/re2.h>
@@ -115,7 +116,7 @@ namespace trieste
     }
   };
 
-  inline Node build_ast(Source source, size_t pos, std::ostream& out)
+  inline Node build_ast(Source source, size_t pos)
   {
     auto hd = RE2("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
     auto st = RE2("[[:space:]]*\\{[^\\}]*\\}");
@@ -135,8 +136,9 @@ namespace trieste
       if (!re_iterator.consume(hd, re_match))
       {
         auto loc = re_iterator.current();
-        out << loc.origin_linecol() << ": expected node" << std::endl
-            << loc.str() << std::endl;
+        logging::Error() << loc.origin_linecol() << ": expected node"
+                         << std::endl
+                         << loc.str() << std::endl;
         return {};
       }
 
@@ -146,8 +148,9 @@ namespace trieste
 
       if (type == Invalid)
       {
-        out << type_loc.origin_linecol() << ": unknown type" << std::endl
-            << type_loc.str() << std::endl;
+        logging::Error() << type_loc.origin_linecol() << ": unknown type"
+                         << std::endl
+                         << type_loc.str() << std::endl;
         return {};
       }
 
@@ -189,8 +192,8 @@ namespace trieste
 
     // We never finished the AST, so it's an error.
     auto loc = re_iterator.current();
-    out << loc.origin_linecol() << ": incomplete AST" << std::endl
-        << loc.str() << std::endl;
+    logging::Error() << loc.origin_linecol() << ": incomplete AST" << std::endl
+                     << loc.str() << std::endl;
     return {};
   }
 }

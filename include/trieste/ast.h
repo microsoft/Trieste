@@ -3,6 +3,7 @@
 #pragma once
 
 #include "token.h"
+#include "logging.h"
 
 #include <iostream>
 #include <limits>
@@ -655,7 +656,7 @@ namespace trieste
       out << ")";
     }
 
-    bool errors(std::ostream& out)
+    bool errors()
     {
       if (!get_and_reset_contains_error() && type_ != Error)
         return false;
@@ -663,12 +664,13 @@ namespace trieste
       bool err = false;
 
       for (auto& child : children)
-        err = child->errors(out) || err;
+        err = child->errors() || err;
 
       // If an error wraps another error, print only the innermost error.
       if (err || (type_ != Error))
         return err;
 
+      logging::Error out{};
       for (auto& child : children)
       {
         if (child->type() == ErrorMsg)
@@ -678,8 +680,6 @@ namespace trieste
               << child->location().str();
       }
 
-      // Trailing blank line.
-      out << std::endl;
       return true;
     }
 
