@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "logging.h"
 #include "parse.h"
 #include "pass.h"
 #include "regex.h"
 #include "wf.h"
-#include "logging.h"
 
 #include <CLI/CLI.hpp>
 #include <filesystem>
@@ -66,7 +66,7 @@ namespace trieste
       {
         logging::set_level<logging::Info>();
       }
- 
+
       bool wfcheck = false;
       build->add_flag("-w,--wf-check", wfcheck, "Check well-formedness.");
 
@@ -221,8 +221,8 @@ namespace trieste
           ast = new_ast;
 
           logging::Info() << "Pass " << pass->name() << ": " << count
-                    << " iterations, " << changes << " nodes rewritten."
-                    << std::endl;
+                          << " iterations, " << changes << " nodes rewritten."
+                          << std::endl;
 
           if (ast->errors())
           {
@@ -262,14 +262,14 @@ namespace trieste
         else
         {
           logging::Error() << "Could not open " << output << " for writing."
-                    << std::endl;
+                           << std::endl;
           ret = -1;
         }
       }
       else if (*test)
       {
-        logging::Output() << "Testing x" << test_seed_count << ", seed: " << test_seed
-                  << std::endl;
+        logging::Output() << "Testing x" << test_seed_count
+                          << ", seed: " << test_seed << std::endl;
 
         if (test_start_pass.empty())
         {
@@ -304,35 +304,38 @@ namespace trieste
                seed++)
           {
             auto ast = prev.gen(parser.generators(), seed, test_max_depth);
-            logging::Trace() << "============" << std::endl
-                << "Pass: " << pass->name() << ", seed: " << seed << std::endl
-                << "------------" << std::endl
-                << ast << "------------" << std::endl;
+            logging::Trace()
+              << "============" << std::endl
+              << "Pass: " << pass->name() << ", seed: " << seed << std::endl
+              << "------------" << std::endl
+              << ast << "------------" << std::endl;
 
             auto [new_ast, count, changes] = pass->run(ast);
-            logging::Trace() << new_ast << "------------" << std::endl << std::endl;
+            logging::Trace() << new_ast << "------------" << std::endl
+                             << std::endl;
 
             auto ok = wf.build_st(new_ast);
             ok = wf.check(new_ast) && ok;
 
             if (!ok)
             {
-              // Discussion Point
-              // COMMENT TO BE REMOVE BEFORE MERGE
-              // 
-              // The following is hard to do with the new log library.
-              // It previously calculated a lot of stuff which it would only use
-              // if something went wrong.  I am not sure this is a good pattern, 
-              // as it slows down testing, if there is a crash it can be rerun with the correct seed,
-              // and a higher logging level.
-              // We could even redo the whole process?
-              //
-              // if (!test_verbose)
-              //   std::cout << ss1.str() << ss2.str();
+              logging::Error err;
+              if (!test_verbose)
+              {
+                // We haven't printed what failed with Trace earlier, so do it
+                // now. Regenerate the start Ast for the error message.
+                err << "============" << std::endl
+                    << "Pass: " << pass->name() << ", seed: " << seed
+                    << std::endl
+                    << "------------" << std::endl
+                    << prev.gen(parser.generators(), seed, test_max_depth)
+                    << "------------" << std::endl
+                    << new_ast;
+              }
 
-              logging::Error() << "============" << std::endl
-                        << "Failed pass: " << pass->name() << ", seed: " << seed
-                        << std::endl;
+              err << "============" << std::endl
+                  << "Failed pass: " << pass->name() << ", seed: " << seed
+                  << std::endl;
               ret = -1;
 
               if (test_failfast)
