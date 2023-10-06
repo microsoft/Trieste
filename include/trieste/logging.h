@@ -67,12 +67,12 @@ namespace trieste::logging
   template<detail::LogLevel Level>
   class Log
   {
-    // Should the log actually do stuff. Decided at creation so that we can 
+    // Should the log actually do stuff. Decided at creation so that we can
     // fast path away from actually doing the work.
-    bool const print;
+    bool print{false};
 
     // The number of characters to indent by.
-    size_t indent_chars{0};
+    size_t indent_chars;
 
     // The string stream that we are writing to.
     // Using a local stream prevents log tearing in a concurrent setting.
@@ -89,7 +89,7 @@ namespace trieste::logging
      *  - indent
      *  - undent
      * all are the slow paths where logging is actually enabled.
-     * 
+     *
      * The code is structured so these should not impact perf when logging is
      * not going to occur.
      */
@@ -97,6 +97,7 @@ namespace trieste::logging
     SNMALLOC_SLOW_PATH void start()
     {
       strstream.init();
+      indent_chars = 0;
       if (header_callback)
       {
         // Indent all lines after a header by 5 spaces.
@@ -163,52 +164,65 @@ namespace trieste::logging
     Log(Log&&) = delete;
     Log& operator=(Log&&) = delete;
 
-    SNMALLOC_FAST_PATH Log() : print(level <= detail::report_level)
+    static bool active()
     {
-      if (SNMALLOC_UNLIKELY(print))
+      return Level <= detail::report_level;
+    }
+
+    SNMALLOC_FAST_PATH Log()
+    {
+      if (SNMALLOC_UNLIKELY(active()))
         start();
     }
 
     SNMALLOC_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &
     {
-      if (print)
+      if (SNMALLOC_UNLIKELY(print))
         operation(f);
+
       return *this;
     }
 
     SNMALLOC_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &&
     {
-      return *this << f;
+      if (SNMALLOC_UNLIKELY(print))
+        operation(f);
+
+      return *this;
     }
 
     SNMALLOC_FAST_PATH Log& operator<<(detail::Indent) &
     {
-      if (print)
+      if (SNMALLOC_UNLIKELY(print))
         indent();
       return *this;
     }
 
-    SNMALLOC_FAST_PATH Log& operator<<(detail::Indent i) &&
+    SNMALLOC_FAST_PATH Log& operator<<(detail::Indent) &&
     {
-      return *this << i;
+      if (SNMALLOC_UNLIKELY(print))
+        indent();
+      return *this;
     }
 
     SNMALLOC_FAST_PATH Log& operator<<(detail::Undent) &
     {
-      if (print)
+      if (SNMALLOC_UNLIKELY(print))
         undent();
       return *this;
     }
 
-    SNMALLOC_FAST_PATH Log& operator<<(detail::Undent u) &&
+    SNMALLOC_FAST_PATH Log& operator<<(detail::Undent) &&
     {
-      return *this << u;
+      if (SNMALLOC_UNLIKELY(print))
+        undent();
+      return *this;
     }
 
     template<typename T>
     SNMALLOC_FAST_PATH Log& operator<<(T&& t) &
     {
-      if (print)
+      if (SNMALLOC_UNLIKELY(print))
         append(std::forward<T>(t));
       return *this;
     }
@@ -216,12 +230,14 @@ namespace trieste::logging
     template<typename T>
     SNMALLOC_FAST_PATH Log& operator<<(T&& t) &&
     {
-      return *this << std::forward<T>(t);
+      if (SNMALLOC_UNLIKELY(print))
+        append(std::forward<T>(t));
+      return *this;
     }
 
     SNMALLOC_FAST_PATH ~Log()
     {
-      if (print)
+      if (SNMALLOC_UNLIKELY(print))
         end();
     }
   };
@@ -233,7 +249,27 @@ namespace trieste::logging
   using Debug = Log<detail::LogLevel::Debug>;
   using Trace = Log<detail::LogLevel::Trace>;
 
-  template <typename L>
+#ifdef TRIESTE_EXPOSE_LOG_MACRO
+// This macro is used to expose the logging to uses in a way that
+// guarantees no evaluation of the pipe sequence:
+//   LOG(Info) << "Hello " << "World" << fib(23);
+// would not evaluate fib(23) if Info is not enabled.
+// Where as the pure C++ version
+//   logging::Info() << "Hello " << "World" << fib(23);
+// would be required to evaluate fib(23) even if Info is not enabled.
+#  define LOG(param) \
+    if (SNMALLOC_UNLIKELY( \
+          trieste::logging::Log< \
+            trieste::logging::detail::LogLevel::param>::active())) \
+    trieste::logging::Log<trieste::logging::detail::LogLevel::param>()
+#endif
+
+  /**
+   * @brief Sets the level of logging that should be reported.
+   *
+   * @tparam L - The level of logging that should be reported.
+   */
+  template<typename L>
   inline void set_level()
   {
     detail::report_level = L::level;

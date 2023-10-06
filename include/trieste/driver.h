@@ -220,12 +220,9 @@ namespace trieste
           wf::pop_front();
           ast = new_ast;
 
-          if (diag)
-          {
-            logging::Info() << "Pass " << pass->name() << ": " << count
-                      << " iterations, " << changes << " nodes rewritten."
-                      << std::endl;
-          }
+          logging::Info() << "Pass " << pass->name() << ": " << count
+                    << " iterations, " << changes << " nodes rewritten."
+                    << std::endl;
 
           if (ast->errors())
           {
