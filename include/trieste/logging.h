@@ -98,6 +98,7 @@ namespace trieste::logging
     {
       strstream.init();
       indent_chars = 0;
+      print = true;
       if (header_callback)
       {
         // Indent all lines after a header by 5 spaces.
