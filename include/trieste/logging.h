@@ -108,12 +108,6 @@ namespace trieste::logging
       }
     }
 
-    template<typename T>
-    SNMALLOC_SLOW_PATH void append(T&& t)
-    {
-      strstream.get() << std::forward<T>(t);
-    }
-
     SNMALLOC_SLOW_PATH void end()
     {
       strstream.get() << std::endl;
@@ -176,6 +170,21 @@ namespace trieste::logging
         start();
     }
 
+    // Query if this log should be printed. Needed for extending the
+    // pipe operator to allow the customisation using ADL.
+    bool should_print()
+    {
+      return print;
+    }
+
+    // Append to the string stream.
+    template<typename T>
+    SNMALLOC_SLOW_PATH void append(T&& t)
+    {
+      strstream.get() << std::forward<T>(t);
+    }
+
+
     SNMALLOC_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &
     {
       if (SNMALLOC_UNLIKELY(print))
@@ -220,22 +229,6 @@ namespace trieste::logging
       return *this;
     }
 
-    template<typename T>
-    SNMALLOC_FAST_PATH Log& operator<<(T&& t) &
-    {
-      if (SNMALLOC_UNLIKELY(print))
-        append(std::forward<T>(t));
-      return *this;
-    }
-
-    template<typename T>
-    SNMALLOC_FAST_PATH Log& operator<<(T&& t) &&
-    {
-      if (SNMALLOC_UNLIKELY(print))
-        append(std::forward<T>(t));
-      return *this;
-    }
-
     SNMALLOC_FAST_PATH ~Log()
     {
       if (SNMALLOC_UNLIKELY(print))
@@ -249,6 +242,24 @@ namespace trieste::logging
   using Info = Log<detail::LogLevel::Info>;
   using Debug = Log<detail::LogLevel::Debug>;
   using Trace = Log<detail::LogLevel::Trace>;
+
+  // Pipe operators defined in the global namespace to allow for ADL.
+  template<typename T, detail::LogLevel L>
+  SNMALLOC_FAST_PATH Log<L>& operator<<(Log<L>& self, T&& t)
+  {
+    if (SNMALLOC_UNLIKELY(self.should_print()))
+      self.append(std::forward<T>(t));
+    return self;
+  }
+
+  // Pipe operators defined in the global namespace to allow for ADL.
+  template<typename T, detail::LogLevel L>
+  SNMALLOC_FAST_PATH Log<L>& operator<<(Log<L>&& self, T&& t)
+  {
+    if (SNMALLOC_UNLIKELY(self.should_print()))
+      self.append(std::forward<T>(t));
+    return self;
+  }
 
 #ifdef TRIESTE_EXPOSE_LOG_MACRO
 // This macro is used to expose the logging to uses in a way that
