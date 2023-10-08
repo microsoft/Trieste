@@ -245,7 +245,7 @@ namespace trieste::logging
 
   // Pipe operators defined in the global namespace to allow for ADL.
   template<typename T, detail::LogLevel L>
-  SNMALLOC_FAST_PATH Log<L>& operator<<(Log<L>& self, T&& t)
+  SNMALLOC_FAST_PATH_INLINE Log<L>& operator<<(Log<L>& self, T&& t)
   {
     if (SNMALLOC_UNLIKELY(self.should_print()))
       self.append(std::forward<T>(t));
@@ -254,7 +254,7 @@ namespace trieste::logging
 
   // Pipe operators defined in the global namespace to allow for ADL.
   template<typename T, detail::LogLevel L>
-  SNMALLOC_FAST_PATH Log<L>& operator<<(Log<L>&& self, T&& t)
+  SNMALLOC_FAST_PATH_INLINE Log<L>& operator<<(Log<L>&& self, T&& t)
   {
     if (SNMALLOC_UNLIKELY(self.should_print()))
       self.append(std::forward<T>(t));
