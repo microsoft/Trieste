@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "logging.h"
 #include "parse.h"
 #include "pass.h"
 #include "regex.h"
@@ -61,6 +62,11 @@ namespace trieste
       bool diag = false;
       build->add_flag("-d,--diagnostics", diag, "Emit diagnostics.");
 
+      if (diag)
+      {
+        logging::set_level<logging::Info>();
+      }
+
       bool wfcheck = false;
       build->add_flag("-w,--wf-check", wfcheck, "Check well-formedness.");
 
@@ -98,6 +104,11 @@ namespace trieste
 
       bool test_verbose = false;
       test->add_flag("-v,--verbose", test_verbose, "Verbose output");
+
+      if (test_verbose)
+      {
+        logging::set_level<logging::Trace>();
+      }
 
       size_t test_max_depth = 10;
       test->add_option(
@@ -139,21 +150,21 @@ namespace trieste
 
             if (start_pass > limits.size())
             {
-              std::cout << "Unknown pass: " << pass << std::endl;
+              logging::Error() << "Unknown pass: " << pass << std::endl;
               return -1;
             }
 
             // Build the AST, set up the symbol table, check well-formedness,
             // and move on to the next pass.
-            ast = build_ast(source, pos2 + 1, std::cout);
+            ast = build_ast(source, pos2 + 1);
             bool ok = !!ast;
             start_pass++;
 
             // Build the symbol table and check well-formedness.
             auto& wf = passes.at(start_pass - 1)->wf();
             wf::push_back(wf);
-            ok = ok && wf.build_st(ast, std::cout);
-            ok = ok && wf.check(ast, std::cout);
+            ok = ok && wf.build_st(ast);
+            ok = ok && wf.check(ast);
 
             if (!ok)
               return -1;
@@ -164,13 +175,13 @@ namespace trieste
             // parser AST well-formedness definition.
             start_pass = 1;
             end_pass = std::max(start_pass, end_pass);
-            ast = build_ast(source, pos2 + 1, std::cout);
+            ast = build_ast(source, pos2 + 1);
             bool ok = !!ast;
 
             // Build the symbol table and check well-formedness.
             wf::push_back(parser.wf());
-            ok = ok && parser.wf().build_st(ast, std::cout);
-            ok = ok && parser.wf().check(ast, std::cout);
+            ok = ok && parser.wf().build_st(ast);
+            ok = ok && parser.wf().check(ast);
 
             if (!ok)
               return -1;
@@ -182,14 +193,14 @@ namespace trieste
           if (std::filesystem::exists(path))
             ast = parser.parse(path);
           else
-            std::cout << "File not found: " << path << std::endl;
+            logging::Error() << "File not found: " << path << std::endl;
 
           wf::push_back(parser.wf());
           bool ok = bool(ast);
-          ok = ok && parser.wf().build_st(ast, std::cout);
+          ok = ok && parser.wf().build_st(ast);
 
           if (wfcheck)
-            ok = ok && parser.wf().check(ast, std::cout);
+            ok = ok && parser.wf().check(ast);
 
           if (!ok)
           {
@@ -209,14 +220,11 @@ namespace trieste
           wf::pop_front();
           ast = new_ast;
 
-          if (diag)
-          {
-            std::cout << "Pass " << pass->name() << ": " << count
-                      << " iterations, " << changes << " nodes rewritten."
-                      << std::endl;
-          }
+          logging::Info() << "Pass " << pass->name() << ": " << count
+                          << " iterations, " << changes << " nodes rewritten."
+                          << std::endl;
 
-          if (ast->errors(std::cout))
+          if (ast->errors())
           {
             end_pass = i;
             ret = -1;
@@ -224,10 +232,10 @@ namespace trieste
 
           if (wf)
           {
-            auto ok = wf.build_st(ast, std::cout);
+            auto ok = wf.build_st(ast);
 
             if (wfcheck)
-              ok = wf.check(ast, std::cout) && ok;
+              ok = wf.check(ast) && ok;
 
             if (!ok)
             {
@@ -253,15 +261,15 @@ namespace trieste
         }
         else
         {
-          std::cout << "Could not open " << output << " for writing."
-                    << std::endl;
+          logging::Error() << "Could not open " << output << " for writing."
+                           << std::endl;
           ret = -1;
         }
       }
       else if (*test)
       {
-        std::cout << "Testing x" << test_seed_count << ", seed: " << test_seed
-                  << std::endl;
+        logging::Output() << "Testing x" << test_seed_count
+                          << ", seed: " << test_seed << std::endl;
 
         if (test_start_pass.empty())
         {
@@ -284,48 +292,50 @@ namespace trieste
 
           if (!prev || !wf)
           {
-            std::cout << "Skipping pass: " << pass->name() << std::endl;
+            logging::Info() << "Skipping pass: " << pass->name() << std::endl;
             continue;
           }
 
-          std::cout << "Testing pass: " << pass->name() << std::endl;
+          logging::Info() << "Testing pass: " << pass->name() << std::endl;
           wf::push_back(prev);
           wf::push_back(wf);
 
           for (size_t seed = test_seed; seed < test_seed + test_seed_count;
                seed++)
           {
-            std::stringstream ss1;
-            std::stringstream ss2;
-
             auto ast = prev.gen(parser.generators(), seed, test_max_depth);
-            ss1 << "============" << std::endl
-                << "Pass: " << pass->name() << ", seed: " << seed << std::endl
-                << "------------" << std::endl
-                << ast << "------------" << std::endl;
-
-            if (test_verbose)
-              std::cout << ss1.str();
+            logging::Trace()
+              << "============" << std::endl
+              << "Pass: " << pass->name() << ", seed: " << seed << std::endl
+              << "------------" << std::endl
+              << ast << "------------" << std::endl;
 
             auto [new_ast, count, changes] = pass->run(ast);
-            ss2 << new_ast << "------------" << std::endl << std::endl;
+            logging::Trace() << new_ast << "------------" << std::endl
+                             << std::endl;
 
-            if (test_verbose)
-              std::cout << ss2.str();
-
-            std::stringstream ss3;
-
-            auto ok = wf.build_st(new_ast, ss3);
-            ok = wf.check(new_ast, ss3) && ok;
+            auto ok = wf.build_st(new_ast);
+            ok = wf.check(new_ast) && ok;
 
             if (!ok)
             {
+              logging::Error err;
               if (!test_verbose)
-                std::cout << ss1.str() << ss2.str();
+              {
+                // We haven't printed what failed with Trace earlier, so do it
+                // now. Regenerate the start Ast for the error message.
+                err << "============" << std::endl
+                    << "Pass: " << pass->name() << ", seed: " << seed
+                    << std::endl
+                    << "------------" << std::endl
+                    << prev.gen(parser.generators(), seed, test_max_depth)
+                    << "------------" << std::endl
+                    << new_ast;
+              }
 
-              std::cout << ss3.str() << "============" << std::endl
-                        << "Failed pass: " << pass->name() << ", seed: " << seed
-                        << std::endl;
+              err << "============" << std::endl
+                  << "Failed pass: " << pass->name() << ", seed: " << seed
+                  << std::endl;
               ret = -1;
 
               if (test_failfast)

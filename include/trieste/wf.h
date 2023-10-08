@@ -4,6 +4,7 @@
 
 #include "ast.h"
 #include "gen.h"
+#include "logging.h"
 #include "regex.h"
 
 #include <algorithm>
@@ -80,20 +81,21 @@ namespace trieste
           tokens.end(),
           std::back_inserter(offsets),
           [&](const Token& t) {
-            
-            if (token_terminal_distance.find(t) != token_terminal_distance.end())
+            if (
+              token_terminal_distance.find(t) != token_terminal_distance.end())
             {
               std::size_t distance = token_terminal_distance.at(t);
-              return 1.0 /
-                (1.0 +
-                (alpha * (depth - target_depth) *
-                  distance));
-            }else{
+              return 1.0 / (1.0 + (alpha * (depth - target_depth) * distance));
+            }
+            else
+            {
               std::ostringstream err;
-              err << "Token " << t.str() << " not found in token_terminal_distance map" << std::endl;
+              err << "Token " << t.str()
+                  << " not found in token_terminal_distance map" << std::endl;
               err << "{";
               std::string delim = "";
-              for(auto const& [key, val] : token_terminal_distance){
+              for (auto const& [key, val] : token_terminal_distance)
+              {
                 err << delim << key.str() << ":" << val;
                 delim = ", ";
               }
@@ -133,7 +135,7 @@ namespace trieste
     {
       std::vector<Token> types;
 
-      bool check(Node node, std::ostream& out) const
+      bool check(Node node) const
       {
         if (node == Error)
           return true;
@@ -151,6 +153,9 @@ namespace trieste
 
         if (!ok)
         {
+          // Note log will be output on end of scope.
+          logging::Error out{};
+
           out << node->location().origin_linecol() << ": unexpected "
               << node->type().str() << ", expected a ";
 
@@ -224,7 +229,7 @@ namespace trieste
         return *this;
       }
 
-      bool check(Node node, std::ostream& out) const
+      bool check(Node node) const
       {
         auto has_err = false;
         auto ok = true;
@@ -232,21 +237,22 @@ namespace trieste
         for (auto& child : *node)
         {
           has_err = has_err || (child == Error);
-          ok = choice.check(child, out) && ok;
+          ok = choice.check(child) && ok;
         }
 
         if (!has_err && (node->size() < minlen))
         {
-          out << node->location().origin_linecol() << ": expected at least "
-              << minlen << " children, found " << node->size() << std::endl
-              << node->location().str() << node << std::endl;
+          logging::Error() << node->location().origin_linecol()
+                           << ": expected at least " << minlen
+                           << " children, found " << node->size() << std::endl
+                           << node->location().str() << node << std::endl;
           ok = false;
         }
 
         return ok;
       }
 
-      bool build_st(Node&, std::ostream&) const
+      bool build_st(Node&) const
       {
         // Do nothing.
         return true;
@@ -294,7 +300,7 @@ namespace trieste
         return *this;
       }
 
-      bool check(Node node, std::ostream& out) const
+      bool check(Node node) const
       {
         auto field = fields.begin();
         auto end = fields.end();
@@ -315,7 +321,7 @@ namespace trieste
           if (field == end)
             break;
 
-          ok = field->choice.check(child, out) && ok;
+          ok = field->choice.check(child) && ok;
 
           if ((binding != Invalid) && (field->name == binding))
           {
@@ -324,10 +330,10 @@ namespace trieste
 
             if (find == defs.end())
             {
-              out << child->location().origin_linecol()
-                  << ": missing symbol table binding for " << node->type().str()
-                  << std::endl
-                  << child->location().str() << node << std::endl;
+              logging::Error() << child->location().origin_linecol()
+                               << ": missing symbol table binding for "
+                               << node->type().str() << std::endl
+                               << child->location().str() << node << std::endl;
               ok = false;
             }
           }
@@ -337,10 +343,10 @@ namespace trieste
 
         if (!has_error && (node->size() != fields.size()))
         {
-          out << node->location().origin_linecol() << ": expected "
-              << fields.size() << " children, found " << node->size()
-              << std::endl
-              << node->location().str() << node << std::endl;
+          logging::Error() << node->location().origin_linecol() << ": expected "
+                           << fields.size() << " children, found "
+                           << node->size() << std::endl
+                           << node->location().str() << node << std::endl;
           ok = false;
         }
 
@@ -358,7 +364,7 @@ namespace trieste
         }
       }
 
-      bool build_st(Node& node, std::ostream& out) const
+      bool build_st(Node& node) const
       {
         if (binding == Invalid)
           return true;
@@ -380,6 +386,8 @@ namespace trieste
             if (!node->bind(name))
             {
               auto defs = node->scope()->look(name);
+              logging::Error out{};
+
               out << node->location().origin_linecol()
                   << ": conflicting definitions of `" << name.view()
                   << "`:" << std::endl;
@@ -396,9 +404,10 @@ namespace trieste
           ++index;
         }
 
-        out << node->location().origin_linecol() << ": no binding found for "
-            << node->type().str() << std::endl
-            << node->location().str() << node << std::endl;
+        logging::Error() << node->location().origin_linecol()
+                         << ": no binding found for " << node->type().str()
+                         << std::endl
+                         << node->location().str() << node << std::endl;
         return false;
       }
     };
@@ -470,7 +479,7 @@ namespace trieste
         shapes[shape.type] = std::move(shape.shape);
       }
 
-      bool check(Node node, std::ostream& out) const
+      bool check(Node node) const
       {
         if (shapes.empty())
           return true;
@@ -489,34 +498,36 @@ namespace trieste
           if (node->empty())
             return true;
 
-          out << node->location().origin_linecol()
-              << ": expected 0 children, found " << node->size() << std::endl
-              << node->location().str() << node << std::endl;
+          logging::Error() << node->location().origin_linecol()
+                           << ": expected 0 children, found " << node->size()
+                           << std::endl
+                           << node->location().str() << node << std::endl;
           return false;
         }
 
         bool ok = std::visit(
-          [&](auto& shape) { return shape.check(node, out); }, find->second);
+          [&](auto& shape) { return shape.check(node); }, find->second);
 
         for (auto& child : *node)
         {
           if (child->parent() != node.get())
           {
-            out << child->location().origin_linecol()
-                << ": this node appears in the AST multiple times:" << std::endl
-                << child->location().str() << child << std::endl
-                << node->location().origin_linecol() << ": here:" << std::endl
-                << node << std::endl
-                << child->parent()->location().origin_linecol()
-                << ": and here:" << std::endl
-                << child->parent() << std::endl
-                << "Your language implementation needs to explicitly clone "
-                   "nodes if they're duplicated."
-                << std::endl;
+            logging::Error()
+              << child->location().origin_linecol()
+              << ": this node appears in the AST multiple times:" << std::endl
+              << child->location().str() << child << std::endl
+              << node->location().origin_linecol() << ": here:" << std::endl
+              << node << std::endl
+              << child->parent()->location().origin_linecol()
+              << ": and here:" << std::endl
+              << child->parent() << std::endl
+              << "Your language implementation needs to explicitly clone "
+                 "nodes if they're duplicated."
+              << std::endl;
             ok = false;
           }
 
-          ok = check(child, out) && ok;
+          ok = check(child) && ok;
         }
 
         return ok;
@@ -561,7 +572,9 @@ namespace trieste
               if constexpr (std::is_same_v<T, Sequence>)
               {
                 return arg.choice.expected_distance_to_terminal(
-                  current, max_distance, std::function([&](const Token& token_) {
+                  current,
+                  max_distance,
+                  std::function([&](const Token& token_) {
                     return min_dist_to_terminal(
                       distance, current, max_distance, token_);
                   }));
@@ -623,7 +636,7 @@ namespace trieste
           gen_node(g, depth + 1, child);
       }
 
-      bool build_st(Node& node, std::ostream& out) const
+      bool build_st(Node& node) const
       {
         if (!node)
           return false;
@@ -639,12 +652,11 @@ namespace trieste
         if (find != shapes.end())
         {
           ok = std::visit(
-            [&](auto& shape) { return shape.build_st(node, out); },
-            find->second);
+            [&](auto& shape) { return shape.build_st(node); }, find->second);
         }
 
         for (auto& child : *node)
-          ok = build_st(child, out) && ok;
+          ok = build_st(child) && ok;
 
         return ok;
       }

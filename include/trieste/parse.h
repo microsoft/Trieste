@@ -4,6 +4,7 @@
 
 #include "ast.h"
 #include "gen.h"
+#include "logging.h"
 #include "regex.h"
 #include "wf.h"
 
