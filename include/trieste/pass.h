@@ -40,6 +40,13 @@ namespace trieste
     std::map<Token, F> post_;
 
   public:
+    PassDef(
+      const std::string& name,
+      const wf::Wellformed& wf,
+      dir::flag direction = dir::topdown)
+    : name_(name), wf_(wf), direction_(direction)
+    {}
+
     PassDef(dir::flag direction = dir::topdown) : direction_(direction) {}
 
     PassDef(const std::initializer_list<detail::PatternEffect<Node>>& r)
@@ -52,6 +59,15 @@ namespace trieste
       dir::flag direction,
       const std::initializer_list<detail::PatternEffect<Node>>& r)
     : direction_(direction), rules_(r)
+    {
+      compile_rules();
+    }
+
+    PassDef(
+      const std::string& name,
+      const wf::Wellformed& wf,
+      const std::initializer_list<detail::PatternEffect<Node>>& r)
+    : name_(name), wf_(wf), direction_(dir::topdown), rules_(r)
     {
       compile_rules();
     }
