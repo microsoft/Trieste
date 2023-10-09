@@ -64,7 +64,6 @@ namespace trieste::logging
   static constexpr detail::Indent Indent{};
   static constexpr detail::Undent Undent{};
 
-  template<detail::LogLevel Level>
   class Log
   {
     // Should the log actually do stuff. Decided at creation so that we can
@@ -139,8 +138,6 @@ namespace trieste::logging
     }
 
   public:
-    static constexpr detail::LogLevel level{Level};
-
     // Used to add a header to each log message.
     // For example, this could be used to start each line with a thread
     // identifier or a timestamp.
@@ -159,14 +156,9 @@ namespace trieste::logging
     Log(Log&&) = delete;
     Log& operator=(Log&&) = delete;
 
-    static bool active()
+    SNMALLOC_FAST_PATH Log(detail::LogLevel level)
     {
-      return Level <= detail::report_level;
-    }
-
-    SNMALLOC_FAST_PATH Log()
-    {
-      if (SNMALLOC_UNLIKELY(active()))
+      if (SNMALLOC_UNLIKELY(level <= detail::report_level))
         start();
     }
 
@@ -177,13 +169,13 @@ namespace trieste::logging
       return print;
     }
 
-    // Append to the string stream.
-    template<typename T>
-    SNMALLOC_SLOW_PATH void append(T&& t)
+    SNMALLOC_FAST_PATH typename std::stringstream& get_stringstream()
     {
-      strstream.get() << std::forward<T>(t);
-    }
+      if (should_print())
+        return strstream.get();
 
+      throw std::runtime_error("Log should not be printed! Use should_print()");
+    }
 
     SNMALLOC_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &
     {
@@ -236,32 +228,56 @@ namespace trieste::logging
     }
   };
 
-  using Output = Log<detail::LogLevel::Output>;
-  using Error = Log<detail::LogLevel::Error>;
-  using Warn = Log<detail::LogLevel::Warn>;
-  using Info = Log<detail::LogLevel::Info>;
-  using Debug = Log<detail::LogLevel::Debug>;
-  using Trace = Log<detail::LogLevel::Trace>;
+  namespace detail
+  {
+    template<detail::LogLevel L>
+    class LogImpl : public Log
+    {
+    public:
+      static constexpr detail::LogLevel level = L;
+
+      static bool active()
+      {
+        return L <= detail::report_level;
+      }
+
+      SNMALLOC_FAST_PATH LogImpl() : Log(L) {}
+    };
+  } // namespace detail
+
+  using None = detail::LogImpl<detail::LogLevel::None>;
+  using Output = detail::LogImpl<detail::LogLevel::Output>;
+  using Error = detail::LogImpl<detail::LogLevel::Error>;
+  using Warn = detail::LogImpl<detail::LogLevel::Warn>;
+  using Info = detail::LogImpl<detail::LogLevel::Info>;
+  using Debug = detail::LogImpl<detail::LogLevel::Debug>;
+  using Trace = detail::LogImpl<detail::LogLevel::Trace>;
+
+  // Append to the string stream.
+  template<typename T>
+  inline SNMALLOC_SLOW_PATH void append(Log& self, T&& t)
+  {
+    self.get_stringstream() << std::forward<T>(t);
+  }
 
   // Pipe operators defined in the global namespace to allow for ADL.
-  template<typename T, detail::LogLevel L>
-  SNMALLOC_FAST_PATH_INLINE Log<L>& operator<<(Log<L>& self, T&& t)
+  template<typename T>
+  SNMALLOC_FAST_PATH_INLINE Log& operator<<(Log& self, T&& t)
   {
     if (SNMALLOC_UNLIKELY(self.should_print()))
-      self.append(std::forward<T>(t));
+      append(self, std::forward<T>(t));
     return self;
   }
 
   // Pipe operators defined in the global namespace to allow for ADL.
-  template<typename T, detail::LogLevel L>
-  SNMALLOC_FAST_PATH_INLINE Log<L>& operator<<(Log<L>&& self, T&& t)
+  template<typename T>
+  SNMALLOC_FAST_PATH_INLINE Log& operator<<(Log&& self, T&& t)
   {
     if (SNMALLOC_UNLIKELY(self.should_print()))
-      self.append(std::forward<T>(t));
+      append(self, std::forward<T>(t));
     return self;
   }
-
-#ifdef TRIESTE_EXPOSE_LOG_MACRO
+#ifdef TRIESTE_EXPOSE_LOG_MACRO 
 // This macro is used to expose the logging to uses in a way that
 // guarantees no evaluation of the pipe sequence:
 //   LOG(Info) << "Hello " << "World" << fib(23);
@@ -271,9 +287,8 @@ namespace trieste::logging
 // would be required to evaluate fib(23) even if Info is not enabled.
 #  define LOG(param) \
     if (SNMALLOC_UNLIKELY( \
-          trieste::logging::Log< \
-            trieste::logging::detail::LogLevel::param>::active())) \
-    trieste::logging::Log<trieste::logging::detail::LogLevel::param>()
+          trieste::logging::param::active())) \
+    trieste::logging::param()
 #endif
 
   /**
