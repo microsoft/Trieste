@@ -283,6 +283,11 @@ namespace trieste::logging
 
   namespace detail
   {
+    /**
+     * @brief Class that is used to produce a log of a specific level.
+     * Log is has a dynamic level, where as LogImpl has a static level.
+     * This allows type aliases that have a specific level.
+     */
     template<detail::LogLevel L>
     class LogImpl : public Log
     {
@@ -347,7 +352,7 @@ namespace trieste::logging
    *      log << sep << i;
    *  }
    *
-   * The first time it is output it does nothing, but after that it output the
+   * The first time it is output it does nothing, but after that it outputs the
    * separator.  This results in the message:
    *
    *   `0, 1, 2, 3, 4, 5, 6, 7, 8, 9`
