@@ -331,7 +331,7 @@ namespace trieste::logging
   {
     const T& t;
 
-    SNMALLOC_FAST_PATH Lazy(const T& t) : t(t) {}
+    SNMALLOC_FAST_PATH Lazy(const T& t_) : t(t_) {}
   };
 
   template<typename T, void(f)(Log&, const T&)>
