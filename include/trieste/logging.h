@@ -279,13 +279,13 @@ namespace trieste::logging
   }
 
   /**
-   * @brief Used to delay printing of a value until if is known if printing should
-   * occur.
-   * 
+   * @brief Used to delay printing of a value until if is known if printing
+   * should occur.
+   *
    * @tparam T - Type of the value.
    * @tparam void (f)(Log&, const T&) - Static printing function.
    */
-  template <typename T, void (f)(Log&, const T&)>
+  template<typename T, void(f)(Log&, const T&)>
   struct Lazy
   {
     const T& t;
@@ -293,13 +293,46 @@ namespace trieste::logging
     SNMALLOC_FAST_PATH Lazy(const T& t) : t(t) {}
   };
 
-  template <typename T, void (f)(Log&, const T&)>
+  template<typename T, void(f)(Log&, const T&)>
   inline SNMALLOC_SLOW_PATH void append(Log& self, Lazy<T, f>&& p)
   {
     f(self, p.t);
   }
 
-#ifdef TRIESTE_EXPOSE_LOG_MACRO 
+  /**
+   * @brief Used to output a separator between values.
+   *
+   * Use it as follows:
+   *
+   *  {
+   *    logging::Sep sep{", "};
+   *    logging::Error log{};
+   *    for (size_t i = 0; i < 10; i++)
+   *      log << sep << i;
+   *  }
+   *
+   * The first time it is output it does nothing, but after that it output the
+   * separator.  This results in the message:
+   * 
+   *   `0, 1, 2, 3, 4, 5, 6, 7, 8, 9`
+   */
+  struct Sep
+  {
+    std::string sep;
+    bool first;
+
+    SNMALLOC_FAST_PATH Sep(std::string sep) : sep(sep), first(true) {}
+  };
+
+  inline SNMALLOC_SLOW_PATH void append(Log& append, Sep& sep)
+  {
+    if (sep.first)
+      sep.first = false;
+    else
+      append << sep.sep;
+  }
+
+#ifdef TRIESTE_EXPOSE_LOG_MACRO
 // This macro is used to expose the logging to uses in a way that
 // guarantees no evaluation of the pipe sequence:
 //   LOG(Info) << "Hello " << "World" << fib(23);
@@ -308,8 +341,7 @@ namespace trieste::logging
 //   logging::Info() << "Hello " << "World" << fib(23);
 // would be required to evaluate fib(23) even if Info is not enabled.
 #  define LOG(param) \
-    if (SNMALLOC_UNLIKELY( \
-          trieste::logging::param::active())) \
+    if (SNMALLOC_UNLIKELY(trieste::logging::param::active())) \
     trieste::logging::param()
 #endif
 
