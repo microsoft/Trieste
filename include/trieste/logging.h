@@ -277,6 +277,28 @@ namespace trieste::logging
       append(self, std::forward<T>(t));
     return self;
   }
+
+  /**
+   * @brief Used to delay printing of a value until if is known if printing should
+   * occur.
+   * 
+   * @tparam T - Type of the value.
+   * @tparam void (f)(Log&, const T&) - Static printing function.
+   */
+  template <typename T, void (f)(Log&, const T&)>
+  struct Lazy
+  {
+    const T& t;
+
+    SNMALLOC_FAST_PATH Lazy(const T& t) : t(t) {}
+  };
+
+  template <typename T, void (f)(Log&, const T&)>
+  inline SNMALLOC_SLOW_PATH void append(Log& self, Lazy<T, f>&& p)
+  {
+    f(self, p.t);
+  }
+
 #ifdef TRIESTE_EXPOSE_LOG_MACRO 
 // This macro is used to expose the logging to uses in a way that
 // guarantees no evaluation of the pipe sequence:
@@ -301,4 +323,4 @@ namespace trieste::logging
   {
     detail::report_level = L::level;
   }
-} // namespace trieste
+} // namespace trieste::logging
