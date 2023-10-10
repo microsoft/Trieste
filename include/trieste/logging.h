@@ -11,7 +11,7 @@
 namespace trieste::logging
 {
   class Log;
-  
+
   // Append to the string stream.
   template<typename T>
   inline SNMALLOC_SLOW_PATH void append(Log&, T&&);
@@ -92,6 +92,14 @@ namespace trieste::logging
     // print.
     detail::UnsafeInit<std::stringstream> strstream;
 
+    friend class LocalIndent;
+
+    static size_t& thread_local_indent()
+    {
+      static thread_local size_t indent = 0;
+      return indent;
+    }
+
     /**
      * The following methods
      *  - start
@@ -109,14 +117,18 @@ namespace trieste::logging
     SNMALLOC_SLOW_PATH void start()
     {
       strstream.init();
-      indent_chars = 0;
+      indent_chars = thread_local_indent();
       print = Status::Active;
       if (header_callback)
       {
         // Indent all lines after a header by 5 spaces.
-        indent_chars = 5;
+        indent_chars = 5 + thread_local_indent();
         // Add the header.
         header_callback(strstream.get());
+      }
+      else
+      {
+        strstream.get() << std::setw(indent_chars) << "";
       }
     }
 
@@ -356,6 +368,20 @@ namespace trieste::logging
     else
       append << sep.sep;
   }
+
+  class LocalIndent
+  {
+  public:
+    LocalIndent()
+    {
+      ++Log::thread_local_indent();
+    }
+ 
+    ~LocalIndent()
+    {
+      --Log::thread_local_indent();
+    }
+  };
 
 #ifdef TRIESTE_EXPOSE_LOG_MACRO
 // This macro is used to expose the logging to uses in a way that
