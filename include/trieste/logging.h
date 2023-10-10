@@ -249,7 +249,6 @@ namespace trieste::logging
       return *this;
     }
 
-    // Pipe operators defined in the global namespace to allow for ADL.
     template<typename T>
     SNMALLOC_FAST_PATH_INLINE Log& operator<<(T&& t) &
     {
@@ -258,7 +257,6 @@ namespace trieste::logging
       return *this;
     }
 
-    // Pipe operators defined in the global namespace to allow for ADL.
     template<typename T>
     SNMALLOC_FAST_PATH_INLINE Log& operator<<(T&& t) &&
     {
@@ -308,7 +306,8 @@ namespace trieste::logging
   using Debug = detail::LogImpl<detail::LogLevel::Debug>;
   using Trace = detail::LogImpl<detail::LogLevel::Trace>;
 
-  // Append to the string stream.
+  // Append to the string stream.  Defined in global namespace so that it can be
+  // overridden by ADL.
   template<typename T>
   inline SNMALLOC_SLOW_PATH void append(Log& self, T&& t)
   {
@@ -376,7 +375,7 @@ namespace trieste::logging
     {
       ++Log::thread_local_indent();
     }
- 
+
     ~LocalIndent()
     {
       --Log::thread_local_indent();
