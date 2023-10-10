@@ -10,6 +10,12 @@
 
 namespace trieste::logging
 {
+  class Log;
+  
+  // Append to the string stream.
+  template<typename T>
+  inline SNMALLOC_SLOW_PATH void append(Log&, T&&);
+
   namespace detail
   {
     /**
@@ -66,9 +72,16 @@ namespace trieste::logging
 
   class Log
   {
+    enum class Status
+    {
+      Silent = 0,
+      Active = 1,
+      ActiveNoOutput = 2,
+    };
+
     // Should the log actually do stuff. Decided at creation so that we can
     // fast path away from actually doing the work.
-    bool print{false};
+    Status print{Status::Silent};
 
     // The number of characters to indent by.
     size_t indent_chars;
@@ -97,7 +110,7 @@ namespace trieste::logging
     {
       strstream.init();
       indent_chars = 0;
-      print = true;
+      print = Status::Active;
       if (header_callback)
       {
         // Indent all lines after a header by 5 spaces.
@@ -109,8 +122,11 @@ namespace trieste::logging
 
     SNMALLOC_SLOW_PATH void end()
     {
-      strstream.get() << std::endl;
-      dump_callback(strstream.get());
+      if (print == Status::Active)
+      {
+        strstream.get() << std::endl;
+        dump_callback(strstream.get());
+      }
       strstream.destruct();
     }
 
@@ -135,6 +151,13 @@ namespace trieste::logging
         throw std::runtime_error("Undent called too many times");
       --indent_chars;
       *this << std::endl;
+    }
+
+    // Query if this log should be printed. Needed for extending the
+    // pipe operator to allow the customisation using ADL.
+    bool is_active()
+    {
+      return print != Status::Silent;
     }
 
   public:
@@ -162,16 +185,9 @@ namespace trieste::logging
         start();
     }
 
-    // Query if this log should be printed. Needed for extending the
-    // pipe operator to allow the customisation using ADL.
-    bool should_print()
-    {
-      return print;
-    }
-
     SNMALLOC_FAST_PATH typename std::stringstream& get_stringstream()
     {
-      if (should_print())
+      if (is_active())
         return strstream.get();
 
       throw std::runtime_error("Log should not be printed! Use should_print()");
@@ -179,7 +195,7 @@ namespace trieste::logging
 
     SNMALLOC_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         operation(f);
 
       return *this;
@@ -187,7 +203,7 @@ namespace trieste::logging
 
     SNMALLOC_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &&
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         operation(f);
 
       return *this;
@@ -195,36 +211,63 @@ namespace trieste::logging
 
     SNMALLOC_FAST_PATH Log& operator<<(detail::Indent) &
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         indent();
       return *this;
     }
 
     SNMALLOC_FAST_PATH Log& operator<<(detail::Indent) &&
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         indent();
       return *this;
     }
 
     SNMALLOC_FAST_PATH Log& operator<<(detail::Undent) &
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         undent();
       return *this;
     }
 
     SNMALLOC_FAST_PATH Log& operator<<(detail::Undent) &&
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         undent();
+      return *this;
+    }
+
+    // Pipe operators defined in the global namespace to allow for ADL.
+    template<typename T>
+    SNMALLOC_FAST_PATH_INLINE Log& operator<<(T&& t) &
+    {
+      if (SNMALLOC_UNLIKELY(is_active()))
+        append(*this, std::forward<T>(t));
+      return *this;
+    }
+
+    // Pipe operators defined in the global namespace to allow for ADL.
+    template<typename T>
+    SNMALLOC_FAST_PATH_INLINE Log& operator<<(T&& t) &&
+    {
+      if (SNMALLOC_UNLIKELY(is_active()))
+        append(*this, std::forward<T>(t));
       return *this;
     }
 
     SNMALLOC_FAST_PATH ~Log()
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         end();
+    }
+
+    // Get the string representation from this log, and prevent any
+    // printing on destruction.
+    std::string str()
+    {
+      std::string result = strstream.get().str();
+      print = Status::ActiveNoOutput;
+      return result;
     }
   };
 
@@ -258,24 +301,6 @@ namespace trieste::logging
   inline SNMALLOC_SLOW_PATH void append(Log& self, T&& t)
   {
     self.get_stringstream() << std::forward<T>(t);
-  }
-
-  // Pipe operators defined in the global namespace to allow for ADL.
-  template<typename T>
-  SNMALLOC_FAST_PATH_INLINE Log& operator<<(Log& self, T&& t)
-  {
-    if (SNMALLOC_UNLIKELY(self.should_print()))
-      append(self, std::forward<T>(t));
-    return self;
-  }
-
-  // Pipe operators defined in the global namespace to allow for ADL.
-  template<typename T>
-  SNMALLOC_FAST_PATH_INLINE Log& operator<<(Log&& self, T&& t)
-  {
-    if (SNMALLOC_UNLIKELY(self.should_print()))
-      append(self, std::forward<T>(t));
-    return self;
   }
 
   /**
@@ -313,7 +338,7 @@ namespace trieste::logging
    *
    * The first time it is output it does nothing, but after that it output the
    * separator.  This results in the message:
-   * 
+   *
    *   `0, 1, 2, 3, 4, 5, 6, 7, 8, 9`
    */
   struct Sep
