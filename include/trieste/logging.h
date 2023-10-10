@@ -14,7 +14,7 @@ namespace trieste::logging
 
   // Append to the string stream.
   template<typename T>
-  inline SNMALLOC_SLOW_PATH void append(Log&, T&&);
+  void append(Log&, T&&);
 
   namespace detail
   {
@@ -362,7 +362,7 @@ namespace trieste::logging
     std::string sep;
     bool first;
 
-    SNMALLOC_FAST_PATH Sep(std::string sep) : sep(sep), first(true) {}
+    SNMALLOC_FAST_PATH Sep(std::string sep_) : sep(sep_), first(true) {}
   };
 
   inline SNMALLOC_SLOW_PATH void append(Log& append, Sep& sep)
