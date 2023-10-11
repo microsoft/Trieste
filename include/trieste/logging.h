@@ -14,7 +14,7 @@ namespace trieste::logging
 
   // Append to the string stream.
   template<typename T>
-  void append(Log&, T&&);
+  void append(Log&, const T&);
 
   namespace detail
   {
@@ -49,14 +49,18 @@ namespace trieste::logging
 
     enum class LogLevel
     {
-      String = 0,
-      None = 1,
-      Error = 2,
-      Output = 3,
-      Warn = 4,
-      Info = 5,
-      Debug = 6,
-      Trace = 7
+      String = 0, // Used to output a string without a header or indentation.
+      None = 1,   // Represents the status of not logging.
+      Error = 2,  // Represents error messages should be printed
+      Output = 3, // Represents error and output messages should be printed
+      Warn = 4,   // Represents same as Output and warning messages should also be
+                  // printed
+      Info = 5,   // Represents same as Warn and info messages should also be
+                  // printed
+      Debug = 6,  // Represents same as Info and debug messages should also be
+                  // printed
+      Trace = 7   // Represents same as Debug and trace messages should also be
+                  // printed
     };
 
     // Used to set which level of message should be reported.
@@ -260,7 +264,7 @@ namespace trieste::logging
     SNMALLOC_FAST_PATH_INLINE Log& operator<<(T&& t) &
     {
       if (SNMALLOC_UNLIKELY(is_active()))
-        append(*this, std::forward<T>(t));
+        append(*this, t);
       return *this;
     }
 
@@ -268,7 +272,7 @@ namespace trieste::logging
     SNMALLOC_FAST_PATH_INLINE Log& operator<<(T&& t) &&
     {
       if (SNMALLOC_UNLIKELY(is_active()))
-        append(*this, std::forward<T>(t));
+        append(*this, t);
       return *this;
     }
 
@@ -308,6 +312,13 @@ namespace trieste::logging
     };
   } // namespace detail
 
+  // These types are used to both set the level of logging, and to log to
+  // e.g. 
+  //   set_level<Error>();
+  // and
+  //   Error() << "Hello World";
+  // The String type is a special type where the output is not set to the dump_callback
+  // but can be retrieved with the str() method.
   using String = detail::LogImpl<detail::LogLevel::String>;
   using None = detail::LogImpl<detail::LogLevel::None>;
   using Error = detail::LogImpl<detail::LogLevel::Error>;
@@ -320,9 +331,9 @@ namespace trieste::logging
   // Append to the string stream.  Defined in global namespace so that it can be
   // overridden by ADL.
   template<typename T>
-  inline SNMALLOC_SLOW_PATH void append(Log& self, T&& t)
+  inline SNMALLOC_SLOW_PATH void append(Log& self, const T& t)
   {
-    self.get_stringstream() << std::forward<T>(t);
+    self.get_stringstream() << t;
   }
 
   /**
@@ -341,7 +352,7 @@ namespace trieste::logging
   };
 
   template<typename T, void(f)(Log&, const T&)>
-  inline SNMALLOC_SLOW_PATH void append(Log& self, Lazy<T, f>&& p)
+  inline SNMALLOC_SLOW_PATH void append(Log& self, const Lazy<T, f>& p)
   {
     f(self, p.t);
   }
@@ -379,6 +390,9 @@ namespace trieste::logging
       append << sep.sep;
   }
 
+  /**
+   * @brief RAII class for increase the indent level of the current thread for all logging.
+   */
   class LocalIndent
   {
   public:
