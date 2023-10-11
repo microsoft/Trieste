@@ -64,7 +64,7 @@ namespace trieste::logging
     };
 
     // Used to set which level of message should be reported.
-    inline static LogLevel report_level{LogLevel::Output};
+    inline LogLevel report_level{LogLevel::Output};
 
     class Indent
     {};
