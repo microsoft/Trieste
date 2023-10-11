@@ -10,6 +10,12 @@
 
 namespace trieste::logging
 {
+  class Log;
+
+  // Append to the string stream.
+  template<typename T>
+  void append(Log&, const T&);
+
   namespace detail
   {
     /**
@@ -43,17 +49,22 @@ namespace trieste::logging
 
     enum class LogLevel
     {
-      None = 0,
-      Error = 1,
-      Output = 2,
-      Warn = 3,
-      Info = 4,
-      Debug = 5,
-      Trace = 6
+      String = 0, // Used to output a string without a header or indentation.
+      None = 1,   // Represents the status of not logging.
+      Error = 2,  // Represents error messages should be printed
+      Output = 3, // Represents error and output messages should be printed
+      Warn = 4,   // Represents same as Output and warning messages should also be
+                  // printed
+      Info = 5,   // Represents same as Warn and info messages should also be
+                  // printed
+      Debug = 6,  // Represents same as Info and debug messages should also be
+                  // printed
+      Trace = 7   // Represents same as Debug and trace messages should also be
+                  // printed
     };
 
     // Used to set which level of message should be reported.
-    inline static LogLevel report_level{LogLevel::Output};
+    inline LogLevel report_level{LogLevel::Output};
 
     class Indent
     {};
@@ -64,12 +75,18 @@ namespace trieste::logging
   static constexpr detail::Indent Indent{};
   static constexpr detail::Undent Undent{};
 
-  template<detail::LogLevel Level>
   class Log
   {
+    enum class Status
+    {
+      Silent = 0,
+      Active = 1,
+      ActiveNoOutput = 2,
+    };
+
     // Should the log actually do stuff. Decided at creation so that we can
     // fast path away from actually doing the work.
-    bool print{false};
+    Status print{Status::Silent};
 
     // The number of characters to indent by.
     size_t indent_chars;
@@ -79,6 +96,14 @@ namespace trieste::logging
     // The UnsafeInit wrapper prevents initialisation if the log is not going to
     // print.
     detail::UnsafeInit<std::stringstream> strstream;
+
+    friend class LocalIndent;
+
+    static size_t& thread_local_indent()
+    {
+      static thread_local size_t indent = 0;
+      return indent;
+    }
 
     /**
      * The following methods
@@ -94,24 +119,37 @@ namespace trieste::logging
      * not going to occur.
      */
 
-    SNMALLOC_SLOW_PATH void start()
+    SNMALLOC_SLOW_PATH void start(detail::LogLevel level)
     {
       strstream.init();
-      indent_chars = 0;
-      print = true;
+      if (level == detail::LogLevel::String)
+      {
+        print = Status::ActiveNoOutput;
+        indent_chars = 0;
+        return;
+      }
+      print = Status::Active;
+      indent_chars = thread_local_indent();
       if (header_callback)
       {
         // Indent all lines after a header by 5 spaces.
-        indent_chars = 5;
+        indent_chars = 5 + thread_local_indent();
         // Add the header.
         header_callback(strstream.get());
+      }
+      else
+      {
+        strstream.get() << std::setw(indent_chars) << "";
       }
     }
 
     SNMALLOC_SLOW_PATH void end()
     {
-      strstream.get() << std::endl;
-      dump_callback(strstream.get());
+      if (print == Status::Active)
+      {
+        strstream.get() << std::endl;
+        dump_callback(strstream.get());
+      }
       strstream.destruct();
     }
 
@@ -138,9 +176,14 @@ namespace trieste::logging
       *this << std::endl;
     }
 
-  public:
-    static constexpr detail::LogLevel level{Level};
+    // Query if this log should be printed. Needed for extending the
+    // pipe operator to allow the customisation using ADL.
+    bool is_active()
+    {
+      return print != Status::Silent;
+    }
 
+  public:
     // Used to add a header to each log message.
     // For example, this could be used to start each line with a thread
     // identifier or a timestamp.
@@ -159,35 +202,23 @@ namespace trieste::logging
     Log(Log&&) = delete;
     Log& operator=(Log&&) = delete;
 
-    static bool active()
+    SNMALLOC_FAST_PATH Log(detail::LogLevel level)
     {
-      return Level <= detail::report_level;
+      if (SNMALLOC_UNLIKELY(level <= detail::report_level))
+        start(level);
     }
 
-    SNMALLOC_FAST_PATH Log()
+    SNMALLOC_FAST_PATH typename std::stringstream& get_stringstream()
     {
-      if (SNMALLOC_UNLIKELY(active()))
-        start();
-    }
+      if (is_active())
+        return strstream.get();
 
-    // Query if this log should be printed. Needed for extending the
-    // pipe operator to allow the customisation using ADL.
-    bool should_print()
-    {
-      return print;
+      throw std::runtime_error("Log should not be printed! Use should_print()");
     }
-
-    // Append to the string stream.
-    template<typename T>
-    SNMALLOC_SLOW_PATH void append(T&& t)
-    {
-      strstream.get() << std::forward<T>(t);
-    }
-
 
     SNMALLOC_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         operation(f);
 
       return *this;
@@ -195,7 +226,7 @@ namespace trieste::logging
 
     SNMALLOC_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &&
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         operation(f);
 
       return *this;
@@ -203,63 +234,178 @@ namespace trieste::logging
 
     SNMALLOC_FAST_PATH Log& operator<<(detail::Indent) &
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         indent();
       return *this;
     }
 
     SNMALLOC_FAST_PATH Log& operator<<(detail::Indent) &&
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         indent();
       return *this;
     }
 
     SNMALLOC_FAST_PATH Log& operator<<(detail::Undent) &
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         undent();
       return *this;
     }
 
     SNMALLOC_FAST_PATH Log& operator<<(detail::Undent) &&
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         undent();
+      return *this;
+    }
+
+    template<typename T>
+    SNMALLOC_FAST_PATH_INLINE Log& operator<<(T&& t) &
+    {
+      if (SNMALLOC_UNLIKELY(is_active()))
+        append(*this, t);
+      return *this;
+    }
+
+    template<typename T>
+    SNMALLOC_FAST_PATH_INLINE Log& operator<<(T&& t) &&
+    {
+      if (SNMALLOC_UNLIKELY(is_active()))
+        append(*this, t);
       return *this;
     }
 
     SNMALLOC_FAST_PATH ~Log()
     {
-      if (SNMALLOC_UNLIKELY(print))
+      if (SNMALLOC_UNLIKELY(is_active()))
         end();
+    }
+
+    // Get the string representation from this log.
+    std::string str()
+    {
+      std::string result = strstream.get().str();
+      return result;
     }
   };
 
-  using Output = Log<detail::LogLevel::Output>;
-  using Error = Log<detail::LogLevel::Error>;
-  using Warn = Log<detail::LogLevel::Warn>;
-  using Info = Log<detail::LogLevel::Info>;
-  using Debug = Log<detail::LogLevel::Debug>;
-  using Trace = Log<detail::LogLevel::Trace>;
-
-  // Pipe operators defined in the global namespace to allow for ADL.
-  template<typename T, detail::LogLevel L>
-  SNMALLOC_FAST_PATH_INLINE Log<L>& operator<<(Log<L>& self, T&& t)
+  namespace detail
   {
-    if (SNMALLOC_UNLIKELY(self.should_print()))
-      self.append(std::forward<T>(t));
-    return self;
+    /**
+     * @brief Class that is used to produce a log of a specific level.
+     * Log is has a dynamic level, where as LogImpl has a static level.
+     * This allows type aliases that have a specific level.
+     */
+    template<detail::LogLevel L>
+    class LogImpl : public Log
+    {
+    public:
+      static constexpr detail::LogLevel level = L;
+
+      static bool active()
+      {
+        return L <= detail::report_level;
+      }
+
+      SNMALLOC_FAST_PATH LogImpl() : Log(L) {}
+    };
+  } // namespace detail
+
+  // These types are used to both set the level of logging, and to log to
+  // e.g. 
+  //   set_level<Error>();
+  // and
+  //   Error() << "Hello World";
+  // The String type is a special type where the output is not set to the dump_callback
+  // but can be retrieved with the str() method.
+  using String = detail::LogImpl<detail::LogLevel::String>;
+  using None = detail::LogImpl<detail::LogLevel::None>;
+  using Error = detail::LogImpl<detail::LogLevel::Error>;
+  using Output = detail::LogImpl<detail::LogLevel::Output>;
+  using Warn = detail::LogImpl<detail::LogLevel::Warn>;
+  using Info = detail::LogImpl<detail::LogLevel::Info>;
+  using Debug = detail::LogImpl<detail::LogLevel::Debug>;
+  using Trace = detail::LogImpl<detail::LogLevel::Trace>;
+
+  // Append to the string stream.  Defined in global namespace so that it can be
+  // overridden by ADL.
+  template<typename T>
+  inline SNMALLOC_SLOW_PATH void append(Log& self, const T& t)
+  {
+    self.get_stringstream() << t;
   }
 
-  // Pipe operators defined in the global namespace to allow for ADL.
-  template<typename T, detail::LogLevel L>
-  SNMALLOC_FAST_PATH_INLINE Log<L>& operator<<(Log<L>&& self, T&& t)
+  /**
+   * @brief Used to delay printing of a value until if is known if printing
+   * should occur.
+   *
+   * @tparam T - Type of the value.
+   * @tparam void (f)(Log&, const T&) - Static printing function.
+   */
+  template<typename T, void(f)(Log&, const T&)>
+  struct Lazy
   {
-    if (SNMALLOC_UNLIKELY(self.should_print()))
-      self.append(std::forward<T>(t));
-    return self;
+    const T& t;
+
+    SNMALLOC_FAST_PATH Lazy(const T& t_) : t(t_) {}
+  };
+
+  template<typename T, void(f)(Log&, const T&)>
+  inline SNMALLOC_SLOW_PATH void append(Log& self, const Lazy<T, f>& p)
+  {
+    f(self, p.t);
   }
+
+  /**
+   * @brief Used to output a separator between values.
+   *
+   * Use it as follows:
+   *
+   *  {
+   *    logging::Sep sep{", "};
+   *    logging::Error log{};
+   *    for (size_t i = 0; i < 10; i++)
+   *      log << sep << i;
+   *  }
+   *
+   * The first time it is output it does nothing, but after that it outputs the
+   * separator.  This results in the message:
+   *
+   *   `0, 1, 2, 3, 4, 5, 6, 7, 8, 9`
+   */
+  struct Sep
+  {
+    std::string sep;
+    bool first;
+
+    SNMALLOC_FAST_PATH Sep(std::string sep_) : sep(sep_), first(true) {}
+  };
+
+  inline SNMALLOC_SLOW_PATH void append(Log& append, Sep& sep)
+  {
+    if (sep.first)
+      sep.first = false;
+    else
+      append << sep.sep;
+  }
+
+  /**
+   * @brief RAII class for increase the indent level of the current thread for all logging.
+   */
+  class LocalIndent
+  {
+  public:
+    LocalIndent()
+    {
+      ++Log::thread_local_indent();
+    }
+
+    ~LocalIndent()
+    {
+      --Log::thread_local_indent();
+    }
+  };
 
 #ifdef TRIESTE_EXPOSE_LOG_MACRO
 // This macro is used to expose the logging to uses in a way that
@@ -270,10 +416,8 @@ namespace trieste::logging
 //   logging::Info() << "Hello " << "World" << fib(23);
 // would be required to evaluate fib(23) even if Info is not enabled.
 #  define LOG(param) \
-    if (SNMALLOC_UNLIKELY( \
-          trieste::logging::Log< \
-            trieste::logging::detail::LogLevel::param>::active())) \
-    trieste::logging::Log<trieste::logging::detail::LogLevel::param>()
+    if (SNMALLOC_UNLIKELY(trieste::logging::param::active())) \
+    trieste::logging::param()
 #endif
 
   /**
@@ -286,4 +430,4 @@ namespace trieste::logging
   {
     detail::report_level = L::level;
   }
-} // namespace trieste
+} // namespace trieste::logging

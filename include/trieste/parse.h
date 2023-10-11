@@ -244,7 +244,7 @@ namespace trieste
 
     Parse(depth depth, const wf::Wellformed& wf) : depth_(depth), wf_(wf) {}
 
-    const wf::Wellformed& wf()
+    const wf::Wellformed& wf() const
     {
       return wf_;
     }
