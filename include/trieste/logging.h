@@ -49,13 +49,14 @@ namespace trieste::logging
 
     enum class LogLevel
     {
-      None = 0,
-      Error = 1,
-      Output = 2,
-      Warn = 3,
-      Info = 4,
-      Debug = 5,
-      Trace = 6
+      String = 0,
+      None = 1,
+      Error = 2,
+      Output = 3,
+      Warn = 4,
+      Info = 5,
+      Debug = 6,
+      Trace = 7
     };
 
     // Used to set which level of message should be reported.
@@ -114,11 +115,17 @@ namespace trieste::logging
      * not going to occur.
      */
 
-    SNMALLOC_SLOW_PATH void start()
+    SNMALLOC_SLOW_PATH void start(detail::LogLevel level)
     {
       strstream.init();
-      indent_chars = thread_local_indent();
+      if (level == detail::LogLevel::String)
+      {
+        print = Status::ActiveNoOutput;
+        indent_chars = 0;
+        return;
+      }
       print = Status::Active;
+      indent_chars = thread_local_indent();
       if (header_callback)
       {
         // Indent all lines after a header by 5 spaces.
@@ -194,7 +201,7 @@ namespace trieste::logging
     SNMALLOC_FAST_PATH Log(detail::LogLevel level)
     {
       if (SNMALLOC_UNLIKELY(level <= detail::report_level))
-        start();
+        start(level);
     }
 
     SNMALLOC_FAST_PATH typename std::stringstream& get_stringstream()
@@ -271,12 +278,10 @@ namespace trieste::logging
         end();
     }
 
-    // Get the string representation from this log, and prevent any
-    // printing on destruction.
+    // Get the string representation from this log.
     std::string str()
     {
       std::string result = strstream.get().str();
-      print = Status::ActiveNoOutput;
       return result;
     }
   };
@@ -303,9 +308,10 @@ namespace trieste::logging
     };
   } // namespace detail
 
+  using String = detail::LogImpl<detail::LogLevel::String>;
   using None = detail::LogImpl<detail::LogLevel::None>;
-  using Output = detail::LogImpl<detail::LogLevel::Output>;
   using Error = detail::LogImpl<detail::LogLevel::Error>;
+  using Output = detail::LogImpl<detail::LogLevel::Output>;
   using Warn = detail::LogImpl<detail::LogLevel::Warn>;
   using Info = detail::LogImpl<detail::LogLevel::Info>;
   using Debug = detail::LogImpl<detail::LogLevel::Debug>;
