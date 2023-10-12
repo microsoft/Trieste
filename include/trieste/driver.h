@@ -224,8 +224,24 @@ namespace trieste
                           << " iterations, " << changes << " nodes rewritten."
                           << std::endl;
 
-          if (ast->errors())
+          Nodes errors = ast->get_errors();
+          if (!errors.empty())
           {
+            logging::Error err;
+            logging::Sep sep{"----------------"}; 
+            err << "Errors:";
+            for (auto& error : errors)
+            {
+              err << sep << std::endl;
+              for (auto& child : *error)
+              {
+                if (child->type() == ErrorMsg)
+                  err << child->location().view();
+                else
+                  err << child->location().origin_linecol() << std::endl
+                      << child->location().str();
+              }
+            }
             end_pass = i;
             ret = -1;
           }
