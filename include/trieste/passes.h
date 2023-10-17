@@ -13,10 +13,15 @@ namespace trieste
     PassIterator start;
     PassIterator end;
     wf::Wellformed wf; // Well-formed condition for entry into this Range.
+    std::string entry_name;
 
   public:
-    PassRange(PassIterator start_, PassIterator end_, wf::Wellformed wf_)
-    : start(start_), end(end_), wf(wf_)
+    PassRange(
+      PassIterator start_,
+      PassIterator end_,
+      wf::Wellformed wf_,
+      std::string entry_name_)
+    : start(start_), end(end_), wf(wf_), entry_name(entry_name_)
     {}
 
     template<typename StringLike>
@@ -28,6 +33,7 @@ namespace trieste
         return false;
 
       wf = (*it)->wf();
+      entry_name = (*it)->name();
       start = it;
       return true;
     }
@@ -51,6 +57,7 @@ namespace trieste
     void operator++()
     {
       wf = (*start)->wf();
+      entry_name = (*start)->name();
       start++;
     }
 
@@ -72,6 +79,11 @@ namespace trieste
           return *it;
       }
       throw std::runtime_error("No passes in range");
+    }
+
+    std::string entry_pass_name()
+    {
+      return entry_name;
     }
   };
 
@@ -125,6 +137,23 @@ namespace trieste
       check_well_formed = b;
     }
 
+    template<typename PassIterator>
+    bool validate(Node ast, PassRange<PassIterator> passes)
+    {
+      auto wf = passes.input_wf();
+      auto ok = bool(ast);
+
+      ok = ok && wf.build_st(ast);
+      ok = ok && (!check_well_formed || wf.check(ast));
+
+      auto errors = ast->get_errors();
+      ok = ok && errors.empty();
+      if (!ok)
+        error_pass(errors, passes.entry_pass_name());
+
+      return ok;
+    }
+
     /**
      * @brief Run the supplied passes on the Ast.
      *
@@ -137,16 +166,10 @@ namespace trieste
 
       wf::push_back(passes.input_wf());
 
-      auto ok = passes.input_wf().build_st(ast);
-
       // Check ast is well-formed before starting.
-      if (check_well_formed && !passes.input_wf().check(ast))
-        ok = false;
+      auto ok = validate(ast, passes);
 
-      if (!ok)
-        logging::Error() << "Initial parse failed to produce well-formed AST";
-
-      for (; ok && passes.has_next(); ++passes, index++)
+      for (; ok && passes.has_next(); index++)
       {
         logging::Debug() << "Starting pass: \"" << passes()->name() << "\"";
 
@@ -157,26 +180,15 @@ namespace trieste
 
         auto [new_ast, count, changes] = pass->run(ast);
         wf::pop_front();
-        ast = new_ast;
+        ++passes;
 
-        ok = ok && bool(ast);
-
-        ok = ok && wf.build_st(ast);
-
-        ok = ok && (!check_well_formed || wf.check(ast));
+        ok = validate(ast, passes);
 
         auto then = std::chrono::high_resolution_clock::now();
         PassStatistics stats = {
           count,
           changes,
           std::chrono::duration_cast<std::chrono::microseconds>(then - now)};
-
-        Nodes errors = ast->get_errors();
-        if (!errors.empty() || !ok)
-        {
-          error_pass(errors, pass->name());
-          ok = false;
-        }
 
         ok = pass_complete(ast, pass->name(), index, stats) && ok;
       }
