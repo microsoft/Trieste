@@ -226,6 +226,9 @@ namespace trieste
     std::string pass_name,
     size_t index)
   {
+    if (output_directory.empty())
+      return true;
+
     // Check if output_directory exists, and if not create it.
     if (!std::filesystem::exists(output_directory))
     {
@@ -298,9 +301,6 @@ namespace trieste
 
         logging::Info() << pass_name << delim << count << delim << changes
                         << delim << duration.count();
-
-        if (output_directory.empty())
-          return true;
 
         return write_ast(
           ast, output_directory, language_name, pass_name, index);
