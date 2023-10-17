@@ -140,7 +140,7 @@ namespace trieste
         Process process = default_process(wfcheck, language_name, dump_passes);
 
         Node ast;
-        PassRange<PassIt> pass_range{
+        PassRange pass_range{
           passes.begin(), passes.end(), parser.wf(), parse_only};
         pass_range.move_end(limit);
 

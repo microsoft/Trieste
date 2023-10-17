@@ -24,6 +24,11 @@ namespace trieste
     : start(start_), end(end_), wf(wf_), entry_name(entry_name_)
     {}
 
+    template<typename Range>
+    PassRange(Range& range, wf::Wellformed wf_, std::string entry_name_)
+    : start(range.begin()), end(range.end()), wf(wf_), entry_name(entry_name_)
+    {}
+
     template<typename StringLike>
     bool move_start(StringLike name)
     {
@@ -86,6 +91,16 @@ namespace trieste
       return entry_name;
     }
   };
+
+  // Deduction guide require for constructor of PassRange
+  template<typename PassIterator>
+  PassRange(PassIterator, PassIterator, wf::Wellformed, std::string)
+    -> PassRange<PassIterator>;
+
+  // Deduction guide require for constructor of PassRange
+  template<typename Range>
+  PassRange(Range, wf::Wellformed, std::string)
+    -> PassRange<typename Range::iterator>;
 
   struct PassStatistics
   {
@@ -171,7 +186,7 @@ namespace trieste
 
       for (; ok && passes.has_next(); index++)
       {
-        logging::Debug() << "Starting pass: \"" << passes()->name() << "\"";
+        logging::Info() << "Starting pass: \"" << passes()->name() << "\"";
 
         auto now = std::chrono::high_resolution_clock::now();
         auto& pass = passes();
@@ -180,6 +195,7 @@ namespace trieste
 
         auto [new_ast, count, changes] = pass->run(ast);
         wf::pop_front();
+
         ++passes;
 
         ok = validate(ast, passes);
