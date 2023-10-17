@@ -189,6 +189,67 @@ namespace trieste
     }
   };
 
+  inline void print_errors(std::vector<Node>& errors, logging::Log& err)
+  {
+    logging::Sep sep{"----------------"};
+    err << "Errors:";
+    for (auto& error : errors)
+    {
+      err << sep << std::endl;
+      for (auto& child : *error)
+      {
+        if (child->type() == ErrorMsg)
+          err << child->location().view();
+        else
+          err << child->location().origin_linecol() << std::endl
+              << child->location().str();
+      }
+    }
+  }
+
+  inline bool write_ast(
+    Node& ast,
+    std::filesystem::path output_directory,
+    std::string language_name,
+    std::string pass_name,
+    size_t index)
+  {
+    // Check if output_directory exists, and if not create it.
+    if (!std::filesystem::exists(output_directory))
+    {
+      if (!std::filesystem::create_directories(output_directory))
+      {
+        logging::Error() << "Could not create output directory "
+                         << output_directory;
+        return false;
+      }
+    }
+
+    std::filesystem::path output;
+    if (index < 10)
+    {
+      output = output_directory /
+        ("0" + std::to_string(index) + "_" + pass_name + ".trieste");
+    }
+    else
+    {
+      output = output_directory /
+        (std::to_string(index) + "_" + pass_name + ".trieste");
+    }
+
+    std::ofstream f(output, std::ios::binary | std::ios::out);
+
+    if (!f)
+    {
+      logging::Error() << "Could not open " << output << " for writing.";
+      return false;
+    }
+
+    // Write the AST to the output file.
+    f << language_name << std::endl << pass_name << std::endl << ast;
+    return true;
+  }
+
   /**
    * @brief A default configuration for the Process class. This configuration
    * can be used to write to a file each time a pass completes.
@@ -208,21 +269,7 @@ namespace trieste
 
     p.set_error_pass([](std::vector<Node>& errors, std::string name) {
       logging::Error err;
-      logging::Sep sep{"----------------"};
-      err << "Errors:";
-      for (auto& error : errors)
-      {
-        err << sep << std::endl;
-        for (auto& child : *error)
-        {
-          if (child->type() == ErrorMsg)
-            err << child->location().view();
-          else
-            err << child->location().origin_linecol() << std::endl
-                << child->location().str();
-        }
-      }
-
+      print_errors(errors, err);
       err << "Pass " << name << " failed with " << errors.size() << " errors\n";
     });
 
@@ -243,40 +290,8 @@ namespace trieste
         if (output_directory.empty())
           return true;
 
-        // Check if output_directory exists, and if not create it.
-        if (!std::filesystem::exists(output_directory))
-        {
-          if (!std::filesystem::create_directories(output_directory))
-          {
-            logging::Error()
-              << "Could not create output directory " << output_directory;
-            return false;
-          }
-        }
-
-        std::filesystem::path output;
-        if (index < 10)
-        {
-          output = output_directory /
-            ("0" + std::to_string(index) + "_" + pass_name + ".trieste");
-        }
-        else
-        {
-          output = output_directory /
-            (std::to_string(index) + "_" + pass_name + ".trieste");
-        }
-
-        std::ofstream f(output, std::ios::binary | std::ios::out);
-
-        if (!f)
-        {
-          logging::Error() << "Could not open " << output << " for writing.";
-          return false;
-        }
-
-        // Write the AST to the output file.
-        f << language_name << std::endl << pass_name << std::endl << ast;
-        return true;
+        return write_ast(
+          ast, output_directory, language_name, pass_name, index);
       });
 
     return p;
