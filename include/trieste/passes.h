@@ -175,7 +175,7 @@ namespace trieste
      * Returns the rewritten Ast, or an empty Node if the process failed.
      */
     template<typename PassIterator>
-    Node build(Node ast, PassRange<PassIterator> passes)
+    bool build(Node& ast, PassRange<PassIterator> passes)
     {
       size_t index = 1;
 
@@ -194,6 +194,7 @@ namespace trieste
         wf::push_back(wf);
 
         auto [new_ast, count, changes] = pass->run(ast);
+        ast = new_ast;
         wf::pop_front();
 
         ++passes;
@@ -211,9 +212,7 @@ namespace trieste
 
       wf::pop_front();
 
-      if (!ok)
-        return {};
-      return ast;
+      return ok;
     }
   };
 

@@ -176,8 +176,8 @@ namespace trieste
             logging::Error() << "File not found: " << path << std::endl;
         }
 
-        auto result = process.build(ast, pass_range);
-        if (!result)
+        auto ok = process.build(ast, pass_range);
+        if (!ok)
           return -1;
 
         if (output.empty())
@@ -190,7 +190,7 @@ namespace trieste
           // Write the AST to the output file.
           f << language_name << std::endl
             << pass_range.last_pass()->name() << std::endl
-            << result;
+            << ast;
         }
         else
         {
