@@ -186,7 +186,7 @@ namespace trieste
 
       for (; ok && passes.has_next(); index++)
       {
-        logging::Info() << "Starting pass: \"" << passes()->name() << "\"";
+        logging::Debug() << "Starting pass: \"" << passes()->name() << "\"";
 
         auto now = std::chrono::high_resolution_clock::now();
         auto& pass = passes();

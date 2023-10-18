@@ -62,8 +62,12 @@ namespace trieste
       // Build command line options.
       auto build = app.add_subcommand("build", "Build a path");
 
-      bool diag = false;
-      build->add_flag("-d,--diagnostics", diag, "Emit diagnostics.");
+      std::string log_level;
+      build->add_option("-l,--log_level", log_level, "Set Log Level to one of "
+                                                      "Trace, Debug, Info, "
+                                                      "Warning, Output, Error, "
+                                                      "None")
+        ->check(logging::set_log_level_from_string);
 
       bool wfcheck = true;
       build->add_flag("-w", wfcheck, "Check well-formedness.");
@@ -104,8 +108,11 @@ namespace trieste
       test->add_option("end", test_end_pass, "End at this pass.")
         ->transform(CLI::IsMember(limits));
 
-      bool test_verbose = false;
-      test->add_flag("-v,--verbose", test_verbose, "Verbose output");
+      test->add_option("-l,--log_level", log_level, "Set Log Level to one of "
+                                                      "Trace, Debug, Info, "
+                                                      "Warning, Output, Error, "
+                                                      "None")
+        ->check(logging::set_log_level_from_string);
 
       size_t test_max_depth = 10;
       test->add_option(
@@ -121,16 +128,6 @@ namespace trieste
       catch (const CLI::ParseError& e)
       {
         return app.exit(e);
-      }
-
-      if (diag)
-      {
-        logging::set_level<logging::Info>();
-      }
-
-      if (test_verbose)
-      {
-        logging::set_level<logging::Trace>();
       }
 
       int ret = 0;
@@ -256,7 +253,7 @@ namespace trieste
             if (!ok)
             {
               logging::Error err;
-              if (!test_verbose)
+              if (!logging::Trace::active())
               {
                 // We haven't printed what failed with Trace earlier, so do it
                 // now. Regenerate the start Ast for the error message.

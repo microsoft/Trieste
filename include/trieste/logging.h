@@ -49,18 +49,22 @@ namespace trieste::logging
 
     enum class LogLevel
     {
-      String = 0, // Used to output a string without a header or indentation.
-      None = 1,   // Represents the status of not logging.
-      Error = 2,  // Represents error messages should be printed
-      Output = 3, // Represents error and output messages should be printed
-      Warn = 4,   // Represents same as Output and warning messages should also be
-                  // printed
-      Info = 5,   // Represents same as Warn and info messages should also be
-                  // printed
-      Debug = 6,  // Represents same as Info and debug messages should also be
-                  // printed
-      Trace = 7   // Represents same as Debug and trace messages should also be
-                  // printed
+      // Used to output a string without a header or indentation.
+      String = 0,
+      // Represents the status of not logging.
+      None = 1,
+      // Represents error messages should be printed
+      Error = 2,
+      // Represents error and output messages should be printed
+      Output = 3,
+      // Represents same as Output and warning messages should also be printed
+      Warn = 4,
+      // Represents same as Warn and info messages should also be printed
+      Info = 5,
+      // Represents same as Info and debug messages should also be
+      Debug = 6,
+      // Represents same as Debug and trace messages should also be printed
+      Trace = 7
     };
 
     // Used to set which level of message should be reported.
@@ -72,8 +76,8 @@ namespace trieste::logging
     {};
   } // namespace detail
 
-  static constexpr detail::Indent Indent{};
-  static constexpr detail::Undent Undent{};
+  constexpr detail::Indent Indent{};
+  constexpr detail::Undent Undent{};
 
   class Log
   {
@@ -313,12 +317,12 @@ namespace trieste::logging
   } // namespace detail
 
   // These types are used to both set the level of logging, and to log to
-  // e.g. 
+  // e.g.
   //   set_level<Error>();
   // and
   //   Error() << "Hello World";
-  // The String type is a special type where the output is not set to the dump_callback
-  // but can be retrieved with the str() method.
+  // The String type is a special type where the output is not set to the
+  // dump_callback but can be retrieved with the str() method.
   using String = detail::LogImpl<detail::LogLevel::String>;
   using None = detail::LogImpl<detail::LogLevel::None>;
   using Error = detail::LogImpl<detail::LogLevel::Error>;
@@ -391,7 +395,8 @@ namespace trieste::logging
   }
 
   /**
-   * @brief RAII class for increase the indent level of the current thread for all logging.
+   * @brief RAII class for increase the indent level of the current thread for
+   * all logging.
    */
   class LocalIndent
   {
@@ -430,4 +435,36 @@ namespace trieste::logging
   {
     detail::report_level = L::level;
   }
+
+  /**
+   * @brief Set the log level from string object.  Design for use with
+   * CLI11::Validator.  It will return an empty string if the log level is
+   * valid, otherwise it will return an error message.
+   */
+  inline std::string set_log_level_from_string(const std::string& s)
+  {
+    if (s == "None")
+      set_level<None>();
+    else if (s == "Error")
+      set_level<Error>();
+    else if (s == "Output")
+      set_level<Output>();
+    else if (s == "Warn")
+      set_level<Warn>();
+    else if (s == "Info")
+      set_level<Info>();
+    else if (s == "Debug")
+      set_level<Debug>();
+    else if (s == "Trace")
+      set_level<Trace>();
+    else
+    {
+      std::stringstream ss;
+      ss << "Unknown log level: " << s
+         << " should be on of None, Error, Output, Warn, Info, Debug, Trace";
+      return ss.str();
+    }
+    return {};
+  }
+
 } // namespace trieste::logging
