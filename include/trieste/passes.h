@@ -12,21 +12,21 @@ namespace trieste
   {
     PassIterator start;
     PassIterator end;
-    wf::Wellformed wf; // Well-formed condition for entry into this Range.
+    const wf::Wellformed* wf; // Well-formed condition for entry into this Range.
     std::string entry_name;
 
   public:
     PassRange(
       PassIterator start_,
       PassIterator end_,
-      wf::Wellformed wf_,
+      const wf::Wellformed& wf_,
       std::string entry_name_)
-    : start(start_), end(end_), wf(wf_), entry_name(entry_name_)
+    : start(start_), end(end_), wf(&wf_), entry_name(entry_name_)
     {}
 
     template<typename Range>
-    PassRange(Range& range, wf::Wellformed wf_, std::string entry_name_)
-    : start(range.begin()), end(range.end()), wf(wf_), entry_name(entry_name_)
+    PassRange(Range& range, const wf::Wellformed& wf_, std::string entry_name_)
+    : start(range.begin()), end(range.end()), wf(&wf_), entry_name(entry_name_)
     {}
 
     template<typename StringLike>
@@ -37,7 +37,7 @@ namespace trieste
       if (it == end)
         return false;
 
-      wf = (*it)->wf();
+      wf = &((*it)->wf());
       entry_name = (*it)->name();
       start = it;
       return true;
@@ -61,7 +61,7 @@ namespace trieste
 
     void operator++()
     {
-      wf = (*start)->wf();
+      wf = &((*start)->wf());
       entry_name = (*start)->name();
       start++;
     }
@@ -71,9 +71,9 @@ namespace trieste
       return start != end;
     }
 
-    wf::Wellformed input_wf()
+    const wf::Wellformed& input_wf() const
     {
-      return wf;
+      return *wf;
     }
 
     Pass& last_pass()
@@ -94,12 +94,12 @@ namespace trieste
 
   // Deduction guide require for constructor of PassRange
   template<typename PassIterator>
-  PassRange(PassIterator, PassIterator, wf::Wellformed, std::string)
+  PassRange(PassIterator, PassIterator, const wf::Wellformed&, std::string)
     -> PassRange<PassIterator>;
 
   // Deduction guide require for constructor of PassRange
   template<typename Range>
-  PassRange(Range, wf::Wellformed, std::string)
+  PassRange(Range, const wf::Wellformed&, std::string)
     -> PassRange<typename Range::iterator>;
 
   struct PassStatistics
@@ -190,8 +190,7 @@ namespace trieste
 
         auto now = std::chrono::high_resolution_clock::now();
         auto& pass = passes();
-        auto wf = pass->wf();
-        wf::push_back(wf);
+        wf::push_back(pass->wf());
 
         auto [new_ast, count, changes] = pass->run(ast);
         ast = new_ast;
