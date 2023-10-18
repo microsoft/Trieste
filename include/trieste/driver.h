@@ -134,8 +134,6 @@ namespace trieste
 
       if (*build)
       {
-        Process process = default_process(wfcheck, language_name, dump_passes);
-
         Node ast;
         PassRange pass_range{
           passes.begin(), passes.end(), parser.wf(), parse_only};
@@ -176,7 +174,14 @@ namespace trieste
             logging::Error() << "File not found: " << path << std::endl;
         }
 
-        auto ok = process.build(ast, pass_range);
+        bool ok;
+        {
+          logging::Info summary;
+          summary << "---------" << std::endl;
+          Process process = default_process(summary, wfcheck, language_name, dump_passes);
+          ok = process.build(ast, pass_range);
+          summary << "---------" << std::endl;
+        }
         if (!ok)
           return -1;
 

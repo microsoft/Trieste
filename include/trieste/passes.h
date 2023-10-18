@@ -289,6 +289,7 @@ namespace trieste
    * @param output_directory - the directory to write the output to.
    */
   inline Process default_process(
+    logging::Log& summary,
     bool check_well_formed = false,
     std::string language_name = "",
     std::filesystem::path output_directory = {})
@@ -304,18 +305,18 @@ namespace trieste
     });
 
     p.set_pass_complete(
-      [output_directory, language_name](
+      [output_directory, language_name, &summary](
         Node& ast, std::string pass_name, size_t index, PassStatistics& stats) {
         auto [count, changes, duration] = stats;
         std::string delim{"\t"};
         if (index == 1)
         {
-          logging::Info() << "Pass" << delim << "Iterations" << delim
-                          << "Changes" << delim << "Time (us)";
+          summary << "Pass" << delim << "Iterations" << delim << "Changes"
+                  << delim << "Time (us)" << std::endl;
         }
 
-        logging::Info() << pass_name << delim << count << delim << changes
-                        << delim << duration.count();
+        summary << pass_name << delim << count << delim << changes << delim
+                << duration.count() << std::endl;
 
         return write_ast(
           ast, output_directory, language_name, pass_name, index);
