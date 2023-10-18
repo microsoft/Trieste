@@ -305,7 +305,7 @@ namespace infix
             auto assign = defs.front();
             // the assign node has two children: the ident, and its value
             // this returns the second
-            return assign->back();
+            return assign->back()->clone();
           },
 
         T(Expression) << (T(Int) / T(Float))[Rhs] >>
