@@ -1,12 +1,12 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
 #include <functional>
 #include <iomanip>
 #include <iostream>
 #include <snmalloc/ds_core/defines.h>
 #include <sstream>
+
 
 namespace trieste::logging
 {

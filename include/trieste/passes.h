@@ -317,7 +317,7 @@ namespace trieste
         }
 
         summary << pass_name << delim << count << delim << changes << delim
-                << duration.count() << std::endl;
+                << static_cast<size_t>(duration.count()) << std::endl;
 
         return write_ast(
           ast, output_directory, language_name, pass_name, index);
