@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "logging.h"
-#include "parse.h"
-#include "pass.h"
-#include "passes.h"
-#include "regex.h"
-#include "wf.h"
+#include "trieste.h"
 
 #include <CLI/CLI.hpp>
 #include <filesystem>
@@ -15,11 +10,6 @@
 
 namespace trieste
 {
-  struct Options
-  {
-    virtual void configure(CLI::App&) {}
-  };
-
   class Driver
   {
   private:
