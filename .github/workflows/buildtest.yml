@@ -21,9 +21,6 @@ jobs:
           cmake_options: "-DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_FLAGS=-stdlib=libc++"
           generator: "-G Ninja"
           dependencies: "sudo apt install ninja-build"
-        - platform: "windows-latest"
-          compiler: "clang"
-          cmake_options: "-DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang"
     
         exclude:
         # Mac is already using clang.

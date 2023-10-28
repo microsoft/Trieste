@@ -7,7 +7,6 @@
 #include <snmalloc/ds_core/defines.h>
 #include <sstream>
 
-
 namespace trieste::logging
 {
   class Log;
