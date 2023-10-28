@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "logging.h"
 #include "source.h"
 
 #include <atomic>

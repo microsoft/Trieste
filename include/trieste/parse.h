@@ -8,6 +8,7 @@
 #include "regex.h"
 #include "wf.h"
 
+#include <random>
 #include <filesystem>
 #include <functional>
 

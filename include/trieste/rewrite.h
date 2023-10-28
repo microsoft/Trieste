@@ -3,6 +3,8 @@
 #pragma once
 
 #include "ast.h"
+#include "token.h"
+#include "regex.h"
 
 #include <array>
 #include <cassert>
