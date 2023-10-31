@@ -3,7 +3,6 @@
 #pragma once
 
 #include "token.h"
-#include "logging.h"
 
 #include <iostream>
 #include <limits>
@@ -656,31 +655,28 @@ namespace trieste
       out << ")";
     }
 
-    bool errors()
+    /**
+     * Returns the set of leaf Error nodes, Error nodes that do not contain Error nodes.
+     * 
+     * The function takes an RValue reference to a vector of Nodes, which is extended with the
+     * errors contain inside `this` node.  It is defaulted to an empty vector, so that the function
+     * can simply be called as
+     *   auto errors = node->get_errors();
+     */
+    Nodes&& get_errors(Nodes&& errors = {}) &
     {
-      if (!get_and_reset_contains_error() && type_ != Error)
-        return false;
-
-      bool err = false;
-
-      for (auto& child : children)
-        err = child->errors() || err;
-
-      // If an error wraps another error, print only the innermost error.
-      if (err || (type_ != Error))
-        return err;
-
-      logging::Error out{};
-      for (auto& child : children)
+      if (!get_and_reset_contains_error())
       {
-        if (child->type() == ErrorMsg)
-          out << child->location().view() << std::endl;
-        else
-          out << child->location().origin_linecol() << std::endl
-              << child->location().str();
+        // Only add Error nodes that do not contain further Error nodes.
+        if (type_ == Error)
+          errors.push_back(shared_from_this());
+        return std::move(errors);
       }
+      
+      for (auto& child : children)
+        errors = child->get_errors(std::move(errors));
 
-      return true;
+      return std::move(errors);
     }
 
     bool get_and_reset_contains_error()

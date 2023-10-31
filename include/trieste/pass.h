@@ -92,7 +92,7 @@ namespace trieste
       return name_;
     }
 
-    const wf::Wellformed& wf()
+    const wf::Wellformed& wf() const
     {
       return wf_;
     }

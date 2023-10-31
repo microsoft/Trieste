@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "logging.h"
 #include "source.h"
 
 #include <atomic>
@@ -39,6 +40,11 @@ namespace trieste
 
     TokenDef() = delete;
     TokenDef(const TokenDef&) = delete;
+
+    ~TokenDef()
+    {
+      logging::Trace() << "~TokenDef: " << name << " " << default_map_id;
+    }
 
     operator Node() const;
 

@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "logging.h"
-#include "parse.h"
-#include "pass.h"
-#include "regex.h"
-#include "wf.h"
+#include "trieste.h"
 
 #include <CLI/CLI.hpp>
 #include <filesystem>
@@ -14,15 +10,12 @@
 
 namespace trieste
 {
-  struct Options
-  {
-    virtual void configure(CLI::App&) {}
-  };
-
   class Driver
   {
   private:
     constexpr static auto parse_only = "parse";
+
+    using PassIt = std::vector<Pass>::iterator;
 
     std::string language_name;
     CLI::App app;
@@ -59,16 +52,15 @@ namespace trieste
       // Build command line options.
       auto build = app.add_subcommand("build", "Build a path");
 
-      bool diag = false;
-      build->add_flag("-d,--diagnostics", diag, "Emit diagnostics.");
+      std::string log_level;
+      build->add_option("-l,--log_level", log_level, "Set Log Level to one of "
+                                                      "Trace, Debug, Info, "
+                                                      "Warning, Output, Error, "
+                                                      "None")
+        ->check(logging::set_log_level_from_string);
 
-      if (diag)
-      {
-        logging::set_level<logging::Info>();
-      }
-
-      bool wfcheck = false;
-      build->add_flag("-w,--wf-check", wfcheck, "Check well-formedness.");
+      bool wfcheck = true;
+      build->add_flag("-w", wfcheck, "Check well-formedness.");
 
       std::string limit = limits.back();
       build->add_option("-p,--pass", limit, "Run up to this pass.")
@@ -79,6 +71,10 @@ namespace trieste
 
       std::filesystem::path output;
       build->add_option("-o,--output", output, "Output path.");
+
+      std::filesystem::path dump_passes;
+      build->add_option(
+        "--dump_passes", dump_passes, "Dump passes to the supplied directory.");
 
       // Custom command line options when building.
       if (options)
@@ -102,13 +98,11 @@ namespace trieste
       test->add_option("end", test_end_pass, "End at this pass.")
         ->transform(CLI::IsMember(limits));
 
-      bool test_verbose = false;
-      test->add_flag("-v,--verbose", test_verbose, "Verbose output");
-
-      if (test_verbose)
-      {
-        logging::set_level<logging::Trace>();
-      }
+      test->add_option("-l,--log_level", log_level, "Set Log Level to one of "
+                                                      "Trace, Debug, Info, "
+                                                      "Warning, Output, Error, "
+                                                      "None")
+        ->check(logging::set_log_level_from_string);
 
       size_t test_max_depth = 10;
       test->add_option(
@@ -131,8 +125,9 @@ namespace trieste
       if (*build)
       {
         Node ast;
-        size_t start_pass = 1;
-        size_t end_pass = pass_index(limit);
+        PassRange pass_range{
+          passes.begin(), passes.end(), parser.wf(), parse_only};
+        pass_range.move_end(limit);
 
         if (path.extension() == ".trieste")
         {
@@ -145,47 +140,20 @@ namespace trieste
           if (view.compare(0, pos, language_name) == 0)
           {
             // We're resuming from a specific pass.
-            start_pass = pass_index(pass);
-            end_pass = std::max(start_pass, end_pass);
-
-            if (start_pass > limits.size())
+            if (!pass_range.move_start(pass))
             {
               logging::Error() << "Unknown pass: " << pass << std::endl;
               return -1;
             }
 
-            // Build the AST, set up the symbol table, check well-formedness,
-            // and move on to the next pass.
-            ast = build_ast(source, pos2 + 1);
-            bool ok = !!ast;
-            start_pass++;
-
-            // Build the symbol table and check well-formedness.
-            auto& wf = passes.at(start_pass - 1)->wf();
-            wf::push_back(wf);
-            ok = ok && wf.build_st(ast);
-            ok = ok && wf.check(ast);
-
-            if (!ok)
-              return -1;
+            // Pass range is currently pointing at pass, but the output is the
+            // dump of that, so adavnce it one, so we start processing on the
+            // next pass.
+            ++pass_range;
           }
-          else
-          {
-            // We're expecting an AST from another tool that fullfills our
-            // parser AST well-formedness definition.
-            start_pass = 1;
-            end_pass = std::max(start_pass, end_pass);
-            ast = build_ast(source, pos2 + 1);
-            bool ok = !!ast;
 
-            // Build the symbol table and check well-formedness.
-            wf::push_back(parser.wf());
-            ok = ok && parser.wf().build_st(ast);
-            ok = ok && parser.wf().check(ast);
-
-            if (!ok)
-              return -1;
-          }
+          // Build the initial AST.
+          ast = build_ast(source, pos2 + 1);
         }
         else
         {
@@ -194,58 +162,18 @@ namespace trieste
             ast = parser.parse(path);
           else
             logging::Error() << "File not found: " << path << std::endl;
-
-          wf::push_back(parser.wf());
-          bool ok = bool(ast);
-          ok = ok && parser.wf().build_st(ast);
-
-          if (wfcheck)
-            ok = ok && parser.wf().check(ast);
-
-          if (!ok)
-          {
-            end_pass = 0;
-            ret = -1;
-          }
         }
 
-        for (auto i = start_pass; i <= end_pass; i++)
+        bool ok;
         {
-          // Run the pass until it reaches a fixed point.
-          auto& pass = passes.at(i - 1);
-          auto& wf = pass->wf();
-          wf::push_back(wf);
-
-          auto [new_ast, count, changes] = pass->run(ast);
-          wf::pop_front();
-          ast = new_ast;
-
-          logging::Info() << "Pass " << pass->name() << ": " << count
-                          << " iterations, " << changes << " nodes rewritten."
-                          << std::endl;
-
-          if (ast->errors())
-          {
-            end_pass = i;
-            ret = -1;
-          }
-
-          if (wf)
-          {
-            auto ok = wf.build_st(ast);
-
-            if (wfcheck)
-              ok = wf.check(ast) && ok;
-
-            if (!ok)
-            {
-              end_pass = i;
-              ret = -1;
-            }
-          }
+          logging::Info summary;
+          summary << "---------" << std::endl;
+          Process process = default_process(summary, wfcheck, language_name, dump_passes);
+          ok = process.build(ast, pass_range);
+          summary << "---------" << std::endl;
         }
-
-        wf::pop_front();
+        if (!ok)
+          return -1;
 
         if (output.empty())
           output = path.stem().replace_extension(".trieste");
@@ -256,14 +184,14 @@ namespace trieste
         {
           // Write the AST to the output file.
           f << language_name << std::endl
-            << limits.at(end_pass) << std::endl
+            << pass_range.last_pass()->name() << std::endl
             << ast;
         }
         else
         {
           logging::Error() << "Could not open " << output << " for writing."
                            << std::endl;
-          ret = -1;
+          return -1;
         }
       }
       else if (*test)
@@ -320,7 +248,7 @@ namespace trieste
             if (!ok)
             {
               logging::Error err;
-              if (!test_verbose)
+              if (!logging::Trace::active())
               {
                 // We haven't printed what failed with Trace earlier, so do it
                 // now. Regenerate the start Ast for the error message.
