@@ -8,12 +8,13 @@ terms:
 | Name | Description |
 |------|-------------|
 | Term | A subtree             |
-| Well Formed | Trieste provides a way to describe, using tokens, what the structure of a tree should be. A tree which adheres to this structure is considered "Well Formed" |
-| Pass | A Pass is a stage of the system. It is bounded by two Well Formed definitions, one indicating what trees should look like on input to the pass, and another that describes how the pass has changed the tree. It is important to mention that the tree will change multiple times during Pass execution. |
 | Node | A node in the tree. Can have 0 to N children. Has one parent. |
+| Match | Object used for grabbing nodes from a tree pattern match |
 | Location | A string. This can either be a standalone string, or a view into a long string (i.e. an input file) |
 | Token | Something in the program. This can map to something in an input file (e.g. Int, Float, String), a logical grouping term (Operator, Group), or any other tree node which is of use to the system. |
-| Match | Object used for grabbing nodes from a tree pattern match |
+| Well Formed | Trieste provides a way to describe, using tokens, what the structure of a tree should be. A tree which adheres to this structure is considered "Well Formed" |
+| Pass | A Pass is a stage of the system. It is bounded by two Well Formed definitions, one indicating what trees should look like on input to the pass, and another that describes how the pass has changed the tree. It is important to mention that the tree will change multiple times during Pass execution. |
+
 
 Before we dive into how Trieste works, it may be worth describing what
 it is for. Trieste is a preparation tool for a compiler. By performing
@@ -35,16 +36,16 @@ to this:
 
 ``` mermaid
 flowchart TD
-  A[top]-->B[calculation]
-  B-->C[output]
+  A[Top]-->B[Calculation]
+  B-->C[Output]
   C-->D["string #quot;1#quot;"]
-  C-->E[int 22]
-  B-->F[output]
+  C-->E[Int 22]
+  B-->F[Output]
   F-->G["string #quot;2#quot;"]
-  F-->H[int 10]
+  F-->H[Int 10]
 ```
 
-Over the course of this tutorial, we will show how we can use Trieste
+Over the course of this tutorial, we will show how we can use Trieste to
 transform the input program iteratively to the final AST shown.
 
 ## The `infix` Language
@@ -55,13 +56,14 @@ infix operators. All variables are constants (i.e. their values do not
 change) and the only action the program can take is to print a result
 to the console.
 
-The language is defined by the following grammar:
+The language is defined by the following grammar (we assume standard 
+syntax for $string$, $number$ and $variable$):
 
 $$
 \begin{align}
-Calc &\rightarrow Assign\ |\ Output\ |\ Assign\ Calc\ |\ Output\ Calc\\
-Assign &\rightarrow variable\ \texttt{=}\ Expr\\
-Output &\rightarrow \texttt{print}\ Expr\\
+Calc &\rightarrow Assign \ |\ Output\ |\ Assign\ Calc\ |\ Output\ Calc\\
+Assign &\rightarrow variable\ \texttt{=}\ Expr \ ";" \\
+Output &\rightarrow \texttt{print}\ string \ Expr \ ";"\\ 
 Expr &\rightarrow Expr\ Op\ Expr\ |\ Operand\ |\ Open\ Expr\ Close\\
 Operand &\rightarrow number\ |\ variable\\
 Op &\rightarrow \texttt{+}\ |\ \texttt{-}\ |\ \texttt{*}\ |\ \texttt{/}\\
@@ -102,7 +104,8 @@ print "2" z;
 Trieste requires us to construct two objects: a `Parse` object and a
 `Driver` object. The `Parse` object will be used by the parser to
 turn one or more files into a tree of Nodes, where each Node is matched
-with a corresponding Token. First, we construct the object like so:
+with a corresponding Token. We will come back to the `Driver` object later
+in this tutorial. First, we construct the `Parse` object like so:
 
 ``` c++
 Parse p(depth::file);
@@ -148,6 +151,9 @@ p("start", // this indicates the 'mode' these rules are associated with
 
     // Int.
     "[[:digit:]]+\\b" >> [](auto& m) { m.add(Int); },
+    
+    // String. s
+    R"("[^"]*")" >> [](auto& m) { m.add(String); },
 
     // Print.
     "print\\b" >> [](auto& m) { m.add(Print); },
@@ -164,19 +170,45 @@ p("start", // this indicates the 'mode' these rules are associated with
     // ...
   });
 ```
+Here, the overloaded `>>` operator takes a RegEx and an `effect` as arguments 
+and returns a `Rule` object. The `()` operator (called on the `Parse` object `p`
+in the code example above) is overloaded in the `Parse` class and is called with
+a string (representing a 'mode') and the list of `Rule`s as arguments which are 
+added to the `Parse` object. A mode is simply a string, used for controlling
+the application of the rules. Currently, only the 'start' mode is used.
 
-The tokens (e.g. `Int`, `Print`) are defined as `TokenDef` objects:
+### Tokens
+
+The parser rules match strings from the input program to tokens, which
+must be defined for the language we are parsing. For our running example, 
+the tokens (e.g. `Int`, `Print`) are defined as `TokenDef` objects:
 
 ``` c++
 inline const auto Int = TokenDef("int", flag::print);
 inline const auto Print = TokenDef("print");
 inline const auto Add = TokenDef("+");
 inline const auto Equals = TokenDef("equals");
+
+```
+A `TokenDef` can be given a flag as a second argument. 
+For example, the `flag::print` indicates that, when outputting 
+the tree, this token should also output the raw string from the
+input file.
+
+There are also generic tokens built into Trieste.
+For example, the generic token `Group` is used by the parser
+to group parsed tokens and `Top` to indicate the root of
+the parse tree. Some are given below as examples:
+
+``` c++
+  inline const auto Invalid = TokenDef("invalid");
+  inline const auto Top = TokenDef("top", flag::symtab);
+  inline const auto Group = TokenDef("group");
+  inline const auto File = TokenDef("file");
+  inline const auto ErrorMsg = TokenDef("errormsg", flag::print);
 ```
 
-the `flag::print` indicates that, when outputting the tree, this
-token should also output the raw string from the input file. There
-are several other flags:
+There are several other flags:
 
 | Flag | Description |
 |------|-------------|
@@ -190,26 +222,27 @@ are several other flags:
 We will touch on some of these later as we encounter the nodes that
 use them.
 
+
 ### Parsing sample
 
 Above we see a few examples of the kinds of parsing rules we need for
 our language. The simplest ones add a Token via `m.add()`. This will add
-the token to the current `Group`, which is a generic `Token` that
-Trieste uses in the parser for grouping parsed tokens. Let's look at
-the following line:
+the token to the current `Group`. Let's look at the following line:
 
 ``` typescript
-print 5 + 10;
+print "5 + 10" 5 + 10;
 ```
 
-Let's look at this step by step (we'll show Whitespace once but will skip it afterwards for space). Yellow indicates the current position of the cursor in the tree:
+Let's look at this step by step (we'll show Whitespace once but will skip it afterwards for space). 
+The current position of the cursor in the tree is indicated by the ^ symbol:
+
 
 <table>
 <tr><th>Step</th><th>Location</th><th>Tree</th></tr>
 <tr><td>Init</td><td>
 
 ``` typescript
-print 5 + 10;
+print "5 + 10" 5 + 10;
 ^
 ```
 
@@ -217,7 +250,7 @@ print 5 + 10;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
+  A[Top]-->B[File]
   B-->C(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -226,7 +259,7 @@ graph TD;
 <tr><td>Token (add)</td><td>
 
 ``` typescript
-print 5 + 10;
+print "5 + 10" 5 + 10;
      ^
 ```
 
@@ -234,9 +267,9 @@ print 5 + 10;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[print]
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Print]
   C-->E(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -245,7 +278,7 @@ graph TD;
 <tr><td>Whitespace (no-op)</td><td>
 
 ``` typescript
-print 5 + 10;
+print "5 + 10" 5 + 10;
       ^
 ```
 
@@ -253,9 +286,9 @@ print 5 + 10;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[print]
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Print]
   C-->E(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -264,40 +297,60 @@ graph TD;
 <tr><td>Token (add)</td><td>
 
 ``` typescript
-print 5 + 10;
-       ^
+print "5 + 10" 5 + 10;
+              ^
 ```
 
 </td><td>
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[print]
-  C-->E[int 5]
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Print]
+  C-->E["String #quot;5 + 10#quot;"]
   C-->F(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
-
 </td></tr>
 <tr><td>Token (add)</td><td>
 
 ``` typescript
-print 5 + 10;
-         ^
+print "5 + 10" 5 + 10;
+                ^
 ```
 
 </td><td>
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[print]
-  C-->E[int 5]
-  C-->F[Add]
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Print]
+  C-->E["String #quot;5 + 10#quot;"]
+  C-->F[Int 5]
   C-->G(cursor):::cursor
+  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
+```
+</td></tr>
+<tr><td>Token (add)</td><td>
+
+``` typescript
+print "5 + 10" 5 + 10;
+                  ^
+```
+
+</td><td>
+
+``` mermaid
+graph TD;
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Print]
+  C-->E["String #quot;5 + 10#quot;"]
+  C-->F[Int 5]
+  C-->G[Add]
+  C-->H(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -305,21 +358,22 @@ graph TD;
 <tr><td>Token (add)</td><td>
 
 ``` typescript
-print 5 + 10;
-            ^
+print "5 + 10" 5 + 10;
+                     ^
 ```
 
 </td><td>
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[print]
-  C-->E[int 5]
-  C-->F[Add]
-  C-->G[int 10]
-  C-->H(cursor):::cursor
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Print]
+  C-->E["String #quot;5 + 10#quot;"]
+  C-->F[Int 5]
+  C-->G[Add]
+  C-->H[Int 10]
+  C-->I(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -327,21 +381,22 @@ graph TD;
 <tr><td>Token (term)</td><td>
 
 ``` typescript
-print 5 + 10;
-             ^
+print "5 + 10" 5 + 10;
+                      ^
 ```
 
 </td><td>
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[print]
-  C-->E[int 5]
-  C-->F[Add]
-  C-->G[int 10]
-  B-->H(cursor):::cursor
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Print]
+  C-->E["String #quot;5 + 10#quot;"]
+  C-->F[Int 5]
+  C-->G[Add]
+  C-->H[Int 10]
+  B-->I(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -349,7 +404,10 @@ graph TD;
 </table>
 
 Note that the `term` command, triggered by the semi-colon, ends the
-`group` node.
+`Group` node. In addition to the `add` and `term` functions operating on tokens
+we have seen this far, we will look at the effects of the functions `push`, `pop`
+and `seq` while parsing. 
+
 
 ### Parsing example with `push` and `pop`
 
@@ -400,7 +458,7 @@ Let's see how this develops:
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
+  A[Top]-->B[File]
   B-->C(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -417,9 +475,9 @@ graph TD;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[int 1]
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Int 1]
   C-->E[+]
   C-->F(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
@@ -437,9 +495,9 @@ graph TD;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[int 1]
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Int 1]
   C-->E[+]
   C-->F[Paren]
   F-->G[cursor]:::cursor
@@ -458,15 +516,15 @@ graph TD;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[int 1]
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Int 1]
   C-->E[+]
   C-->F[Paren]
   F-->G[Group]
-  G-->H[int 2]
+  G-->H[Int 2]
   G-->I[*]
-  G-->J[int 3]
+  G-->J[Int 3]
   G-->K(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -483,14 +541,14 @@ graph TD;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[int 1]
+  A[tTp]-->B[File]
+  B-->C[Group]
+  C-->D[Int 1]
   C-->E[+]
   C-->F[Paren]
-  F-->G[int 2]
+  F-->G[Int 2]
   F-->H[*]
-  F-->I[int 3]
+  F-->I[Int 3]
   C-->J(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -507,16 +565,16 @@ graph TD;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[int 1]
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Int 1]
   C-->E[+]
   C-->F[Paren]
-  F-->G[int 2]
+  F-->G[Int 2]
   F-->H[*]
-  F-->I[int 3]
+  F-->I[Int 3]
   C-->J[+]
-  C-->K[int 4]
+  C-->K[Int 4]
   C-->L(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -533,16 +591,16 @@ graph TD;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
-  C-->D[int 1]
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[Int 1]
   C-->E[+]
   C-->F[Paren]
-  F-->G[int 2]
+  F-->G[Int 2]
   F-->H[*]
-  F-->I[int 3]
+  F-->I[Int 3]
   C-->J[+]
-  C-->K[int 4]
+  C-->K[Int 4]
   B-->L(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -566,9 +624,9 @@ Let's look at the rule definitions again in detail:
 ";[\n]*" >> [](auto& m) { m.term({Equals}); },
 ```
 
-These rules are different from the rest. The `Equals` rule calls
-`seq`. This command indicates that we are entering into a sequence
-of groups. Let's look at how we parse this line:
+These rules, for parsing assignments, are different from the other parsing rules for
+the infix language. The first rule calls `seq`. This command indicates that we are 
+entering into a sequence of groups. Let's look at how we parse this line:
 
 ``` typescript
 x = 5 + 3;
@@ -587,7 +645,7 @@ x = 5 + 3;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
+  A[Top]-->B[File]
   B-->C(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -604,8 +662,8 @@ x = 5 + 3;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
-  B-->C[group]
+  A[Top]-->B[File]
+  B-->C[Group]
   C-->D[x]
   C-->E(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
@@ -623,9 +681,9 @@ x = 5 + 3;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
+  A[Top]-->B[File]
   B-->C[=]
-  C-->D[group]
+  C-->D[Group]
   D-->E[x]
   C-->F(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
@@ -644,14 +702,14 @@ x = 5 + 3;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
+  A[Top]-->B[File]
   B-->C[=]
   C-->D[Group]
   D-->E[x]
   C-->F[Group]
-  F-->G[int 5]
+  F-->G[Int 5]
   F-->H[Add]
-  F-->I[int 3]
+  F-->I[Int 3]
   F-->J(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -668,14 +726,14 @@ x = 5 + 3;
 
 ``` mermaid
 graph TD;
-  A[top]-->B[File]
+  A[Top]-->B[File]
   B-->C[=]
   C-->D[Group]
   D-->E[x]
   C-->F[Group]
-  F-->G[int 5]
+  F-->G[Int 5]
   F-->H[Add]
-  F-->I[int 3]
+  F-->I[Int 3]
   B-->J(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -765,7 +823,7 @@ inline const auto wf_parser =
   ;
 ```
 
-Each pass has a corresponding well formedness check which is used to
+Each rewriting pass has a corresponding well-formedness check which is used to
 ensure that the input to the next pass is as expected. If the parse
 tree fails this check, Trieste will stop rewriting at that pass and
 output an error indicating what is wrong with the tree.
@@ -773,32 +831,41 @@ output an error indicating what is wrong with the tree.
 ### Pass 1: Expressions
 
 Our first pass will take the raw tokens from the parser and organize
-them into mathematical expressions. We will do this by specifying a
+them into mathematical expressions. We will do this by specifying a 
 `PassDef` object, which has the following constructor:
 
 ``` c++
-PassDef(const std::initializer_list<detail::PatternEffect<Node>>& r)
+PassDef(
+      const std::string& name,
+      const wf::Wellformed& wf,
+      dir::flag direction,
+      const std::initializer_list<detail::PatternEffect<Node>>& r)
 ```
 
-`r` in this case are rules which change the current tree using a
-`Pattern`, which matches to a subtree, and `Effect`:
+The first argument is a name for the pass, `wf` is the well-formedness rules
+for the pass and the `direction` flag specifies the direction of the
+tree traversal (top-down, bottom-up or once). `r` in this case are rules
+which change the current tree using a `Pattern`, which matches to a 
+subtree, and `Effect`:
 
 ``` c++
 using Effect = std::function<T(Match&)>;
 ```
 
-which is a function that takes a `Match` object (i.e. the match from
-the pattern) and produces an updated subtree. Naturally we have some
-nice semantic sugar to keep us from having to call these contructors
-manually. Lets look at some example rules:
+which is a function that takes a `Match` object (i.e. a term matching
+the pattern) and produces an updated subtree. Naturally, we have some
+nice semantic sugar to keep us from having to call these constructors
+manually. Let's look at some example rewrite rules for this pass. 
+The first rule can be read as "If we find a `Top` node with a `File` 
+node as its child, replace the `File` node with a `Calculation` node 
+with the `File` content":
 
 ``` c++
-// In() indicates this is the root node of the pattern match.
-// What we return will replace the nodes we specify after the *.
-// The [] gives us a hook in the Match to use for referring to the
-// matched entity. Here we're saying that we want to create a
+// Here we're saying that we want to create a
 // Calculation node and make all of the values in File (*_[File]) its
-// children.
+// children. The children from the matched term (_) are accessed by
+// first retrieving the File node from the match object (_[File])
+// and then its children (*_[File]).
 In(Top) * T(File)[File] >>
     [](Match& _) { return Calculation << *_[File]; },
 
@@ -824,9 +891,20 @@ In(Calculation) *
 // Expression nodes.
 In(Expression) * (T(Paren) << T(Group)[Group]) >>
   [](Match& _) { return Expression << *_[Group]; },
-```
 
-The result of running this pass is the following tree:
+```
+The general shape of a rule is `Pattern >> Effect`, which produces a `PatternEffect`.
+In a pattern, `T(Foo)` matches a single node `Foo`, and `C * D` matches pattern `C` followed 
+by pattern `D`. `P << C` means that the pattern `C` matches the children of whatever node
+is matched by pattern `P`. `In(Foo)` indicates that the parent node where the current
+pattern matches is a `Foo` node. This parent node will not be part of the `Match` object: 
+only subsequent terms in the pattern are part of the `Match` and can be replaced by 
+the effect. We can also bind patterns to variables to conveniently refer to constituent parts
+of a `Pattern`. For instance, `T(Foo)[V]` creates a pattern match of type `Foo` bound to 
+the name `V`. 
+
+
+The result of running this pass (on the parse tree) is the following tree:
 
 ```
 top
@@ -880,7 +958,7 @@ table. `defbeforeuse` tells Trieste that every symbol in a
 `Calculation` has to be defined before it can be used. `lookup`
 indicates that children of assign nodes can be the targets of
 reference lookups, and `shadowing` indicates that the symbol
-defined by an `Assign` node will take precendence over any other
+defined by an `Assign` node will take precedence over any other
 which exists.
 
 Now that we have a pass, let us look at how we construct a
@@ -888,13 +966,13 @@ Now that we have a pass, let us look at how we construct a
 
 ``` c++
 static Driver d(
-  "infix",
-  parser(),
-  wf_parser(),
-  {{"expressions", expressions(), wf_pass_expressions()},
-  });
-
-return d;
+      "infix",
+      nullptr,
+      parser(),
+      {
+        expressions() //our only rewrite pass so far
+      }
+  );
 ```
 
 We first provide `parser()`, which is a function that returns a
@@ -926,9 +1004,9 @@ this form.
 
 Now that we have our tokens roughly organized around mathematical
 expressions, we need to solve the problem of operator precedence.
-We want the multiply and divide operations to have higher precendence
+We want the multiply and divide operations to have higher precedence
 than add and subtract. It so happens that with a multi-pass term
-rewriting system like Trieste this is very straightforward. We will
+rewriting system like Trieste, this is very straightforward. We will
 have one pass devoted to grouping all multiply and divide expressions
 together (as if they were surrounded in parentheses) and then in the
 next pass we will do the same for all add and subtract expressions.
@@ -1000,18 +1078,18 @@ and how its tree evolves over time:
 
 ``` mermaid
 flowchart TD
-  A[expr]-->B[int 1]
+  A[Expr]-->B[Int 1]
   A-->C[+]
-  A-->D[int 2]
+  A-->D[Int 2]
   A-->E[*]
-  A-->F[int 3]
+  A-->F[Int 3]
   A-->G[-]
-  A-->H[int 4]
+  A-->H[Int 4]
   A-->I["#47;"]
-  A-->J[expr]
-  J-->K[int 6]
+  A-->J[Expr]
+  J-->K[Int 6]
   J-->L[-]
-  J-->M[int 7]
+  J-->M[Int 7]
 ```
 
 </td></tr>
@@ -1019,21 +1097,21 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[expr]-->B[int 1]
+  A[Expr]-->B[Int 1]
   A-->C[+]
-  A-.->N[expr]:::current
+  A-.->N[Expr]:::current
   N-.->E[*]
-  E-.->DD[expr]:::current
-  DD-.->D[int 2]
-  E-.->FF[expr]:::current
-  FF-.->F[int 3]
+  E-.->DD[Expr]:::current
+  DD-.->D[Int 2]
+  E-.->FF[Expr]:::current
+  FF-.->F[Int 3]
   A-->G[-]
-  A-->H[int 4]
+  A-->H[Int 4]
   A-->I["#47;"]
-  A-->J[expr]
-  J-->K[int 6]
+  A-->J[Expr]
+  J-->K[Int 6]
   J-->L[-]
-  J-->M[int 7]
+  J-->M[Int 7]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -1042,23 +1120,23 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[expr]-->B[int 1]
+  A[Expr]-->B[Int 1]
   A-->C[+]
-  A-->N[expr]
+  A-->N[Expr]
   N-->E[*]
-  E-->DD[expr]
-  DD-->D[int 2]
-  E-->FF[expr]
-  FF-->F[int 3]
+  E-->DD[Expr]
+  DD-->D[Int 2]
+  E-->FF[Expr]
+  FF-->F[Int 3]
   A-->G[-]
-  A-.->O[expr]:::current
+  A-.->O[Expr]:::current
   O-.->I["#47;"]
-  I-.->HH[expr]:::current
-  HH-.->H[int 4]
-  I-.->J[expr]
-  J-->K[int 6]
+  I-.->HH[Expr]:::current
+  HH-.->H[Int 4]
+  I-.->J[Expr]
+  J-->K[Int 6]
   J-->L[-]
-  J-->M[int 7]
+  J-->M[Int 7]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -1067,25 +1145,25 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[expr]-.->CC[expr]:::current
+  A[Expr]-.->CC[Expr]:::current
   CC-.->C[+]
-  C-.->BB[expr]:::current
-  BB-.->B[int 1]
-  C-.->N[expr]
+  C-.->BB[Expr]:::current
+  BB-.->B[Int 1]
+  C-.->N[Expr]
   N-->E[*]
-  E-->DD[expr]
-  DD-->D[int 2]
-  E-->FF[expr]
-  FF-->F[int 3]
+  E-->DD[Expr]
+  DD-->D[Int 2]
+  E-->FF[Expr]
+  FF-->F[Int 3]
   A-->G[-]
-  A-->O[expr]
+  A-->O[Expr]
   O-->I["#47;"]
-  I-->HH[expr]
-  HH-->H[int 4]
-  I-->J[expr]
-  J-->K[int 6]
+  I-->HH[Expr]
+  HH-->H[Int 4]
+  I-->J[Expr]
+  J-->K[Int 6]
   J-->L[-]
-  J-->M[int 7]
+  J-->M[Int 7]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -1094,25 +1172,25 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[expr]-->GG[-]
-  GG-.->CC[expr]
+  A[Expr]-->GG[-]
+  GG-.->CC[Expr]
   CC-->C[+]
-  C-->BB[expr]
-  BB-->B[int 1]
-  C-->N[expr]
+  C-->BB[Expr]
+  BB-->B[Int 1]
+  C-->N[Expr]
   N-->E[*]
-  E-->DD[expr]
-  DD-->D[int 2]
-  E-->FF[expr]
-  FF-->F[int 3]
-  GG-.->O[expr]
+  E-->DD[Expr]
+  DD-->D[Int 2]
+  E-->FF[Expr]
+  FF-->F[Int 3]
+  GG-.->O[Expr]
   O-->I["#47;"]
-  I-->HH[expr]
-  HH-->H[int 4]
-  I-->J[expr]
-  J-->K[int 6]
+  I-->HH[Expr]
+  HH-->H[Int 4]
+  I-->J[Expr]
+  J-->K[Int 6]
   J-->L[-]
-  J-->M[int 7]
+  J-->M[Int 7]
 ```
 
 </td></tr>
@@ -1120,27 +1198,27 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[expr]-->GG[-]
-  GG-->CC[expr]
+  A[Expr]-->GG[-]
+  GG-->CC[Expr]
   CC-->C[+]
-  C-->BB[expr]
-  BB-->B[int 1]
-  C-->N[expr]
+  C-->BB[Expr]
+  BB-->B[Int 1]
+  C-->N[Expr]
   N-->E[*]
-  E-->DD[expr]
-  DD-->D[int 2]
-  E-->FF[expr]
-  FF-->F[int 3]
-  GG-->O[expr]
+  E-->DD[Expr]
+  DD-->D[Int 2]
+  E-->FF[Expr]
+  FF-->F[Int 3]
+  GG-->O[Expr]
   O-->I["#47;"]
-  I-->HH[expr]
-  HH-->H[int 4]
-  I-->J[expr]
+  I-->HH[Expr]
+  HH-->H[Int 4]
+  I-->J[Expr]
   J-->L[-]
-  L-.->KK[expr]:::current
-  KK-.->K[int 6]
-  L-.->MM[expr]:::current
-  MM-.->M[int 7]
+  L-.->KK[Expr]:::current
+  KK-.->K[Int 6]
+  L-.->MM[Expr]:::current
+  MM-.->M[Int 7]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -1395,17 +1473,24 @@ top
 The complete driver is declared like this:
 
 ``` c++
-static Driver d(
-  "infix",
-  parser(),
-  wf_parser(),
-  {{"expressions", expressions(), wf_pass_expressions()},
-    {"multiply_divide", multiply_divide(), wf_pass_multiply_divide()},
-    {"add_subtract", add_subtract(), wf_pass_add_subtract()},
-    {"trim", trim(), wf_pass_trim()},
-    {"check_refs", check_refs(), wf_pass_check_refs()},
-    {"maths", maths(), wf_pass_maths()},
-    {"cleanup", cleanup(), wf_pass_cleanup()}});
+Driver& driver()
+  {
+    static Driver d(
+      "infix",
+      nullptr,
+      parser(),
+      {
+        expressions(),
+        multiply_divide(),
+        add_subtract(),
+        trim(),
+        check_refs(),
+        maths(),
+        cleanup(),
+      });
+
+    return d;
+  }
 ```
 
 ## Running the `infix` Executable
@@ -1540,19 +1625,20 @@ produce error messages for all possible syntax problems in each pass.
 ## Errors
 
 Yet another advantage of a multi-pass rewrite system like Trieste is
-the ability to produce fine-grained errors. Indeed, as we just mentioned
+the ability to produce fine-grained errors. Indeed, as we just mentioned,
 the testing system of the driver will require these messages and help
 you find the various edge and corner cases in your rules. Most of these
-messages will likely be in the first pass (i.e. post-parse). Here
-are a few examples:
+messages will likely be in the first pass (i.e. post-parse). 
+
+The `Error` token allows the creation of a special node which we can
+use to replace the erroneous node. This will then exempt that subtree
+from the well-formedness check. This is the mechanism by which we can
+use the testing system to discover edge cases, i.e. the testing will
+not proceed to the next pass until all of the invalid subtrees have
+been marked as `Error`. `Error` nodes can conveniently be created with 
+the `err` function:
 
 ``` c++
-// The Error token allows the creation of a special node which we can
-// use to replace the erroneous node. This will then exempt that subtree
-// from the well-formedness check. This is the mechanism by which we can
-// use the testing system to discover edges cases, i.e. the testing will
-// not proceed to the next pass until all of the invalid subtrees have
-// been marked as `Error`.
 auto err(NodeRange& r, const std::string& msg)
 {
   return Error << (ErrorMsg ^ msg) << (ErrorAst << r);
@@ -1562,12 +1648,15 @@ auto err(Node node, const std::string& msg)
 {
   return Error << (ErrorMsg ^ msg) << (ErrorAst << node);
 }
+```
+In addition to the rewrite rules for valid expressions (pass 1) we saw before,
+we should define `Error` rules. Since the rules are matched in order, 
+the first rule below matches `Paren` nodes with no children (a 
+previous rule will have handled those *with* children). A few examples
+of `Error` rules for the expression pass:
 
-/* ... */
-
-// because rules are matched in order, this catches any
-// Paren nodes that had no children (because the rule above
-// will have handled those *with* children)
+```c++
+// Empty parenthesis
 T(Paren)[Paren] >> [](Match& _) { return err(_(Paren), "Empty paren"); },
 
 // Ditto for malformed equals nodes
