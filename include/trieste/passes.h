@@ -188,6 +188,9 @@ namespace trieste
       // Check ast is well-formed before starting.
       auto ok = validate(ast, passes);
 
+      PassStatistics stats{};
+      ok = pass_complete(ast, passes.entry_pass_name(), 0, stats) && ok;
+
       for (; ok && passes.has_next(); index++)
       {
         logging::Debug() << "Starting pass: \"" << passes()->name() << "\"";
@@ -205,7 +208,7 @@ namespace trieste
         ok = validate(ast, passes);
 
         auto then = std::chrono::high_resolution_clock::now();
-        PassStatistics stats = {
+        stats = {
           count,
           changes,
           std::chrono::duration_cast<std::chrono::microseconds>(then - now)};
@@ -312,7 +315,7 @@ namespace trieste
         Node& ast, std::string pass_name, size_t index, PassStatistics& stats) {
         auto [count, changes, duration] = stats;
         std::string delim{"\t"};
-        if (index == 1)
+        if (index == 0)
         {
           summary << "Pass" << delim << "Iterations" << delim << "Changes"
                   << delim << "Time (us)" << std::endl;

@@ -41,11 +41,6 @@ namespace trieste
     TokenDef() = delete;
     TokenDef(const TokenDef&) = delete;
 
-    ~TokenDef()
-    {
-      logging::Trace() << "~TokenDef: " << name << " " << default_map_id;
-    }
-
     operator Node() const;
 
     bool has(TokenDef::flag f) const
