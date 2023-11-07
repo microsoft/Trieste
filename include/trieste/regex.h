@@ -36,7 +36,7 @@ namespace trieste
         match.data(),
         static_cast<int>(matches));
 
-      if (!matched || (match.at(0).size() == 0))
+      if (!matched)
       {
         return false;
       }
