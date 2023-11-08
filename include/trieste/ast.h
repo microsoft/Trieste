@@ -667,11 +667,9 @@ namespace trieste
           errors.push_back(shared_from_this());
         return;
       }
-      
+
       for (auto& child : children)
         child->get_errors(errors);
-
-      return;
     }
 
     bool get_and_reset_contains_error()
