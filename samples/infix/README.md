@@ -103,15 +103,15 @@ print "2" z;
 
 Trieste requires us to construct two objects: a `Parse` object and a
 `Driver` object. The `Parse` object will be used by the parser to
-turn one or more files into a tree of Nodes, where each Node is matched
-with a corresponding Token. We will come back to the `Driver` object later
+turn one or more files into a tree of nodes, where each node is matched
+with a corresponding token. We will come back to the `Driver` object later
 in this tutorial. First, we construct the `Parse` object like so:
 
 ``` c++
-Parse p(depth::file);
+Parse p(depth::file, wf_parser);
 ```
 
-we can specify the level at which the parser will run:
+With the first argument we specify the level at which the parser will run:
 
 ``` c++
 enum class depth
@@ -126,7 +126,10 @@ Either at the level of a single file, a directory of files, or a
 whole directory structure with subdirectories. An important point is
 that whatever level the parser runs at, it will return a single tree
 containing the tokens from all files. For `infix` we'll be operating at
-the level of a single file, for simplicity.
+the level of a single file, for simplicity.  The second argument, 
+`wf_parser`, is the well-formed definition for the output of the parsing
+step. We will return to this definition after seeing some example parse
+trees for the `infix` language. 
 
 We then need to set up the Trieste `Rule` objects which turn text into
 tokens. The constructor for a `Rule` is:
@@ -961,25 +964,8 @@ reference lookups, and `shadowing` indicates that the symbol
 defined by an `Assign` node will take precedence over any other
 which exists.
 
-Now that we have a pass, let us look at how we construct a
-`Driver` object:
-
-``` c++
-static Driver d(
-      "infix",
-      nullptr,
-      parser(),
-      {
-        expressions() //our only rewrite pass so far
-      }
-  );
-```
-
-We first provide `parser()`, which is a function that returns a
-`Parse` object, and then `wf_parser()`, which is the well-formed
-definition for the output of the parsing step. We then indicate that
-there is a first pass, `expressions`, with a `PassDef` returned by
-`expressions()` and a well-formed check of its own, defined as:
+We must also specify what it means for a tree to be well-formed after
+the `expressions` pass: 
 
 ``` c++
 inline const auto wf_expressions_tokens =
@@ -999,6 +985,26 @@ inline const auto wf_pass_expressions =
 
 This will ensure that a tree which progresses to the next step takes
 this form.
+
+Now that we have a pass, let us look at how we construct a
+`Driver` object:
+
+``` c++
+static Driver d(
+      "infix",
+      nullptr,
+      parser(),
+      {
+        expressions() //our only rewrite pass so far
+      }
+  );
+```
+
+We first provide a name for our language, and then a reference to
+some command line options (none in this case). The `parser()` 
+function returns the `Parse` object that we specified before.
+We then include our rewrite passes, where the `PassDef` returned
+by the function `expressions()` is the only one defined thus far. 
 
 ### Passes 2 and 3: Operator precedence
 
@@ -1534,27 +1540,31 @@ Positionals:
 Options:
   -h,--help                   Print this help message and exit
   --help-all                  Expand all help
-  -d,--diagnostics            Emit diagnostics.
-  -w,--wf-check               Check well-formedness.
+  -l,--log_level TEXT         Set Log Level to one of Trace, Debug, Info, Warning, Output, Error, None
+  -w,                         Check well-formedness.
   -p,--pass TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
                               Run up to this pass.
   -o,--output TEXT            Output path.
+  --dump_passes TEXT          Dump passes to the supplied directory.
 ```
 
 for example:
 
-    infix build simple.infix -d
+    ./infix build simple.infix -l Info
 
 outputs:
 
 ```
-Pass expressions: 2 iterations, 5 nodes rewritten.
-Pass multiply_divide: 1 iterations, 0 nodes rewritten.
-Pass add_subtract: 2 iterations, 2 nodes rewritten.
-Pass trim: 2 iterations, 2 nodes rewritten.
-Pass check_refs: 2 iterations, 1 nodes rewritten.
-Pass maths: 4 iterations, 10 nodes rewritten.
-Pass cleanup: 2 iterations, 2 nodes rewritten.
+---------
+Pass	Iterations	Changes	Time (us)
+expressions	2	5	210
+multiply_divide	1	0	82
+add_subtract	2	2	153
+trim	2	2	115
+check_refs	2	1	109
+maths	4	10	219
+cleanup	2	2	78
+---------
 ```
 
 and creates the file `simple.trieste` containing:
@@ -1593,7 +1603,7 @@ Options:
   --help-all                  Expand all help
   -c,--seed_count UINT        Number of iterations per pass
   -s,--seed UINT              Random seed for testing
-  -v,--verbose                Verbose output
+  -l,--log_level TEXT         Set Log Level to one of Trace, Debug, Info, Warning, Output, Error, None
   -d,--max_depth UINT         Maximum depth of AST to test
   -f,--failfast               Stop on first failure
 ```
@@ -1603,7 +1613,7 @@ For each pass, it will use its input WF definition to produce
 with the pass, and check them against the output WF definition. For
 example
 
-    infix test -f -c 1000
+    ./infix test -f -c 1000 -l Info
 
 outputs:
 
