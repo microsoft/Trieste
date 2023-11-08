@@ -163,7 +163,9 @@ namespace trieste
       ok = ok && wf.build_st(ast);
       ok = ok && (!check_well_formed || wf.check(ast));
 
-      auto errors = ast->get_errors();
+      std::vector<Node> errors;
+      if (ast)
+        errors = ast->get_errors();
       ok = ok && errors.empty();
       if (!ok)
         error_pass(errors, passes.entry_pass_name());
