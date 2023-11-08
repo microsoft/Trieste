@@ -165,7 +165,8 @@ namespace trieste
 
       std::vector<Node> errors;
       if (ast)
-        errors = ast->get_errors();
+        ast->get_errors(errors);
+
       ok = ok && errors.empty();
       if (!ok)
         error_pass(errors, passes.entry_pass_name());
