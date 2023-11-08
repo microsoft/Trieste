@@ -30,7 +30,7 @@ int main(int argc, char** argv)
 
 ## Building the Samples
 
-Here's an example of how to build the `verona` sample and run the self-tests. Other build systems and compilers may work as well.
+Here's an example of how to build the `infix` sample and run the self-tests. Other build systems and compilers may work as well.
 
 ```sh
 git clone https://github.com/microsoft/trieste
@@ -39,7 +39,7 @@ mkdir build
 cd build
 cmake -G Ninja .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++-14
 ninja install
-./dist/verona/verona test
+./dist/infix/infix test
 ```
 
 ## Using Trieste in Your Project
