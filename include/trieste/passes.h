@@ -14,7 +14,8 @@ namespace trieste
   {
     PassIterator start;
     PassIterator end;
-    const wf::Wellformed* wf; // Well-formed condition for entry into this Range.
+    // Well-formed condition for entry into this Range.
+    const wf::Wellformed* wf;
     std::string entry_name;
 
   public:
@@ -122,7 +123,7 @@ namespace trieste
     std::function<bool(Node&, std::string, size_t index, PassStatistics&)>
       pass_complete;
 
-    std::function<void(std::vector<Node>&, std::string)> error_pass;
+    std::function<void(Nodes&, std::string)> error_pass;
 
   public:
     Process() {}
@@ -141,7 +142,7 @@ namespace trieste
      * @brief If a pass fails, then the supplied function is called with the
      * current AST and details of the pass that has just failed.
      */
-    void set_error_pass(std::function<void(std::vector<Node>&, std::string)> f)
+    void set_error_pass(std::function<void(Nodes&, std::string)> f)
     {
       error_pass = f;
     }
@@ -163,9 +164,10 @@ namespace trieste
       ok = ok && wf.build_st(ast);
       ok = ok && (!check_well_formed || wf.check(ast));
 
-      std::vector<Node> errors;
+      Nodes errors;
       if (ast)
-        errors = ast->get_errors();
+        ast->get_errors(errors);
+
       ok = ok && errors.empty();
       if (!ok)
         error_pass(errors, passes.entry_pass_name());
@@ -188,6 +190,9 @@ namespace trieste
       // Check ast is well-formed before starting.
       auto ok = validate(ast, passes);
 
+      PassStatistics stats;
+      ok = pass_complete(ast, passes.entry_pass_name(), 0, stats) && ok;
+
       for (; ok && passes.has_next(); index++)
       {
         logging::Debug() << "Starting pass: \"" << passes()->name() << "\"";
@@ -205,7 +210,7 @@ namespace trieste
         ok = validate(ast, passes);
 
         auto then = std::chrono::high_resolution_clock::now();
-        PassStatistics stats = {
+        stats = {
           count,
           changes,
           std::chrono::duration_cast<std::chrono::microseconds>(then - now)};
@@ -219,7 +224,7 @@ namespace trieste
     }
   };
 
-  inline void print_errors(std::vector<Node>& errors, logging::Log& err)
+  inline void print_errors(Nodes& errors, logging::Log& err)
   {
     logging::Sep sep{"----------------"};
     err << "Errors:";
@@ -301,7 +306,7 @@ namespace trieste
 
     p.set_check_well_formed(check_well_formed);
 
-    p.set_error_pass([](std::vector<Node>& errors, std::string name) {
+    p.set_error_pass([](Nodes& errors, std::string name) {
       logging::Error err;
       print_errors(errors, err);
       err << "Pass " << name << " failed with " << errors.size() << " errors\n";
@@ -312,7 +317,7 @@ namespace trieste
         Node& ast, std::string pass_name, size_t index, PassStatistics& stats) {
         auto [count, changes, duration] = stats;
         std::string delim{"\t"};
-        if (index == 1)
+        if (index == 0)
         {
           summary << "Pass" << delim << "Iterations" << delim << "Changes"
                   << delim << "Time (us)" << std::endl;

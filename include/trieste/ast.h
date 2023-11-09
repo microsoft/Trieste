@@ -656,27 +656,20 @@ namespace trieste
     }
 
     /**
-     * Returns the set of leaf Error nodes, Error nodes that do not contain Error nodes.
-     * 
-     * The function takes an RValue reference to a vector of Nodes, which is extended with the
-     * errors contain inside `this` node.  It is defaulted to an empty vector, so that the function
-     * can simply be called as
-     *   auto errors = node->get_errors();
+     * Pass a Nodes that is filled in with the found errors.
      */
-    Nodes&& get_errors(Nodes&& errors = {}) &
+    void get_errors(Nodes& errors)
     {
       if (!get_and_reset_contains_error())
       {
         // Only add Error nodes that do not contain further Error nodes.
         if (type_ == Error)
           errors.push_back(shared_from_this());
-        return std::move(errors);
+        return;
       }
-      
-      for (auto& child : children)
-        errors = child->get_errors(std::move(errors));
 
-      return std::move(errors);
+      for (auto& child : children)
+        child->get_errors(errors);
     }
 
     bool get_and_reset_contains_error()
