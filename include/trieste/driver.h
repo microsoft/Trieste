@@ -53,10 +53,14 @@ namespace trieste
       auto build = app.add_subcommand("build", "Build a path");
 
       std::string log_level;
-      build->add_option("-l,--log_level", log_level, "Set Log Level to one of "
-                                                      "Trace, Debug, Info, "
-                                                      "Warning, Output, Error, "
-                                                      "None")
+      build
+        ->add_option(
+          "-l,--log_level",
+          log_level,
+          "Set Log Level to one of "
+          "Trace, Debug, Info, "
+          "Warning, Output, Error, "
+          "None")
         ->check(logging::set_log_level_from_string);
 
       bool wfcheck = true;
@@ -98,10 +102,14 @@ namespace trieste
       test->add_option("end", test_end_pass, "End at this pass.")
         ->transform(CLI::IsMember(limits));
 
-      test->add_option("-l,--log_level", log_level, "Set Log Level to one of "
-                                                      "Trace, Debug, Info, "
-                                                      "Warning, Output, Error, "
-                                                      "None")
+      test
+        ->add_option(
+          "-l,--log_level",
+          log_level,
+          "Set Log Level to one of "
+          "Trace, Debug, Info, "
+          "Warning, Output, Error, "
+          "None")
         ->check(logging::set_log_level_from_string);
 
       size_t test_max_depth = 10;
@@ -168,12 +176,11 @@ namespace trieste
         {
           logging::Info summary;
           summary << "---------" << std::endl;
-          Process process = default_process(summary, wfcheck, language_name, dump_passes);
+          Process process =
+            default_process(summary, wfcheck, language_name, dump_passes);
           ok = process.build(ast, pass_range);
           summary << "---------" << std::endl;
         }
-        if (!ok)
-          return -1;
 
         if (output.empty())
           output = path.stem().replace_extension(".trieste");
@@ -191,8 +198,11 @@ namespace trieste
         {
           logging::Error() << "Could not open " << output << " for writing."
                            << std::endl;
-          return -1;
+          ok = false;
         }
+
+        if (!ok)
+          return -1;
       }
       else if (*test)
       {
