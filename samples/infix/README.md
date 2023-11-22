@@ -904,7 +904,8 @@ pattern matches is a `Foo` node. This parent node will not be part of the `Match
 only subsequent terms in the pattern are part of the `Match` and can be replaced by 
 the effect. We can also bind patterns to variables to conveniently refer to constituent parts
 of a `Pattern`. For instance, `T(Foo)[V]` creates a pattern match of type `Foo` bound to 
-the name `V`. 
+the name `V`. Note that the name `V` also is a `Token` (for performance reasons) but
+does not have to be the same token as it is binding.
 
 
 The result of running this pass (on the parse tree) is the following tree:
