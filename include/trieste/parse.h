@@ -76,6 +76,14 @@ namespace trieste
         return node == type;
       }
 
+      bool group_in(const Token& type) const
+      {
+        if (!in(Group))
+          return false;
+
+        return node->parent() == type;
+      }
+
       bool previous(const Token& type) const
       {
         if (!in(Group))
