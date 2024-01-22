@@ -156,10 +156,11 @@ namespace trieste::logging
       strstream.destruct();
     }
 
-    SNMALLOC_SLOW_PATH void operation(std::ostream& (*f)(std::ostream&))
+    SNMALLOC_SLOW_PATH void operation(decltype(std::endl<char, std::char_traits<char>>) f)
     {
+      auto endl_func = std::endl<char, std::char_traits<char>>;
       // Intercept std::endl and indent the next line.
-      if (f == std::endl<char, std::char_traits<char>>)
+      if (f == endl_func)
         strstream.get() << std::endl << std::setw(indent_chars) << "";
       else
         strstream.get() << f;
