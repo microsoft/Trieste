@@ -660,16 +660,24 @@ namespace trieste
      */
     void get_errors(Nodes& errors)
     {
-      if (!get_and_reset_contains_error())
-      {
-        // Only add Error nodes that do not contain further Error nodes.
-        if (type_ == Error)
-          errors.push_back(shared_from_this());
-        return;
-      }
+      std::vector<Node> stack;
+      stack.push_back(shared_from_this());
 
-      for (auto& child : children)
-        child->get_errors(errors);
+      while(!stack.empty()){
+        Node current = stack.back();
+        stack.pop_back();
+
+        if (!current->get_and_reset_contains_error())
+        {
+          // Only add Error nodes that do not contain further Error nodes.
+          if (current->type_ == Error)
+            errors.push_back(current);
+
+          continue;
+        }
+
+        stack.insert(stack.end(), current->children.begin(), current->children.end());
+      }
     }
 
     bool get_and_reset_contains_error()

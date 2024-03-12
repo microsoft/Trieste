@@ -644,19 +644,26 @@ namespace trieste
         if (node == Error)
           return true;
 
-        node->clear_symbols();
+        std::vector<Node> stack;
+        stack.push_back(node);
 
         bool ok = true;
-        auto find = shapes.find(node->type());
+        while(!stack.empty()){
+          Node current = stack.back();
+          stack.pop_back();        
 
-        if (find != shapes.end())
-        {
-          ok = std::visit(
-            [&](auto& shape) { return shape.build_st(node); }, find->second);
+          current->clear_symbols();
+
+          auto find = shapes.find(current->type());
+
+          if (find != shapes.end())
+          {
+            ok = std::visit(
+              [&](auto& shape) { return shape.build_st(current); }, find->second) && ok;
+          }
+
+          stack.insert(stack.end(), current->begin(), current->end());
         }
-
-        for (auto& child : *node)
-          ok = build_st(child) && ok;
 
         return ok;
       }

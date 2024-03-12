@@ -4,6 +4,8 @@ project(trieste VERSION 1.0.0 LANGUAGES CXX)
 # #############################################
 # Options
 option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
+option(TRIESTE_BUILD_PARSERS "Specifies whether to build the parsers" ON)
+option(TRIESTE_BUILD_PARSER_TESTS "Specifies whether to build the parser tests" OFF)
 option(TRIESTE_USE_CXX17 "Specifies whether to target the C++17 standard" OFF)
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
@@ -95,14 +97,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   target_compile_options(trieste INTERFACE -Wmismatched-tags -fstandalone-debug)
 endif()
 
-# #############################################
-# Installation instructions
-set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR}/dist)
-
 # Clear all existing files and folders from the install directory
 install(CODE [[
   file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX}/.)
   ]])
+
+# #############################################
+# Installation instructions
+set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR}/dist)
 
 install(TARGETS trieste snmallocshim-static snmalloc re2 CLI11
   EXPORT ${PROJECT_NAME}_Targets
@@ -150,4 +152,10 @@ export(PACKAGE trieste)
 if(TRIESTE_BUILD_SAMPLES)
   enable_testing()
   add_subdirectory(samples/infix)
+endif()
+
+# #############################################
+# # Add parsers
+if(TRIESTE_BUILD_PARSERS)
+  add_subdirectory(parsers)
 endif()
