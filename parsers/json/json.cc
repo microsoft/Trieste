@@ -29,7 +29,7 @@ namespace
 namespace trieste::json
 {
 
-  const auto ValueTokens = T(Object, Array, String, Number, True, False, Null);
+  const auto ValueToken = T(Object, Array, String, Number, True, False, Null);
 
   PassDef groups()
   {
@@ -45,7 +45,7 @@ namespace trieste::json
           [](Match& _) { return ObjectGroup << *_[Group]; },
 
         In(Top) *
-            (T(File) << ((T(Group) << (ValueTokens[Value] * End)) * End)) >>
+            (T(File) << ((T(Group) << (ValueToken[Value] * End)) * End)) >>
           [](Match& _) { return _(Value); },
 
         // errors
@@ -66,10 +66,10 @@ namespace trieste::json
       wf_structure,
       dir::bottomup,
       {
-        In(ArrayGroup) * (Start * ValueTokens[Value]) >>
+        In(ArrayGroup) * (Start * ValueToken[Value]) >>
           [](Match& _) { return (Value << _(Value)); },
 
-        In(ArrayGroup) * (T(Value)[Lhs] * T(Comma) * ValueTokens[Rhs]) >>
+        In(ArrayGroup) * (T(Value)[Lhs] * T(Comma) * ValueToken[Rhs]) >>
           [](Match& _) { return Seq << _(Lhs) << (Value << _(Rhs)); },
 
         In(Array) * (T(ArrayGroup) << (T(Value)++[Array] * End)) >>
@@ -79,12 +79,12 @@ namespace trieste::json
           [](Match& _) { return _(Value)->front(); },
 
         In(ObjectGroup) *
-            (Start * T(String)[Lhs] * T(Colon) * ValueTokens[Rhs]) >>
+            (Start * T(String)[Lhs] * T(Colon) * ValueToken[Rhs]) >>
           [](Match& _) { return (Member << _(Lhs) << _(Rhs)); },
 
         In(ObjectGroup) *
             (T(Member)[Member] * T(Comma) * T(String)[Lhs] * T(Colon) *
-             ValueTokens[Rhs]) >>
+             ValueToken[Rhs]) >>
           [](Match& _) {
             return Seq << _(Member) << (Member << _(Lhs) << _(Rhs));
           },
