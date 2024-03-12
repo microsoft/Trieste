@@ -30,8 +30,8 @@ namespace
 
   struct ValuePattern
   {
-    ValuePattern(const std::string& pattern, Token type)
-    : regex(pattern), type(type)
+    ValuePattern(const std::string& pattern, Token t)
+    : regex(pattern), type(t)
     {}
 
     RE2 regex;
