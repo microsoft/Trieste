@@ -433,8 +433,8 @@ namespace trieste::yaml
     YAMLReader& debug_enabled(bool value);
     bool debug_enabled() const;
 
-    YAMLReader& debug_path(const std::string& path);
-    const std::string& debug_path() const;
+    YAMLReader& debug_path(const std::filesystem::path& path);
+    const std::filesystem::path& debug_path() const;
 
     YAMLReader& well_formed_checks_enabled(bool value);
     bool well_formed_checks_enabled() const;
@@ -443,7 +443,7 @@ namespace trieste::yaml
     Source m_source;
     Node m_stream;
     bool m_debug_enabled;
-    std::string m_debug_path;
+    std::filesystem::path m_debug_path;
     bool m_well_formed_checks_enabled;
   };
 }

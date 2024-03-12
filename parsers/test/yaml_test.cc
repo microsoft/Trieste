@@ -182,7 +182,7 @@ struct TestCase
   std::filesystem::path filename;
   bool error;
 
-  Result run(const std::string& debug_path, bool wf_checks)
+  Result run(const std::filesystem::path& debug_path, bool wf_checks)
   {
     YAMLReader reader(in_yaml);
     reader.debug_enabled(!debug_path.empty())
@@ -220,7 +220,7 @@ struct TestCase
   load(std::vector<TestCase>& cases, const std::filesystem::path& test_dir)
   {
     std::size_t index = 0;
-    std::string id = test_dir.filename();
+    std::string id = test_dir.filename().string();
     if (id == "name" || id == "tags" || id.front() == '.')
     {
       return;
@@ -335,7 +335,7 @@ int main(int argc, char* argv[])
         }
         else
         {
-          trieste::logging::Error() << "Not a directory: " << file_or_dir;
+          trieste::logging::Error() << "Not a directory: " << file_or_dir.path();
           return 1;
         }
       }

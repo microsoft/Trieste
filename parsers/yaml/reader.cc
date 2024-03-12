@@ -999,13 +999,13 @@ namespace trieste::yaml
     return m_well_formed_checks_enabled;
   }
 
-  YAMLReader& YAMLReader::debug_path(const std::string& path)
+  YAMLReader& YAMLReader::debug_path(const std::filesystem::path& path)
   {
     m_debug_path = path;
     return *this;
   }
 
-  const std::string& YAMLReader::debug_path() const
+  const std::filesystem::path& YAMLReader::debug_path() const
   {
     return m_debug_path;
   }
