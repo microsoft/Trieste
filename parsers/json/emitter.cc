@@ -24,6 +24,7 @@ namespace trieste::json
     for (std::size_t i = 0; i < object->size(); ++i)
     {
       Node member = object->at(i);
+      assert(member == Member);
       if (m_prettyprint)
       {
         os << new_indent;
@@ -112,7 +113,7 @@ namespace trieste::json
     else
     {
       std::ostringstream message;
-      message << "Unspected node type: " << value->type().str();
+      message << "Unexpected node type: " << value->type().str();
       throw std::runtime_error(message.str());
     }
   }

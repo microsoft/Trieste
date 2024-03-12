@@ -51,38 +51,11 @@ namespace trieste::json
     return m_debug_path;
   }
 
-  Node has_parse_error(Node n)
-  {
-    std::vector<Node> stack;
-    stack.push_back(n);
-    while (!stack.empty())
-    {
-      auto current = stack.back();
-      stack.pop_back();
-      if (current->in({Error, ErrorSeq}))
-      {
-        return current;
-      }
-      for (auto& child : *current)
-      {
-        stack.push_back(child);
-      }
-    }
-
-    return nullptr;
-  }
-
   void JSONReader::read()
   {
     auto ast = NodeDef::create(Top);
     Parse parse = json::parser();
     ast << parse.sub_parse("json", File, m_source);
-    Node maybe_error = has_parse_error(ast);
-    if (has_parse_error(ast))
-    {
-      m_element = ErrorSeq << maybe_error;
-      return;
-    }
 
     auto passes = json::passes();
     PassRange pass_range(passes, parse.wf(), "parse");

@@ -5,20 +5,20 @@ namespace
   using namespace trieste;
   using namespace trieste::json;
 
-  std::size_t invalid_tokens(
-    Node n, std::initializer_list<Token> tokens, const std::string& message)
+  std::size_t
+  invalid_tokens(Node n, const std::map<Token, std::string>& token_messages)
   {
     std::size_t changes = 0;
     for (auto child : *n)
     {
-      if (child->in(tokens))
+      if (token_messages.count(child->type()) > 0)
       {
-        n->replace(child, err(child, message));
+        n->replace(child, err(child, token_messages.at(child->type())));
         changes += 1;
       }
       else
       {
-        changes += invalid_tokens(child, tokens, message);
+        changes += invalid_tokens(child, token_messages);
       }
     }
 
@@ -94,8 +94,8 @@ namespace trieste::json
       }};
 
     structure.post([&](Node n) {
-      return invalid_tokens(n, {ObjectGroup}, "Invalid object") +
-        invalid_tokens(n, {ArrayGroup}, "Invalid array");
+      return invalid_tokens(
+        n, {{ObjectGroup, "Invalid object"}, {ArrayGroup, "Invalid array"}});
     });
 
     return structure;
