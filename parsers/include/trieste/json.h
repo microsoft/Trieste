@@ -88,15 +88,15 @@ namespace trieste
     public:
       JSONEmitter(bool prettyprint = false, const std::string& indent = "  ");
 
-      void emit(std::ostream& os, const Node& value);
+      void emit(std::ostream& os, const Node& value) const;
 
     private:
       void emit_value(
-        std::ostream& os, const std::string& indent, const Node& value);
+        std::ostream& os, const std::string& indent, const Node& value) const;
       void emit_object(
-        std::ostream& os, const std::string& indent, const Node& value);
+        std::ostream& os, const std::string& indent, const Node& value) const;
       void emit_array(
-        std::ostream& os, const std::string& indent, const Node& value);
+        std::ostream& os, const std::string& indent, const Node& value) const;
 
       bool m_prettyprint;
       std::string m_indent;

@@ -415,6 +415,39 @@ namespace trieste::yaml
   Parse parser();
   std::vector<Pass> passes();
 
+  class YAMLEmitter
+  {
+  public:
+    YAMLEmitter(const std::string& indent = "  ");
+
+    void emit(std::ostream& os, const Node& value) const;
+    void emit_events(std::ostream& os, const Node& value) const;
+
+  private:
+    bool emit_event(std::ostream& os, const Node& node) const;
+    bool emit_value_event(std::ostream& os, const Node& node) const;
+    bool emit_mapping_event(std::ostream& os, const Node& node, bool is_flow) const;
+    bool emit_sequence_event(std::ostream& os, const Node& node, bool is_flow) const;
+    bool emit_alias_event(std::ostream& os, const Node& node) const;
+    bool emit_literal_event(std::ostream& os, const Node& node) const;
+    bool emit_folded_event(std::ostream& os, const Node& node) const;
+    bool emit_plain_event(std::ostream& os, const Node& node) const;
+    bool emit_doublequote_event(std::ostream& os, const Node& node) const;
+    bool emit_singlequote_event(std::ostream& os, const Node& node) const;
+
+    Token get_type(const Node& node) const;
+    Node handle_tag_anchor(std::ostream& os, const Node& node) const;
+    void escape_char(std::ostream& os, char c) const;
+    std::string escape_chars(const std::string_view& str, const std::set<char>& to_escape) const;
+    std::string unescape_url_chars(const std::string_view& str) const;
+    std::string block_to_string(const Node& node, bool raw_quotes) const;
+    std::string replace_all(const std::string_view& v, const std::string_view& find, const std::string_view& replace) const;
+    Node lookup_nearest(Node ref) const;
+    void write_quote(std::ostream& os, const Node& node, bool is_single) const;
+
+    std::string m_indent;
+  };
+
   class YAMLReader
   {
   public:
@@ -425,8 +458,6 @@ namespace trieste::yaml
     void read();
 
     const Node& stream() const;
-    std::string to_event() const;
-    std::string to_json() const;
     bool has_errors() const;
     std::string error_message() const;
 

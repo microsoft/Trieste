@@ -184,6 +184,7 @@ struct TestCase
 
   Result run(const std::filesystem::path& debug_path, bool wf_checks)
   {
+    YAMLEmitter emitter;
     YAMLReader reader(in_yaml);
     reader.debug_enabled(!debug_path.empty())
       .debug_path(debug_path)
@@ -197,7 +198,9 @@ struct TestCase
     std::string actual_event;
     try
     {
-      actual_event = reader.to_event();
+      std::ostringstream os;
+      emitter.emit_events(os, reader.stream());
+      actual_event = os.str();
     }
     catch (const std::exception& ex)
     {

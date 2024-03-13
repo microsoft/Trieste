@@ -1,5 +1,6 @@
 set( SOURCES
 parse.cc
+emitter.cc
 reader.cc
 yaml.cc
 )
