@@ -17,6 +17,9 @@ const std::string Red = "\x1b[31m";
 
 std::string replace_whitespace(const std::string& str)
 {
+  #if defined(_WIN32)
+  return str;
+  #else
   std::ostringstream os;
   for (std::size_t i = 0; i < str.size(); ++i)
   {
@@ -37,6 +40,7 @@ std::string replace_whitespace(const std::string& str)
   }
 
   return os.str();
+  #endif
 }
 
 void diff_line(
@@ -130,39 +134,6 @@ void diff(
   os << "--- " << label << " ---" << std::endl;
 }
 
-void skip_whitespace(
-  std::string::const_iterator& it, std::string::const_iterator end)
-{
-  while (std::isspace(*it) && it != end)
-  {
-    it++;
-  }
-}
-
-bool diff_json(const std::string& actual, const std::string& wanted)
-{
-  auto a = actual.begin();
-  auto w = wanted.begin();
-  while (a != actual.end() && w != wanted.end())
-  {
-    skip_whitespace(a, actual.end());
-    skip_whitespace(w, wanted.end());
-
-    if (*a != *w)
-    {
-      return true;
-    }
-
-    a++;
-    w++;
-
-    skip_whitespace(a, actual.end());
-    skip_whitespace(w, wanted.end());
-  }
-
-  return false;
-}
-
 struct Result
 {
   bool passed;
@@ -242,10 +213,6 @@ struct TestCase
     if (id == "name" || id == "tags" || id.front() == '.')
     {
       return;
-    }
-
-    if(id == "Y79Y"){
-      trieste::logging::Output() << "Here";
     }
 
     std::string subpath = "00";

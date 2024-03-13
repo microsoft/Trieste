@@ -13,6 +13,11 @@ namespace
   using namespace trieste;
   using namespace trieste::yaml;
 
+  bool is_space(char c)
+  {
+    return c == ' ' || c == '\t';
+  }
+
   bool is_in(NodeDef* node, Token parent)
   {
     if (node == Top)
@@ -2302,8 +2307,12 @@ namespace trieste::yaml
           },
 
         In(BlockGroup) * T(BlockLine)[BlockLine]([](auto& n) {
-          Node line = n.first[0];
-          return line->location().view()[0] == '\t';
+          Location loc = n.first[0]->location();
+          if(loc.len == 0){
+            return false;
+          }
+
+          return loc.view()[0] == '\t';
         }) >>
           [](Match& _) {
             return err(_(BlockLine), "Tab being used as indentation");
@@ -2671,9 +2680,13 @@ namespace trieste::yaml
           },
 
         In(AnchorValue) * T(Anchor)[Anchor]([](auto& n) {
-          Node anchor = n.first[0];
-          auto view = anchor->location().view();
-          return view.front() == '&' || std::isspace(view.back());
+          Location loc = n.first[0]->location();
+          if(loc.len == 0){
+            return false;
+          }
+
+          auto view = loc.view();
+          return view.front() == '&' || view.back() == ' ' || view.back() == '\t';
         }) >>
           [](Match& _) {
             Location loc = _(Anchor)->location();
@@ -2693,7 +2706,7 @@ namespace trieste::yaml
             Location loc = _(Alias)->location();
             loc.pos += 1;
             loc.len -= 1;
-            while (std::isspace(loc.view().back()))
+            while (is_space(loc.view().back()))
             {
               loc.len -= 1;
             }

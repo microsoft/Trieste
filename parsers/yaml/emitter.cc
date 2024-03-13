@@ -9,6 +9,11 @@ namespace
     Strip,
     Keep,
   };
+
+  bool is_space(char c)
+  {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+  }
 }
 
 namespace trieste::yaml
@@ -138,7 +143,7 @@ namespace trieste::yaml
       auto current = node->at(i)->location().view();
       auto next = node->at(i + 1)->location().view();
       os << escape_chars(current, escape);
-      if (!std::isspace(current.front()) && !std::isspace(next.front()))
+      if (!is_space(current.front()) && !is_space(next.front()))
       {
         os << " ";
       }
@@ -370,7 +375,7 @@ namespace trieste::yaml
       value = value->back();
       auto tagname = unescape_url_chars(tag_node->location().view());
       std::ostringstream tags;
-      if (tagname.front() == '<' && tagname.back() == '>')
+      if (tagname.size() >= 2 && tagname.front() == '<' && tagname.back() == '>')
       {
         tags << tagname;
       }
@@ -458,7 +463,7 @@ namespace trieste::yaml
         {
           escape = true;
         }
-        else if (std::isspace(c))
+        else if (is_space(c))
         {
           os << ' ';
         }

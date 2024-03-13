@@ -87,6 +87,11 @@ namespace
 
   typedef std::shared_ptr<std::set<std::string_view>> Anchors;
 
+  bool is_ws(char c)
+  {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+  }
+
   bool is_alias_key(const Anchors& anchors, const std::string_view& query)
   {
     std::string anchor(query);
@@ -95,7 +100,7 @@ namespace
       std::find_if(
         anchor.rbegin(),
         anchor.rend(),
-        [](unsigned char ch) { return !std::isspace(ch); })
+        [](unsigned char ch) { return !is_ws(ch); })
         .base(),
       anchor.end());
 
