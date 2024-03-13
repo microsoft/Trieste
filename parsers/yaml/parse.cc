@@ -140,6 +140,8 @@ namespace trieste::yaml
         m.mode("directives");
       }});
 
+    // YAML starts out with the possibility of one or more directives that will apply
+    // to a subsequent document.
     p("directives",
       {
         R"([ \t]+)" >> [](auto&) { return; },
@@ -210,6 +212,8 @@ namespace trieste::yaml
             m.mode("document");
           },
 
+        // If we reach this point, then there was no preamble and what follows is
+        // the document itself
         "^" >>
           [](auto& m) {
             m.push(Document);
@@ -217,6 +221,9 @@ namespace trieste::yaml
           },
       });
 
+    // Every stream is made up of zero or more documents.  Document
+    // mode is the mode most would think of as "YAML", but can contain
+    // JSON-like flow documents, which are handled in a separate mode.
     p("document",
       {
         R"(([ \t]*)(#[^\r\n]*))" >>
@@ -524,10 +531,14 @@ namespace trieste::yaml
         // :[^\s] : A colon followed by a character which is NOT whitespace
         // #[^\s] : A hash followed by a character which is NOT whitespace
         // [ \t][^\r\n \t:#] : A space or tab followed by a character which is NOT a newline, space, tab, or hash
-        R"((?:[^\s:\?-]|:[^\s]|\?[^\s]|-[^\s])(?:[^\r\n \t:#]|:[^\s]|#[^\s]|[ \t][^\r\n \t:#])*)" >>
+        R"((?:[^\s:\?-]|:[^\s]|\?[^\s]|-[^\s])(?:[^\s:#]|:[^\s]|#[^\s]|[ \t][^\s:#])*)" >>
           [](auto& m) { m.add(Value); },
       });
 
+    // Flow mode is very similar to document mode, but provides extra characters to disambiguate
+    // the structure of mappings and sequences. These characters were chosen such that flow mode
+    // acts a superset of JSON. However, importantly, it is NOT JSON, and document-style constructs
+    // can still appear within flow mode.
     p("flow",
       {
         "---" >>
@@ -653,13 +664,14 @@ namespace trieste::yaml
             m.error("Single quoted string without closing quote");
           },
 
+        // Anchor. See above for explanation.
         R"((&[^\[\]\{\}\, \r\n]+)(?:[ \t]+|\r?\n))" >>
           [anchors](auto& m) {
             m.add(Anchor, 1);
             anchors->insert(m.match(1).view());
           },
 
-        // verbatim-tag
+        // verbatim-tag. See above for explanation.
         R"((![0-9A-Za-z\-]*!|!!|!)(<(?:[\w#;\/\?:@&=+$,_.!~*'()]|%\d+)+>)(?:[ \t]+|\r?\n|(,)))" >>
           [](auto& m) {
             m.push(Tag);
@@ -673,7 +685,7 @@ namespace trieste::yaml
             }
           },
 
-        // ns-shorthand-tag
+        // ns-shorthand-tag. See above for explanation.
         R"((![0-9A-Za-z\-]*!|!!|!)((?:[\w#;\/\?:@&=+$_.~*'()]|%\d\d)+)(?:[ \t]+|\r?\n|(,)))" >>
           [](auto& m) {
             m.push(Tag);
@@ -687,7 +699,7 @@ namespace trieste::yaml
             }
           },
 
-        // non-specific-tag
+        // non-specific-tag. See above for explanation.
         R"((!)(?:[ \t]+|\r?\n))" >>
           [](auto& m) {
             m.push(Tag);
@@ -700,20 +712,10 @@ namespace trieste::yaml
 
         R"((?:\d+-)+\d*)" >> [](auto& m) { m.add(Value); },
 
-        R"(\-?[[:digit:]]+\.[[:digit:]]+(?:e[+-]?[[:digit:]]+)?\b)" >>
-          [](auto& m) { m.add(Float); },
-
-        R"(\-?[[:digit:]]+\b)" >> [](auto& m) { m.add(Int); },
-
-        R"(0x[0-9A-Fa-f]+\b)" >> [](auto& m) { m.add(Hex); },
-
-        R"(null\b)" >> [](auto& m) { m.add(Null); },
-
-        R"(true\b)" >> [](auto& m) { m.add(True); },
-
-        R"(false\b)" >> [](auto& m) { m.add(False); },
-
-        R"(((?:[^\s][ \t]*\?|\?[^ \t]|[^\s:,\{\}\[\]]|[ \t]+[^:\?\-\s\[\]\{\},#]|:[^\s,])+))" >>
+        // Value.
+        // This is the same RE as the one above for document mode, but in flow mode there are
+        // additional "value exit" characters, namely ,{}[], which is why you see them added everywhere.
+        R"((?:[^\s:\?\-,{}[\]]|:[^\s,]|\?[^\s,{}[\]]|-[^\s,{}[\]])(?:[^\s:#,{}[\]]|:[^\s,{}[\]]|#[^\s,{}[\]]|[ \t][^\s:#,{}[\]])*)" >>
           [](auto& m) { m.extend(Value); },
       });
 
