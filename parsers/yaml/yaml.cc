@@ -2300,6 +2300,14 @@ namespace trieste::yaml
           [](Match& _) {
             return err(_(IndentIndicator), "Invalid indent indicator");
           },
+
+        In(BlockGroup) * T(BlockLine)[BlockLine]([](auto& n) {
+          Node line = n.first[0];
+          return line->location().view()[0] == '\t';
+        }) >>
+          [](Match& _) {
+            return err(_(BlockLine), "Tab being used as indentation");
+          },
       }};
 
     blocks.post([](Node n) {

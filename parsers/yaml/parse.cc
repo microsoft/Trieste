@@ -575,25 +575,24 @@ namespace trieste::yaml
         R"(\.\.\.)" >>
           [](auto& m) { m.error("Invalid document marker in flow style"); },
 
-        R"(([ \t]+)(#[^\r\n]*))" >>
+        R"([ ][ \t]*(#[^\r\n]*))" >>
           [](auto& m) {
             m.add(Comment, 2);
             return;
           },
 
-        R"([ \t]+)" >>
-          [](auto& m) {
-            m.term();
+        R"([ ][ \t]*)" >>
+          [](auto&) {
             return;
           },
 
-        R"((\r?\n)(#[^\r\n]*))" >>
+        R"([ \t]*\r?\n(#[^\r\n]*))" >>
           [](auto& m) {
             m.add(Comment, 2);
             return;
           },
 
-        R"(\r?\n)" >>
+        R"([ \t]*\r?\n)" >>
           [](auto& m) {
             m.term();
             return;
@@ -615,8 +614,13 @@ namespace trieste::yaml
             *flow_level += 1;
           },
 
-        R"((\}))" >>
+        R"([ \t]*(\})(#)?)" >>
           [flow_level](auto& m) {
+            if (m.match(2).len > 0)
+            {
+              m.error("Invalid comment after end of flow sequence", 2);
+            }
+
             m.add(FlowMappingEnd);
             m.term();
             m.pop(FlowMapping);
@@ -627,7 +631,7 @@ namespace trieste::yaml
             }
           },
 
-        R"((\])(#)?)" >>
+        R"([ \t]*(\])(#)?)" >>
           [flow_level](auto& m) {
             if (m.match(2).len > 0)
             {
