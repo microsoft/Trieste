@@ -155,7 +155,32 @@ namespace trieste
     }
 
   public:
-    ~NodeDef() {}
+    ~NodeDef()
+    {
+      thread_local std::vector<Nodes> work_list;
+      thread_local bool recursive = false;
+
+      work_list.push_back(std::move(children));
+
+      if (recursive)
+      {
+        return;
+      }
+
+      recursive = true;
+
+      while(!work_list.empty())
+      {
+        // clear will potentially call destructor recursively, so we need to
+        // have finished modifying the work_list before calling it, hence moving
+        // the nodes out of the work_list into a local variable.
+        auto nodes = std::move(work_list.back());
+        work_list.pop_back();
+        nodes.clear();
+      }
+
+      recursive = false;
+    }
 
     static Node create(const Token& type)
     {
