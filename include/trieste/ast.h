@@ -680,6 +680,36 @@ namespace trieste
       out << ")";
     }
 
+    template<typename Pre, typename Post>
+    SNMALLOC_FAST_PATH void traverse(Pre pre, Post post)
+    {
+      Node root = shared_from_this();
+      if (!pre(root))
+        return;
+
+      std::vector<std::pair<Node&, NodeIt>> path;
+      path.push_back({root, root->begin()});
+      while (!path.empty())
+      {
+        auto& [node, it] = path.back();
+        if (it != node->end())
+        {
+          Node& curr = *it;
+          it++;
+          if (pre(curr))
+          {
+            path.push_back({curr, curr->begin()});
+          }
+        }
+        else
+        {
+          post(node);
+          path.pop_back();
+        }
+      }
+      post(root);
+    }
+
     /**
      * Pass a Nodes that is filled in with the found errors.
      */

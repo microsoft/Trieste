@@ -333,12 +333,11 @@ namespace trieste
     {
       size_t changes = 0;
 
-      std::vector<std::pair<Node&, NodeIt>> path;
-
       auto add = [&](Node& node) SNMALLOC_FAST_PATH_LAMBDA {
         // Don't examine Error or Lift nodes.
         if (node->type() & flag::internal)
-          return;
+          return false;
+
         if constexpr (Pre)
         {
           auto pre_f = pre_.find(node->type());
@@ -347,11 +346,11 @@ namespace trieste
         }
         if constexpr (Topdown)
           changes += match_children(node, match);
-        path.push_back({node, node->begin()});
+        
+        return true;
       };
 
-      auto remove = [&]() SNMALLOC_FAST_PATH_LAMBDA {
-        Node& node = path.back().first;
+      auto remove = [&](Node& node) SNMALLOC_FAST_PATH_LAMBDA {
         if constexpr (!Topdown)
           changes += match_children(node, match);
         else
@@ -362,24 +361,9 @@ namespace trieste
           if (post_f != post_.end())
             changes += post_f->second(node);
         }
-        path.pop_back();
       };
 
-      add(root);
-      while (!path.empty())
-      {
-        auto& [node, it] = path.back();
-        if (it != node->end())
-        {
-          Node& curr = *it;
-          it++;
-          add(curr);
-        }
-        else
-        {
-          remove();
-        }
-      }
+      root->traverse(add, remove);
 
       return changes;
     }
