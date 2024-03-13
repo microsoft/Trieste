@@ -195,6 +195,10 @@ struct TestCase
       return {error, reader.error_message()};
     }
 
+    // YAML event streams are unambiguous, unique representations of
+    // the YAML AST. As such, a correct event stream means the parser
+    // is working.
+
     std::string actual_event;
     try
     {
@@ -215,6 +219,9 @@ struct TestCase
       diff(actual_event, event, "EVENT", os);
       return {false, os.str()};
     }
+
+    // TODO test YAML emitter
+    // TODO test YAML to JSON emitter
 
     return {true, ""};
   }
@@ -338,7 +345,8 @@ int main(int argc, char* argv[])
         }
         else
         {
-          trieste::logging::Error() << "Not a directory: " << file_or_dir.path();
+          trieste::logging::Error()
+            << "Not a directory: " << file_or_dir.path();
           return 1;
         }
       }

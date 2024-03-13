@@ -30,8 +30,7 @@ namespace
 
   struct ValuePattern
   {
-    ValuePattern(const std::string& pattern, Token t)
-    : regex(pattern), type(t)
+    ValuePattern(const std::string& pattern, Token t) : regex(pattern), type(t)
     {}
 
     RE2 regex;
@@ -602,20 +601,20 @@ namespace
     return find_nearest(node->parent(), tokens);
   }
 
-  std::size_t invalid_tokens(
-    Node n, std::initializer_list<Token> tokens, const std::string& message)
+  std::size_t
+  invalid_tokens(Node n, const std::map<Token, std::string>& token_messages)
   {
     std::size_t changes = 0;
     for (auto child : *n)
     {
-      if (child->in(tokens))
+      if (token_messages.count(child->type()) > 0)
       {
-        n->replace(child, err(child, message));
+        n->replace(child, err(child, token_messages.at(child->type())));
         changes += 1;
       }
       else
       {
-        changes += invalid_tokens(child, tokens, message);
+        changes += invalid_tokens(child, token_messages);
       }
     }
 
@@ -625,7 +624,7 @@ namespace
 
 namespace trieste::yaml
 {
-  const auto FlowTokens =
+  const auto FlowToken =
     T(Whitespace,
       Value,
       Float,
@@ -647,16 +646,16 @@ namespace trieste::yaml
       FlowMapping,
       FlowSequence);
 
-  const auto LineTokens =
-    FlowTokens / T(Comment, Colon, Key, Placeholder, MaybeDirective);
+  const auto LineToken =
+    FlowToken / T(Comment, Colon, Key, Placeholder, MaybeDirective);
   const auto AnchorTag = T(Anchor, Tag);
-  const auto inline Indents =
+  const auto inline IndentToken =
     T(Indent, BlockIndent, SequenceIndent, MappingIndent, ManualIndent);
   const auto inline IndentChomp = T(IndentIndicator, ChompIndicator);
-  const auto inline BasicTokens = T(Value, Int, Float, Hex, True, False, Null);
-  const auto DirectiveTokens =
+  const auto inline BasicToken = T(Value, Int, Float, Hex, True, False, Null);
+  const auto DirectiveToken =
     T(VersionDirective, TagDirective, UnknownDirective);
-  const auto ValueTokens =
+  const auto ValueToken =
     T(Mapping,
       Sequence,
       Value,
@@ -722,7 +721,8 @@ namespace trieste::yaml
       return 0;
     });
     groups.post([](Node n) {
-      return invalid_tokens(n, {Group, File}, "Syntax error");
+      return invalid_tokens(
+        n, {{Group, "Syntax error"}, {File, "Syntax error"}});
     });
     return groups;
   }
@@ -754,7 +754,7 @@ namespace trieste::yaml
           [](Match& _) { return _(DocumentStart); },
 
         In(StreamGroup) *
-            (DirectiveTokens[Head] * DirectiveTokens++[Tail] *
+            (DirectiveToken[Head] * DirectiveToken++[Tail] *
              (T(Document)
               << (T(Directives)[Directives] * T(DocumentGroup)[Group]))) >>
           [](Match& _) {
@@ -831,7 +831,7 @@ namespace trieste::yaml
 
         // errors
 
-        In(StreamGroup) * (DirectiveTokens[Value] * End) >>
+        In(StreamGroup) * (DirectiveToken[Value] * End) >>
           [](Match& _) {
             return err(_(Value), "Directive by itself with no document");
           },
@@ -854,7 +854,7 @@ namespace trieste::yaml
           [](Match& _) { return err(_(Tag), "Invalid tag"); },
 
         In(DocumentGroup) *
-            (DirectiveTokens / T(Document, TagHandle, Stream))[Value] >>
+            (DirectiveToken / T(Document, TagHandle, Stream))[Value] >>
           [](Match& _) { return err(_(Value), "Syntax error"); },
       }};
 
@@ -886,7 +886,10 @@ namespace trieste::yaml
 
     pass.post([](Node n) {
       return invalid_tokens(
-        n, {StreamGroup, TagDirectiveGroup, TagGroup}, "Invalid tag");
+        n,
+        {{StreamGroup, "Invalid stream"},
+         {TagDirectiveGroup, "Invalid tag directive"},
+         {TagGroup, "Invalid tag"}});
     });
 
     return pass;
@@ -912,7 +915,7 @@ namespace trieste::yaml
           },
 
         In(FlowMapping, FlowSequence) *
-            (FlowTokens[Lhs] * T(Comment)++ * T(Value)[Rhs])([](auto& n) {
+            (FlowToken[Lhs] * T(Comment)++ * T(Value)[Rhs])([](auto& n) {
               Node rhs = *(n.second - 1);
               Location loc = rhs->location();
               return loc.view().front() == ':';
@@ -930,22 +933,22 @@ namespace trieste::yaml
           [](Match&) -> Node { return nullptr; },
 
         In(FlowSequence) *
-            (LineTokens[Value] * T(FlowSequenceEnd)[FlowSequenceEnd]) >>
+            (LineToken[Value] * T(FlowSequenceEnd)[FlowSequenceEnd]) >>
           [](Match& _) {
             return Seq << _(Value) << (Comma ^ ",") << _(FlowSequenceEnd);
           },
 
         In(FlowMapping) *
-            (LineTokens[Value] * T(FlowMappingEnd)[FlowMappingEnd]) >>
+            (LineToken[Value] * T(FlowMappingEnd)[FlowMappingEnd]) >>
           [](Match& _) {
             return Seq << _(Value) << (Comma ^ ",") << _(FlowMappingEnd);
           },
 
-        In(FlowMapping) * (LineTokens[Head] * LineTokens++[Tail] * T(Comma)) >>
+        In(FlowMapping) * (LineToken[Head] * LineToken++[Tail] * T(Comma)) >>
           [](Match& _) { return FlowKeyValue << _(Head) << _[Tail]; },
 
         In(FlowSequence) *
-            (T(Key) * FlowTokens++[Key] * T(Colon) * FlowTokens++[Value] *
+            (T(Key) * FlowToken++[Key] * T(Colon) * FlowToken++[Value] *
              T(Comment)++ * T(Comma)) >>
           [](Match& _) {
             return FlowSequenceItem
@@ -956,8 +959,8 @@ namespace trieste::yaml
           },
 
         In(FlowSequence) *
-            (T(Comment)++ * FlowTokens[Head] * FlowTokens++[Tail] *
-             T(Colon)[Colon] * FlowTokens++[Value] * T(Comment)++ * T(Comma)) >>
+            (T(Comment)++ * FlowToken[Head] * FlowToken++[Tail] *
+             T(Colon)[Colon] * FlowToken++[Value] * T(Comment)++ * T(Comma)) >>
           [](Match& _) {
             if (!same_line(_(Head), _(Colon)))
             {
@@ -972,7 +975,7 @@ namespace trieste::yaml
           },
 
         In(FlowSequence) *
-            (T(Comment)++ * T(Colon) * FlowTokens++[Value] * T(Comment)++ *
+            (T(Comment)++ * T(Colon) * FlowToken++[Value] * T(Comment)++ *
              T(Comma)) >>
           [](Match& _) {
             return FlowSequenceItem
@@ -983,15 +986,15 @@ namespace trieste::yaml
           },
 
         In(FlowSequence) *
-            (T(Comment)++ * FlowTokens[Head] * FlowTokens++[Tail] *
-             T(Comment)++ * T(Comma)) >>
+            (T(Comment)++ * FlowToken[Head] * FlowToken++[Tail] * T(Comment)++ *
+             T(Comma)) >>
           [](Match& _) {
             return FlowSequenceItem << (FlowGroup << _(Head) << _[Tail]);
           },
 
         In(FlowMapping) *
             (T(FlowKeyValue)
-             << (T(Key) * FlowTokens++[Key] * T(Colon) * FlowTokens++[Value] *
+             << (T(Key) * FlowToken++[Key] * T(Colon) * FlowToken++[Value] *
                  End)) >>
           [](Match& _) {
             return FlowMappingItem << (FlowGroup << _[Key])
@@ -1000,7 +1003,7 @@ namespace trieste::yaml
 
         In(FlowMapping) *
             (T(FlowKeyValue)
-             << (FlowTokens++[Key] * T(Colon) * FlowTokens++[Value] * End)) >>
+             << (FlowToken++[Key] * T(Colon) * FlowToken++[Value] * End)) >>
           [](Match& _) {
             auto value = FlowGroup << _[Value];
             if (value->empty())
@@ -1010,7 +1013,7 @@ namespace trieste::yaml
             return FlowMappingItem << (FlowGroup << _[Key]) << value;
           },
 
-        In(FlowMapping) * (T(FlowKeyValue) << (FlowTokens++[Key] * End)) >>
+        In(FlowMapping) * (T(FlowKeyValue) << (FlowToken++[Key] * End)) >>
           [](Match& _) {
             return FlowMappingItem << (FlowGroup << _[Key])
                                    << (FlowGroup << (Null ^ "null"));
@@ -1093,7 +1096,7 @@ namespace trieste::yaml
 
         // errors
         In(DocumentGroup) *
-            (T(DocumentStart) * T(Placeholder) * AnchorTag++ * FlowTokens *
+            (T(DocumentStart) * T(Placeholder) * AnchorTag++ * FlowToken *
              T(Colon)[Colon])([](auto& n) {
               Node docstart = n.first[0];
               Node colon = *(n.second - 1);
@@ -1199,7 +1202,7 @@ namespace trieste::yaml
       {
         In(DocumentGroup) *
             (T(DocumentStart)[DocumentStart] * ~T(Whitespace) *
-             (BasicTokens / AnchorTag)[Value] * ~T(Whitespace) * ~T(Comment)) >>
+             (BasicToken / AnchorTag)[Value] * ~T(Whitespace) * ~T(Comment)) >>
           [](Match& _) {
             return Seq << _(DocumentStart) << (Placeholder ^ _(DocumentStart))
                        << _(Value);
@@ -1214,18 +1217,18 @@ namespace trieste::yaml
           },
 
         In(DocumentGroup) *
-            (LineTokens[Head] * LineTokens++[Tail] * T(NewLine)) >>
+            (LineToken[Head] * LineToken++[Tail] * T(NewLine)) >>
           [](Match& _) { return Line << _(Head) << _[Tail]; },
 
         In(DocumentGroup) *
-            (LineTokens[Head] * LineTokens++[Tail] * End)([](auto& n) {
+            (LineToken[Head] * LineToken++[Tail] * End)([](auto& n) {
               Node head = n.first[0];
               return head->parent()->parent() == Document;
             }) >>
           [](Match& _) { return Line << _(Head) << _[Tail]; },
 
         In(DocumentGroup) *
-            (LineTokens[Head] * LineTokens++[Tail] *
+            (LineToken[Head] * LineToken++[Tail] *
              T(DocumentEnd)[DocumentEnd]) >>
           [](Match& _) {
             return Seq << (Line << _(Head) << _[Tail]) << _(DocumentEnd);
@@ -1259,7 +1262,7 @@ namespace trieste::yaml
         In(DocumentGroup, Indent) *
             (T(Line)
              << (~T(Whitespace)[Whitespace] * T(Hyphen)[Hyphen] *
-                 LineTokens[Key] * ~T(Whitespace) * T(Colon)[Colon] *
+                 LineToken[Key] * ~T(Whitespace) * T(Colon)[Colon] *
                  Any++[Tail])) >>
           [](Match& _) {
             return Seq << (Line << _(Whitespace) << _(Hyphen))
@@ -1308,7 +1311,7 @@ namespace trieste::yaml
         In(DocumentGroup, Indent) *
             (T(Line)
              << (~T(Whitespace)[Whitespace] * AnchorTag++[Lhs] *
-                 LineTokens[Key] * ~T(Whitespace) * T(Colon)[Colon] *
+                 LineToken[Key] * ~T(Whitespace) * T(Colon)[Colon] *
                  AnchorTag++[Rhs] * (T(Literal, Folded))[Block] *
                  IndentChomp++[IndentIndicator] * Any++[Tail])) >>
           [](Match& _) {
@@ -1363,11 +1366,11 @@ namespace trieste::yaml
         In(DocumentGroup) * (T(Line)[Line] << (~T(Whitespace) * T(Hyphen))) >>
           [](Match& _) { return SequenceIndent << _(Line); },
 
-        In(DocumentGroup) * (T(Line)[Line] << (FlowTokens++ * T(Colon))) >>
+        In(DocumentGroup) * (T(Line)[Line] << (FlowToken++ * T(Colon))) >>
           [](Match& _) { return MappingIndent << _(Line); },
 
         In(DocumentGroup) *
-            (T(Line)[Line] << (T(Placeholder) * FlowTokens++ * T(Colon))) >>
+            (T(Line)[Line] << (T(Placeholder) * FlowToken++ * T(Colon))) >>
           [](Match& _) {
             return err(_(Line), "Mapping with anchor on document start line");
           },
@@ -1428,14 +1431,14 @@ namespace trieste::yaml
 
         // errors
         In(DocumentGroup) *
-            (LineTokens[Value] * LineTokens++ *
+            (LineToken[Value] * LineToken++ *
              T(DocumentStart)[DocumentStart]) >>
           [](Match& _) {
             return Seq << err(_(Value), "Syntax error") << _(DocumentStart);
           },
 
         In(DocumentGroup) *
-            (T(DocumentEnd)[DocumentEnd] * LineTokens[Value] * LineTokens++) >>
+            (T(DocumentEnd)[DocumentEnd] * LineToken[Value] * LineToken++) >>
           [](Match& _) {
             return Seq << _(DocumentEnd) << err(_(Value), "Syntax error");
           },
@@ -1459,16 +1462,16 @@ namespace trieste::yaml
           [](Match&) -> Node { return nullptr; },
 
         In(DocumentGroup, Indent, MappingIndent, SequenceIndent) *
-            (Indents[Indent] * T(EmptyLine, WhitespaceLine)[Line]) >>
+            (IndentToken[Indent] * T(EmptyLine, WhitespaceLine)[Line]) >>
           [](Match& _) { return _(Indent)->type() << *_[Indent] << _(Line); },
 
         In(DocumentGroup, Indent, MappingIndent, SequenceIndent) *
-            (Indents[Lhs] * Indents[Rhs])(
+            (IndentToken[Lhs] * IndentToken[Rhs])(
               [](auto& n) { return less_indented(n.first[0], n.first[1]); }) >>
           [](Match& _) { return _(Lhs)->type() << *_[Lhs] << _(Rhs); },
 
         In(DocumentGroup, Indent, MappingIndent, SequenceIndent) *
-            (Indents[Lhs] * Indents[Rhs])(
+            (IndentToken[Lhs] * IndentToken[Rhs])(
               [](auto& n) { return same_indent(n.first[0], n.first[1]); }) >>
           [](Match& _) {
             if (_(Lhs)->type() == _(Rhs)->type())
@@ -1502,10 +1505,10 @@ namespace trieste::yaml
         In(MappingIndent) *
             ((T(Line)
               << (~T(Whitespace)[Whitespace] * T(Key)[Key] *
-                  AnchorTag++[Anchor] * FlowTokens[Lhs] * Any++[Tail])) *
+                  AnchorTag++[Anchor] * FlowToken[Lhs] * Any++[Tail])) *
              (T(Line)
               << (~T(Whitespace)[Placeholder] * T(Colon)[Colon] *
-                  AnchorTag++[Tag] * FlowTokens[Rhs] * Any++[Extra]))) >>
+                  AnchorTag++[Tag] * FlowToken[Rhs] * Any++[Extra]))) >>
           [](Match& _) {
             return Seq << (Line << _(Whitespace) << _(Key))
                        << (Indent
@@ -1519,7 +1522,7 @@ namespace trieste::yaml
 
         In(MappingIndent) *
             (T(Indent)
-             << ((T(Line)[Line] << (~T(Whitespace) * FlowTokens++ * T(Colon))) *
+             << ((T(Line)[Line] << (~T(Whitespace) * FlowToken++ * T(Colon))) *
                  End)) >>
           [](Match& _) { return MappingIndent << _(Line); },
 
@@ -1530,12 +1533,12 @@ namespace trieste::yaml
 
         // errors
 
-        In(Line) * (LineTokens * T(Colon) * T(Hyphen)[Hyphen]) >>
+        In(Line) * (LineToken * T(Colon) * T(Hyphen)[Hyphen]) >>
           [](Match& _) {
             return err(_(Hyphen), "Sequence on same Line as Mapping Key");
           },
 
-        In(Line) * (T(Hyphen) * LineTokens * T(Hyphen)[Hyphen]) >>
+        In(Line) * (T(Hyphen) * LineToken * T(Hyphen)[Hyphen]) >>
           [](Match& _) {
             return err(
               _(Hyphen), "Invalid sequence item on same Line as previous item");
@@ -1607,7 +1610,7 @@ namespace trieste::yaml
 
         In(Line) * T(Placeholder) >> [](Match&) -> Node { return nullptr; },
 
-        In(Line) * (T(Colon) * ValueTokens++[Value] * T(Colon)[Colon]) >>
+        In(Line) * (T(Colon) * ValueToken++[Value] * T(Colon)[Colon]) >>
           [](Match& _) {
             return err(
               _(Colon),
@@ -1649,7 +1652,7 @@ namespace trieste::yaml
             ((T(Line)
               << (~T(Whitespace) * T(Hyphen) * AnchorTag++[Anchor] *
                   Any++[Tail])) *
-             Indents[Value]) >>
+             IndentToken[Value]) >>
           [](Match& _) {
             Node first = Line << _[Tail];
             if (first->empty())
@@ -1665,7 +1668,7 @@ namespace trieste::yaml
 
         In(SequenceGroup) *
             ((T(Line) << (~T(Whitespace) * T(Hyphen) * AnchorTag++[Anchor])) *
-             T(BlockStart)[BlockStart] * Indents[Value]) >>
+             T(BlockStart)[BlockStart] * IndentToken[Value]) >>
           [](Match& _) {
             return SequenceItem
               << (ValueGroup << _[Anchor] << _(BlockStart) << _(Value));
@@ -1674,7 +1677,7 @@ namespace trieste::yaml
         In(SequenceGroup) *
             (T(Line)
              << (~T(Whitespace) * T(Hyphen) * AnchorTag++[Anchor] *
-                 ~ValueTokens[Value] * ~T(Whitespace) * ~T(Comment) * End)) >>
+                 ~ValueToken[Value] * ~T(Whitespace) * ~T(Comment) * End)) >>
           [](Match& _) {
             Node value = _(Value);
             if (value == nullptr)
@@ -1702,9 +1705,9 @@ namespace trieste::yaml
 
         In(MappingGroup) *
             ((T(Line)
-              << (~T(Whitespace) * AnchorTag++[Lhs] * ValueTokens[Key] *
+              << (~T(Whitespace) * AnchorTag++[Lhs] * ValueToken[Key] *
                   ~T(Whitespace) * T(Colon) * AnchorTag++[Rhs])) *
-             T(BlockStart)[BlockStart] * Indents[Value]) >>
+             T(BlockStart)[BlockStart] * IndentToken[Value]) >>
           [](Match& _) {
             return MappingItem
               << (KeyGroup << _[Lhs] << _(Key))
@@ -1713,9 +1716,9 @@ namespace trieste::yaml
 
         In(MappingGroup) *
             ((T(Line)
-              << (~T(Whitespace) * AnchorTag++[Lhs] * ValueTokens[Key] *
+              << (~T(Whitespace) * AnchorTag++[Lhs] * ValueToken[Key] *
                   ~T(Whitespace) * T(Colon) * AnchorTag++[Rhs] * Any++[Tail])) *
-             T(WhitespaceLine, EmptyLine)++[Whitespace] * Indents[Value]) >>
+             T(WhitespaceLine, EmptyLine)++[Whitespace] * IndentToken[Value]) >>
           [](Match& _) {
             Node first = Line << _[Tail];
             if (first->empty())
@@ -1731,9 +1734,9 @@ namespace trieste::yaml
 
         In(MappingGroup) *
             (T(Line)
-             << (~T(Whitespace) * AnchorTag++[Lhs] * ValueTokens[Key] *
+             << (~T(Whitespace) * AnchorTag++[Lhs] * ValueToken[Key] *
                  ~T(Whitespace) * T(Colon) * AnchorTag++[Rhs] *
-                 ValueTokens[Head] * Any++[Tail])) >>
+                 ValueToken[Head] * Any++[Tail])) >>
           [](Match& _) {
             NodeRange tail = _[Tail];
             if (tail.first != tail.second)
@@ -1753,7 +1756,7 @@ namespace trieste::yaml
         In(MappingGroup) *
             (T(Line)
              << (~T(Whitespace) * AnchorTag++[Lhs] * T(Colon) *
-                 AnchorTag++[Rhs] * ~ValueTokens[Value] * ~T(Whitespace) *
+                 AnchorTag++[Rhs] * ~ValueToken[Value] * ~T(Whitespace) *
                  ~T(Comment) * End)) >>
           [](Match& _) {
             Node value = _(Value);
@@ -1766,8 +1769,8 @@ namespace trieste::yaml
           },
 
         In(MappingGroup) * T(Line)
-            << (~T(Whitespace) * AnchorTag++[Lhs] * ValueTokens[Key] *
-                T(Colon) * AnchorTag++[Rhs] * End) >>
+            << (~T(Whitespace) * AnchorTag++[Lhs] * ValueToken[Key] * T(Colon) *
+                AnchorTag++[Rhs] * End) >>
           [](Match& _) {
             return MappingItem << (KeyGroup << _[Lhs] << _(Key))
                                << (ValueGroup << _[Rhs] << (Null ^ "null"));
@@ -1781,7 +1784,7 @@ namespace trieste::yaml
           },
 
         In(MappingGroup) *
-            ((T(ComplexKey, ComplexValue))[Lhs] * Indents[Indent]) >>
+            ((T(ComplexKey, ComplexValue))[Lhs] * IndentToken[Indent]) >>
           [](Match& _) {
             return _(Lhs)->type() << (Line << *_[Lhs]) << _(Indent);
           },
@@ -1799,7 +1802,7 @@ namespace trieste::yaml
             return group;
           },
 
-        In(ComplexKey) * (T(Hyphen) * ValueTokens[Value]) >>
+        In(ComplexKey) * (T(Hyphen) * ValueToken[Value]) >>
           [](Match& _) { return SequenceIndent << (SequenceItem << _(Value)); },
 
         In(ComplexKey, ComplexValue) * (T(Line) << End) >>
@@ -1856,7 +1859,7 @@ namespace trieste::yaml
 
         // errors
 
-        In(BlockStart) * BasicTokens[Value] >> [](Match& _) -> Node {
+        In(BlockStart) * BasicToken[Value] >> [](Match& _) -> Node {
           return err(_(Value), "Invalid text after block scalar indicator");
         },
 
@@ -1943,7 +1946,9 @@ namespace trieste::yaml
 
     items.post([](Node n) {
       return invalid_tokens(
-        n, {MappingGroup, SequenceGroup}, "Invalid mapping/sequence");
+        n,
+        {{MappingGroup, "Invalid mapping"},
+         {SequenceGroup, "Invalid sequence"}});
     });
 
     return items;
@@ -1967,7 +1972,7 @@ namespace trieste::yaml
 
         In(MappingIndent) *
             ((T(Line)
-              << (~T(Whitespace) * AnchorTag++[Lhs] * ValueTokens[Key] *
+              << (~T(Whitespace) * AnchorTag++[Lhs] * ValueToken[Key] *
                   T(Colon) * AnchorTag++[Rhs])) *
              T(SequenceItem)++[Value]) >>
           [](Match& _) {
@@ -2020,7 +2025,8 @@ namespace trieste::yaml
       }};
 
     complex.post([](Node n) {
-      return invalid_tokens(n, {Key, Colon}, "Syntax error");
+      return invalid_tokens(
+        n, {{Key, "Invalid complex key"}, {Colon, "Invalid complex value"}});
     });
 
     return complex;
@@ -2125,7 +2131,7 @@ namespace trieste::yaml
             (T(Indent)[Indent]
              << ((T(Line)
                   << (~T(Whitespace) * AnchorTag++[Anchor] *
-                      BasicTokens++[Line] * End)) *
+                      BasicToken++[Line] * End)) *
                  (T(
                    Line,
                    BlockIndent,
@@ -2141,7 +2147,7 @@ namespace trieste::yaml
 
         In(KeyGroup, ValueGroup, DocumentGroup) *
             ((T(Line)
-              << (~T(Whitespace) * AnchorTag++[Anchor] * BasicTokens++[Line] *
+              << (~T(Whitespace) * AnchorTag++[Anchor] * BasicToken++[Line] *
                   End)) *
              (T(
                Line,
@@ -2160,7 +2166,7 @@ namespace trieste::yaml
 
         In(Plain) *
             ((T(Line)
-              << (~T(Whitespace) * ValueTokens[Value] * ~T(Whitespace) *
+              << (~T(Whitespace) * ValueToken[Value] * ~T(Whitespace) *
                   T(Comment))) *
              End) >>
           [](Match& _) { return Line << _[Value]; },
@@ -2297,13 +2303,17 @@ namespace trieste::yaml
       }};
 
     blocks.post([](Node n) {
-      std::size_t changes = invalid_tokens(
-        n, {Indent, ManualIndent, BlockIndent}, "Invalid indent");
-      changes += invalid_tokens(
+      return invalid_tokens(
         n,
-        {Colon, Hyphen, Line, MaybeDirective, BlockStart, Placeholder},
-        "Syntax error");
-      return changes;
+        {{Indent, "Invalid indent"},
+         {ManualIndent, "Invalid block scalar indent indicator"},
+         {BlockIndent, "Invalid block indent"},
+         {Colon, "Invalid mapping item"},
+         {Hyphen, "Invalid sequence item"},
+         {Line, "Invalid indentation"},
+         {MaybeDirective, "Unexpected stream directive"},
+         {BlockStart, "Invalid block scalar"},
+         {Placeholder, "Token on same line as document start"}});
     });
 
     return blocks;
@@ -2371,11 +2381,11 @@ namespace trieste::yaml
       dir::bottomup,
       {
         In(KeyGroup, ValueGroup, DocumentGroup, FlowGroup) *
-            (T(Anchor)[Anchor] * ValueTokens[Value]) >>
+            (T(Anchor)[Anchor] * ValueToken[Value]) >>
           [](Match& _) { return AnchorValue << _(Anchor) << _(Value); },
 
         In(KeyGroup, ValueGroup, DocumentGroup, FlowGroup) *
-            (T(Tag)[Tag] * ValueTokens[Value]) >>
+            (T(Tag)[Tag] * ValueToken[Value]) >>
           [](Match& _) { return TagValue << _(Tag) << _(Value); },
 
         In(KeyGroup, ValueGroup, DocumentGroup, FlowGroup) *
@@ -2444,7 +2454,7 @@ namespace trieste::yaml
         In(Stream) * T(DocumentEnd)[DocumentEnd] >>
           [](Match&) -> Node { return nullptr; },
 
-        In(DocumentGroup) * (Start * ValueTokens[Value]) >>
+        In(DocumentGroup) * (Start * ValueToken[Value]) >>
           [](Match& _) { return Seq << (DocumentStart ^ "") << _(Value); },
 
         In(DocumentGroup) * (T(DocumentStart)[DocumentStart] * End) >>
@@ -2456,12 +2466,12 @@ namespace trieste::yaml
         In(DocumentGroup) * (T(DocumentStart)[Lhs] * T(DocumentEnd)[Rhs]) >>
           [](Match& _) { return Seq << _(Lhs) << (Null ^ "null") << _(Rhs); },
 
-        In(DocumentGroup) * (ValueTokens[Value] * End) >>
+        In(DocumentGroup) * (ValueToken[Value] * End) >>
           [](Match& _) { return Seq << _(Value) << (DocumentEnd ^ ""); },
 
         In(Document) *
             (T(DocumentGroup)
-             << (T(DocumentStart)[DocumentStart] * ValueTokens[Value] *
+             << (T(DocumentStart)[DocumentStart] * ValueToken[Value] *
                  T(DocumentEnd)[DocumentEnd] * End)) >>
           [](Match& _) {
             return Seq << _(DocumentStart) << _(Value) << _(DocumentEnd);
@@ -2480,7 +2490,7 @@ namespace trieste::yaml
           [](Match& _) { return _(Value); },
 
         // Errors
-        In(Document) * (ValueTokens * ValueTokens[Value]) >>
+        In(Document) * (ValueToken * ValueToken[Value]) >>
           [](Match& _) { return err(_(Value), "Invalid document"); },
 
         In(KeyGroup, ValueGroup) * (Any * Any[Value]) >>
@@ -2508,7 +2518,13 @@ namespace trieste::yaml
 
     structure.post([](Node n) {
       return invalid_tokens(
-        n, {DocumentGroup, KeyGroup, ValueGroup, FlowGroup}, "Syntax error");
+        n,
+        {
+          {DocumentGroup, "Invalid document"},
+          {FlowGroup, "Invalid flow entity"},
+          {KeyGroup, "Invalid mapping key"},
+          {ValueGroup, "Invalid mapping value"},
+        });
     });
 
     return structure;
@@ -2615,8 +2631,9 @@ namespace trieste::yaml
 
        }};
 
-    quotes.post(
-      [](Node n) { return invalid_tokens(n, {BlockGroup}, "Syntax error"); });
+    quotes.post([](Node n) {
+      return invalid_tokens(n, {{BlockGroup, "Invalid block scalar"}});
+    });
 
     return quotes;
   }
@@ -2700,7 +2717,7 @@ namespace trieste::yaml
               "Invalid mapping key on same line as previous key");
           },
 
-        In(Mapping, FlowMapping) * ValueTokens[Value] >>
+        In(Mapping, FlowMapping) * ValueToken[Value] >>
           [](Match& _) { return err(_(Value), "Invalid mapping value"); },
 
         In(FlowSequence) * (Start * T(FlowEmpty)[FlowEmpty]) >>

@@ -97,8 +97,8 @@ namespace trieste::yaml
     return false;
   }
 
-  bool
-  YAMLEmitter::emit_literal_event(std::ostream& os, const Node& maybe_node) const
+  bool YAMLEmitter::emit_literal_event(
+    std::ostream& os, const Node& maybe_node) const
   {
     os << "=VAL";
 

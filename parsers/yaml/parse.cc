@@ -140,8 +140,8 @@ namespace trieste::yaml
         m.mode("directives");
       }});
 
-    // YAML starts out with the possibility of one or more directives that will apply
-    // to a subsequent document.
+    // YAML starts out with the possibility of one or more directives that will
+    // apply to a subsequent document.
     p("directives",
       {
         R"([ \t]+)" >> [](auto&) { return; },
@@ -154,7 +154,8 @@ namespace trieste::yaml
         // %YAML[ \t]+ : The text "%YAML" followed by one or more spaces or tabs
         // [0-9] : A single digit
         // \.[0-9] : A period followed by a single digit
-        // [ \t]+[^#\r\n]+ : One or more spaces or tabs followed by text which is NOT a comment (error)
+        // [ \t]+[^#\r\n]+ : One or more spaces or tabs followed by text which
+        // is NOT a comment (error)
         // (?:[ \t]|\r?\n) : Either a space or tab, or a newline
         R"((%YAML[ \t]+([0-9])\.([0-9]))([ \t]+[^#\r\n]+)?(?:[ \t]|\r?\n))" >>
           [](auto& m) {
@@ -212,8 +213,8 @@ namespace trieste::yaml
             m.mode("document");
           },
 
-        // If we reach this point, then there was no preamble and what follows is
-        // the document itself
+        // If we reach this point, then there was no preamble and what follows
+        // is the document itself
         "^" >>
           [](auto& m) {
             m.push(Document);
@@ -246,9 +247,12 @@ namespace trieste::yaml
         R"(\r?\n)" >> [](auto& m) { m.add(NewLine); },
 
         // text that looks like a directive in a document
-        // %[[:alpha:]]+ : A percent sign followed by one or more alphabetic characters
-        // (?:[ \t]+[^\s]+) : One or more spaces or tabs followed by one or more characters which are NOT whitespace
-        // ([ \t]+#[^\r\n]*)? : Zero or one spaces or tabs followed by a comment (optional)
+        // %[[:alpha:]]+ : A percent sign followed by one or more alphabetic
+        // characters
+        // (?:[ \t]+[^\s]+) : One or more spaces or tabs followed by one or more
+        // characters which are NOT whitespace
+        // ([ \t]+#[^\r\n]*)? : Zero or one spaces or tabs followed by a comment
+        // (optional)
         R"((%[[:alpha:]]+(?:[ \t]+[^\s]+))([ \t]+#[^\r\n]*)?)" >>
           [](auto& m) {
             m.add(MaybeDirective, 1);
@@ -324,10 +328,14 @@ namespace trieste::yaml
           },
 
         // Key with a colon
-        // [a-zA-Z0-9\?:-] : An alphanumeric character, a colon, a question mark, or a hyphen
-        // (?:[^\s]|[^:\r\n] [^\s#])* : Either a character which is NOT whitespace,
-        //                              or a character which is NOT a colon or newline, followed by a space,
-        //                              followed by a character which is NOT whitespace or a hash, zero or more times
+        // [a-zA-Z0-9\?:-] : An alphanumeric character, a colon, a question
+        // mark, or a hyphen
+        // (?:[^\s]|[^:\r\n] [^\s#])* : Either a character which is NOT
+        // whitespace,
+        //                              or a character which is NOT a colon or
+        //                              newline, followed by a space, followed
+        //                              by a character which is NOT whitespace
+        //                              or a hash, zero or more times
         //  *(:) : zero or more spaces followed by a colon
         // (?:[ \t]+|\r?(\n)) : Either one or more spaces or tabs, or a newline
         R"(([[a-zA-Z0-9\?:-](?:[^\s]|[^:\r\n] [^\s#])*) *(:)(?:[ \t]+|\r?(\n)))" >>
@@ -341,7 +349,8 @@ namespace trieste::yaml
           },
 
         // Alias with a colon
-        // \*([^\[\]\{\}\, \r\n]+) : An asterisk followed by one or more characters which are NOT brackets, braces,
+        // \*([^\[\]\{\}\, \r\n]+) : An asterisk followed by one or more
+        // characters which are NOT brackets, braces,
         //                           commas, whitespace, or newline
         // (:) : A colon
         // (?:[ \t]+|\r?(\n)) : Either one or more spaces or tabs, or a newline
@@ -376,7 +385,8 @@ namespace trieste::yaml
         R"(:$)" >> [](auto& m) { m.add(Colon); },
 
         // Anchor
-        // &([^\[\]\{\}\, \r\n]+) : An ampersand followed by one or more characters which are NOT brackets, braces,
+        // &([^\[\]\{\}\, \r\n]+) : An ampersand followed by one or more
+        // characters which are NOT brackets, braces,
         //                          commas, whitespace, or newline
         // (?:[ \t]+|\r?(\n)) : Either one or more spaces or tabs, or a newline
         R"((&[^\[\]\{\}\, \r\n]+)(?:[ \t]+|\r?(\n)))" >>
@@ -390,12 +400,21 @@ namespace trieste::yaml
           },
 
         // verbatim-tag
-        // ![0-9A-Za-z\-]+!|!!|! : An exclamation mark followed by one or more alphanumeric characters or hyphens,
-        //                         followed by an exclamation mark, or two exclamation marks, or a single exclamation mark
-        // <(?:[\w#;\/\?:@&=+$,_.!~*'()[\]{}]|%\d+)+> : A less than sign followed by
-        //                                              one or more of: a word character and #;/?:@&=+$,_.!~*'()[\]{}],
-        //                                                  or a percent sign followed by one or more digits,
-        //                                              followed by a greater than sign
+        // ![0-9A-Za-z\-]+!|!!|! : An exclamation mark followed by one or more
+        // alphanumeric characters or hyphens,
+        //                         followed by an exclamation mark, or two
+        //                         exclamation marks, or a single exclamation
+        //                         mark
+        // <(?:[\w#;\/\?:@&=+$,_.!~*'()[\]{}]|%\d+)+> : A less than sign
+        // followed by
+        //                                              one or more of: a word
+        //                                              character and
+        //                                              #;/?:@&=+$,_.!~*'()[\]{}],
+        //                                                  or a percent sign
+        //                                                  followed by one or
+        //                                                  more digits,
+        //                                              followed by a greater
+        //                                              than sign
         R"((![0-9A-Za-z\-]+!|!!|!)(<(?:[\w#;\/\?:@&=+$,_.!~*'()[\]{}]|%\d+)+>)(?:[ \t]+|\r?(\n)))" >>
           [](auto& m) {
             m.push(Tag);
@@ -411,10 +430,15 @@ namespace trieste::yaml
           },
 
         // ns-shorthand-tag
-        // ![0-9A-Za-z\-]*!|!!|! : An exclamation mark followed by zero or more alphanumeric characters or hyphens,
-        //                         followed by an exclamation mark, or two exclamation marks, or a single exclamation mark
-        // (?:[\w#;\/\?:@&=+$_.~*'()]|%\d\d)+ : One or more of: a word character and #;/?:@&=+$_.~*'(),
-        //                                      or a percent sign followed by two digits
+        // ![0-9A-Za-z\-]*!|!!|! : An exclamation mark followed by zero or more
+        // alphanumeric characters or hyphens,
+        //                         followed by an exclamation mark, or two
+        //                         exclamation marks, or a single exclamation
+        //                         mark
+        // (?:[\w#;\/\?:@&=+$_.~*'()]|%\d\d)+ : One or more of: a word character
+        // and #;/?:@&=+$_.~*'(),
+        //                                      or a percent sign followed by
+        //                                      two digits
         // (?:[ \t]+|\r?(\n)) : Either one or more spaces or tabs, or a newline
         R"((![0-9A-Za-z\-]+!|!!|!)((?:[\w#;\/\?:@&=+$,_.!~*'()[\]{}]|%\d+)+)(?:[ \t]+|\r?(\n)))" >>
           [](auto& m) {
@@ -472,9 +496,9 @@ namespace trieste::yaml
             }
           },
 
-        // Single-quote. NB this captures absolutely everything at this stage, and is cleaned up
-        // in the quotes() pass, because the semantics of quoted strings are too complex
-        // to handle in this parser.
+        // Single-quote. NB this captures absolutely everything at this stage,
+        // and is cleaned up in the quotes() pass, because the semantics of
+        // quoted strings are too complex to handle in this parser.
         // '(?:''|[^'])*' : A single quote followed by zero or more of:
         //                    two single quotes, or
         //                    a character which is NOT a single quote
@@ -491,9 +515,9 @@ namespace trieste::yaml
             m.add(SingleQuote);
           },
 
-        // Double-quote. NB this captures absolutely everything at this stage, and is cleaned up
-        // in the quotes() pass, because the semantics of quoted strings are too complex
-        // to handle in this parser.
+        // Double-quote. NB this captures absolutely everything at this stage,
+        // and is cleaned up in the quotes() pass, because the semantics of
+        // quoted strings are too complex to handle in this parser.
         // "(?:\\\\|\\"|[^"])*" : A double quote followed by zero or more of:
         //                          two backslashes, or
         //                          a backslash and a double quote, or
@@ -522,23 +546,27 @@ namespace trieste::yaml
           },
 
         // Value. Fairly expansive in YAML, it is either:
-        // [^\s:\?-] : A character which is NOT whitespace, a colon, a question mark, or a hyphen
+        // [^\s:\?-] : A character which is NOT whitespace, a colon, a question
+        // mark, or a hyphen
         // :[^\s] : A colon followed by a character which is NOT whitespace
-        // \?[^\s] : A question mark followed by a character which is NOT whitespace
+        // \?[^\s] : A question mark followed by a character which is NOT
+        // whitespace
         // -[^\s] : A hyphen followed by a character which is NOT whitespace
         // And then zero or more of either:
         // [^\r\n \t:#] : Not a newline, space, tab, or hash
         // :[^\s] : A colon followed by a character which is NOT whitespace
         // #[^\s] : A hash followed by a character which is NOT whitespace
-        // [ \t][^\r\n \t:#] : A space or tab followed by a character which is NOT a newline, space, tab, or hash
+        // [ \t][^\r\n \t:#] : A space or tab followed by a character which is
+        // NOT a newline, space, tab, or hash
         R"((?:[^\s:\?-]|:[^\s]|\?[^\s]|-[^\s])(?:[^\s:#]|:[^\s]|#[^\s]|[ \t][^\s:#])*)" >>
           [](auto& m) { m.add(Value); },
       });
 
-    // Flow mode is very similar to document mode, but provides extra characters to disambiguate
-    // the structure of mappings and sequences. These characters were chosen such that flow mode
-    // acts a superset of JSON. However, importantly, it is NOT JSON, and document-style constructs
-    // can still appear within flow mode.
+    // Flow mode is very similar to document mode, but provides extra characters
+    // to disambiguate the structure of mappings and sequences. These characters
+    // were chosen such that flow mode acts a superset of JSON. However,
+    // importantly, it is NOT JSON, and document-style constructs can still
+    // appear within flow mode.
     p("flow",
       {
         "---" >>
@@ -713,8 +741,9 @@ namespace trieste::yaml
         R"((?:\d+-)+\d*)" >> [](auto& m) { m.add(Value); },
 
         // Value.
-        // This is the same RE as the one above for document mode, but in flow mode there are
-        // additional "value exit" characters, namely ,{}[], which is why you see them added everywhere.
+        // This is the same RE as the one above for document mode, but in flow
+        // mode there are additional "value exit" characters, namely ,{}[],
+        // which is why you see them added everywhere.
         R"((?:[^\s:\?\-,{}[\]]|:[^\s,]|\?[^\s,{}[\]]|-[^\s,{}[\]])(?:[^\s:#,{}[\]]|:[^\s,{}[\]]|#[^\s,{}[\]]|[ \t][^\s:#,{}[\]])*)" >>
           [](auto& m) { m.extend(Value); },
       });
