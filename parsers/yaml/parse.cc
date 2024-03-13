@@ -586,10 +586,7 @@ namespace trieste::yaml
             return;
           },
 
-        R"([ ][ \t]*)" >>
-          [](auto&) {
-            return;
-          },
+        R"([ ][ \t]*)" >> [](auto&) { return; },
 
         R"([ \t]*\r?\n(#[^\r\n]*))" >>
           [](auto& m) {
@@ -755,6 +752,8 @@ namespace trieste::yaml
         // which is why you see them added everywhere.
         R"((?:[^\s:\?\-,{}[\]]|:[^\s,]|\?[^\s,{}[\]]|-[^\s,{}[\]])(?:[^\s:#,{}[\]]|:[^\s,{}[\]]|#[^\s,{}[\]]|[ \t][^\s:#,{}[\]])*)" >>
           [](auto& m) { m.extend(Value); },
+
+        "." >> [](auto& m) { m.error("Invalid character in flow mode"); },
       });
 
     p.done([anchors](detail::Make& m) {

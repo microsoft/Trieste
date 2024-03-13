@@ -2308,7 +2308,8 @@ namespace trieste::yaml
 
         In(BlockGroup) * T(BlockLine)[BlockLine]([](auto& n) {
           Location loc = n.first[0]->location();
-          if(loc.len == 0){
+          if (loc.len == 0)
+          {
             return false;
           }
 
@@ -2681,12 +2682,14 @@ namespace trieste::yaml
 
         In(AnchorValue) * T(Anchor)[Anchor]([](auto& n) {
           Location loc = n.first[0]->location();
-          if(loc.len == 0){
+          if (loc.len == 0)
+          {
             return false;
           }
 
           auto view = loc.view();
-          return view.front() == '&' || view.back() == ' ' || view.back() == '\t';
+          return view.front() == '&' || view.back() == ' ' ||
+            view.back() == '\t';
         }) >>
           [](Match& _) {
             Location loc = _(Anchor)->location();

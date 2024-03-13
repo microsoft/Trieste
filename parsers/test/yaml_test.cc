@@ -15,11 +15,26 @@ const std::string Reset = "\x1b[0m";
 const std::string Red = "\x1b[31m";
 // const std::string White = "\x1b[37m";
 
+std::string replace_all(
+  const std::string_view& v,
+  const std::string_view& find,
+  const std::string_view& replace)
+{
+  std::string s(v);
+  auto pos = s.find(find);
+  while (pos != std::string::npos)
+  {
+    s = s.replace(pos, find.size(), replace);
+    pos = s.find(find);
+  }
+  return s;
+}
+
 std::string replace_whitespace(const std::string& str)
 {
-  #if defined(_WIN32)
+#if defined(_WIN32)
   return str;
-  #else
+#else
   std::ostringstream os;
   for (std::size_t i = 0; i < str.size(); ++i)
   {
@@ -40,7 +55,7 @@ std::string replace_whitespace(const std::string& str)
   }
 
   return os.str();
-  #endif
+#endif
 }
 
 void diff_line(
@@ -186,7 +201,8 @@ struct TestCase
 
     if (event.size() > 0 && actual_event != event)
     {
-      if(id == "Y79Y" && index >= 4 && index <= 9){
+      if (id == "Y79Y" && index >= 4 && index <= 9)
+      {
         // TODO
         // these tests currently have incorrect event files
         // https://github.com/yaml/yaml-test-suite/issues/126
@@ -223,7 +239,8 @@ struct TestCase
       std::filesystem::exists(subtest) || std::filesystem::exists(subtest_long))
     {
       bool is_long = std::filesystem::exists(subtest_long);
-      if(is_long){
+      if (is_long)
+      {
         subtest = subtest_long;
       }
 
@@ -268,7 +285,8 @@ struct TestCase
       testcase.in_json = read_to_end(test_dir / "in.json");
       testcase.out_yaml = read_to_end(test_dir / "out.yaml");
       testcase.emit_yaml = read_to_end(test_dir / "emit.yaml");
-      testcase.event = read_to_end(test_dir / "test.event");
+      testcase.event =
+        replace_all(read_to_end(test_dir / "test.event"), "\r", "");
       testcase.error = std::filesystem::exists(test_dir / "error");
       if (!testcase.in_yaml.empty())
       {

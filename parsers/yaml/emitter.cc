@@ -18,7 +18,10 @@ namespace
 
 namespace trieste::yaml
 {
-  YAMLEmitter::YAMLEmitter(const std::string& indent, const std::string& newline) : m_indent(indent), m_newline(newline) {}
+  YAMLEmitter::YAMLEmitter(
+    const std::string& indent, const std::string& newline)
+  : m_indent(indent), m_newline(newline)
+  {}
 
   void YAMLEmitter::emit(std::ostream& os, const Node&) const
   {
@@ -375,7 +378,8 @@ namespace trieste::yaml
       value = value->back();
       auto tagname = unescape_url_chars(tag_node->location().view());
       std::ostringstream tags;
-      if (tagname.size() >= 2 && tagname.front() == '<' && tagname.back() == '>')
+      if (
+        tagname.size() >= 2 && tagname.front() == '<' && tagname.back() == '>')
       {
         tags << tagname;
       }
