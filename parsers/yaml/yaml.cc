@@ -541,7 +541,7 @@ namespace
         continue;
       }
 
-      auto pos = view.find_first_not_of(" \t");
+      auto pos = view.find_first_not_of(" \t\r");
       if (pos == std::string::npos)
       {
         continue;

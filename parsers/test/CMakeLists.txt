@@ -37,5 +37,6 @@ set(YAML_TEST_SUITE_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../yaml-test-suite)
 
 add_test(NAME yaml_trieste COMMAND yaml_trieste test -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_trieste>)
 add_test(NAME yaml_test COMMAND yaml_test -wf ${YAML_TEST_SUITE_ROOT} WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_test>)
+add_test(NAME yaml_test_crlf COMMAND yaml_test --crlf -wf ${YAML_TEST_SUITE_ROOT} WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_test>)
 
 install(TARGETS yaml_trieste yaml_test RUNTIME DESTINATION parsers)

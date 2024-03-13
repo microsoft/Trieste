@@ -15,19 +15,54 @@ const std::string Reset = "\x1b[0m";
 const std::string Red = "\x1b[31m";
 // const std::string White = "\x1b[37m";
 
-std::string replace_all(
-  const std::string_view& v,
-  const std::string_view& find,
-  const std::string_view& replace)
+std::string normalize_crlf(const std::string_view& str, bool crlf)
 {
-  std::string s(v);
-  auto pos = s.find(find);
-  while (pos != std::string::npos)
+  std::ostringstream os;
+  std::size_t start = 0;
+  std::size_t newline = str.find('\n');
+  if (newline == 0)
   {
-    s = s.replace(pos, find.size(), replace);
-    pos = s.find(find);
+    if (crlf)
+    {
+      os << '\r';
+    }
+    os << '\n';
+    start = newline + 1;
+    newline = str.find('\n', start);
   }
-  return s;
+
+  while (newline != std::string::npos)
+  {
+    std::size_t length = newline - start;
+    if (crlf)
+    {
+      os << str.substr(start, length);
+      if (str[newline - 1] != '\r')
+      {
+        os << '\r';
+      }
+      os << '\n';
+    }
+    else
+    {
+      if (str[newline - 1] == '\r')
+      {
+        length -= 1;
+      }
+
+      os << str.substr(start, length);
+      os << '\n';
+    }
+    start = newline + 1;
+    newline = str.find('\n', start);
+  }
+
+  if (start < str.size())
+  {
+    os << str.substr(start);
+  }
+
+  return os.str();
 }
 
 std::string replace_whitespace(const std::string& str)
@@ -168,9 +203,17 @@ struct TestCase
   std::filesystem::path filename;
   bool error;
 
-  Result run(const std::filesystem::path& debug_path, bool wf_checks)
+  Result run(const std::filesystem::path& debug_path, bool wf_checks, bool crlf)
   {
-    YAMLEmitter emitter;
+    if (id == "7T8X" || id == "JEF9" || id == "K858")
+    {
+      // These tests reproduce whitespace from the input and
+      // check it against explicit output strings which encode
+      // just the linefeed.
+      crlf = false;
+    }
+
+    YAMLEmitter emitter("  ", crlf ? "\r\n" : "\n");
     YAMLReader reader(in_yaml);
     reader.debug_enabled(!debug_path.empty())
       .debug_path(debug_path)
@@ -221,14 +264,24 @@ struct TestCase
     return {true, ""};
   }
 
-  static void
-  load(std::vector<TestCase>& cases, const std::filesystem::path& test_dir)
+  static void load(
+    std::vector<TestCase>& cases,
+    const std::filesystem::path& test_dir,
+    bool crlf)
   {
     std::size_t index = 0;
     std::string id = test_dir.filename().string();
     if (id == "name" || id == "tags" || id.front() == '.')
     {
       return;
+    }
+
+    if (id == "7T8X" || id == "JEF9" || id == "K858")
+    {
+      // These tests reproduce whitespace from the input and
+      // check it against explicit output strings which encode
+      // just the linefeed.
+      crlf = false;
     }
 
     std::string subpath = "00";
@@ -246,7 +299,7 @@ struct TestCase
 
       while (std::filesystem::exists(subtest))
       {
-        load(cases, subtest);
+        load(cases, subtest, crlf);
         cases.back().index = index;
         cases.back().id = id;
         index += 1;
@@ -281,12 +334,17 @@ struct TestCase
       {
         testcase.name.pop_back();
       }
-      testcase.in_yaml = read_to_end(test_dir / "in.yaml");
-      testcase.in_json = read_to_end(test_dir / "in.json");
-      testcase.out_yaml = read_to_end(test_dir / "out.yaml");
-      testcase.emit_yaml = read_to_end(test_dir / "emit.yaml");
+
+      testcase.in_yaml =
+        normalize_crlf(read_to_end(test_dir / "in.yaml"), crlf);
+      testcase.in_json =
+        normalize_crlf(read_to_end(test_dir / "in.json"), crlf);
+      testcase.out_yaml =
+        normalize_crlf(read_to_end(test_dir / "out.yaml"), crlf);
+      testcase.emit_yaml =
+        normalize_crlf(read_to_end(test_dir / "emit.yaml"), crlf);
       testcase.event =
-        replace_all(read_to_end(test_dir / "test.event"), "\r", "");
+        normalize_crlf(read_to_end(test_dir / "test.event"), crlf);
       testcase.error = std::filesystem::exists(test_dir / "error");
       if (!testcase.in_yaml.empty())
       {
@@ -304,7 +362,7 @@ int main(int argc, char* argv[])
 
   std::vector<std::filesystem::path> case_paths;
   app.add_option(
-    "case,-c,--case", case_paths, "Test case YAML files or directories");
+    "case,--case", case_paths, "Test case YAML files or directories");
 
   std::filesystem::path debug_path;
   app.add_option(
@@ -328,6 +386,9 @@ int main(int argc, char* argv[])
 
   std::string id_match;
   app.add_option("-i,--id", id_match, "ID of the test or test group to run");
+
+  bool crlf{false};
+  app.add_flag("--crlf", crlf, "Whether to test files in CRLF mode");
 
   try
   {
@@ -358,7 +419,7 @@ int main(int argc, char* argv[])
       {
         if (std::filesystem::is_directory(file_or_dir))
         {
-          TestCase::load(test_cases, file_or_dir);
+          TestCase::load(test_cases, file_or_dir, crlf);
         }
         else
         {
@@ -409,7 +470,7 @@ int main(int argc, char* argv[])
     try
     {
       auto start = std::chrono::steady_clock::now();
-      auto result = testcase.run(debug_path, wf_checks);
+      auto result = testcase.run(debug_path, wf_checks, crlf);
       auto end = std::chrono::steady_clock::now();
       const std::chrono::duration<double> elapsed = end - start;
 
