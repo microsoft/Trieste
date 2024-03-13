@@ -142,13 +142,19 @@ namespace trieste::yaml
 
     p("directives",
       {
-        R"(([ \t]*)(#[^\r\n]*))" >> [](auto&) { return; },
-
-        R"((\r?\n)(#[^\r\n]*))" >> [](auto&) { return; },
+        R"([ \t]+)" >> [](auto&) { return; },
 
         R"(\r?\n)" >> [](auto&) { return; },
 
-        R"((%YAML[ \t]+([0-9])\.([0-9]))([ \t]+[^#\r\n]+)?(?:\s+#[^\r\n]*)*[ \t]*\r?\n([ \t]*))" >>
+        R"(#[^\r\n]*)" >> [](auto&) { return; },
+
+        // YAML directive
+        // %YAML[ \t]+ : The text "%YAML" followed by one or more spaces or tabs
+        // [0-9] : A single digit
+        // \.[0-9] : A period followed by a single digit
+        // [ \t]+[^#\r\n]+ : One or more spaces or tabs followed by text which is NOT a comment (error)
+        // (?:[ \t]|\r?\n) : Either a space or tab, or a newline
+        R"((%YAML[ \t]+([0-9])\.([0-9]))([ \t]+[^#\r\n]+)?(?:[ \t]|\r?\n))" >>
           [](auto& m) {
             if (m.match(4).len > 0)
             {
@@ -170,40 +176,41 @@ namespace trieste::yaml
         R"(%YAML [^\r\n]*\r?\n)" >>
           [](auto& m) { m.error("Invalid %YAML directive"); },
 
-        R"(%TAG ([^\s]+) ([^\s]+)(?:\s+#[^\r\n]*)*\r?\n([ \t]*))" >>
+        R"(%TAG ([^\s]+) ([^\s]+))" >>
           [](auto& m) {
             m.push(TagDirective);
             m.add(TagPrefix, 1);
             m.add(TagHandle, 2);
-            m.term({TagDirective});
+            m.term();
+            m.pop(TagDirective);
           },
 
-        R"((%([[:alpha:]]+) ?.*)(?:\s+#[^\r\n]*)*\r?\n([ \t]*))" >>
+        R"(%[[:alpha:]]+[^#\r\n]*)" >>
           [](auto& m) {
             std::cerr << "Unknown directive: " << m.match(1).view()
                       << std::endl;
             m.add(UnknownDirective, 1);
           },
 
-        R"(([ \t]*\.\.\.)(?:\r?\n| )+)" >> [](auto&) { return; },
+        R"([ \t]*\.\.\.(?:\r?\n| )+)" >> [](auto&) { return; },
 
-        R"(([ \t]*)(---)([ \t]+))" >>
+        R"([ \t]*(---)([ \t]+))" >>
           [](auto& m) {
             m.push(Document);
-            m.add(DocumentStart, 2);
-            m.add(Whitespace, 3);
+            m.add(DocumentStart, 1);
+            m.add(Whitespace, 2);
             m.mode("document");
           },
 
-        R"(([ \t]*)(---)(\r?\n))" >>
+        R"([ \t]*(---)(\r?\n))" >>
           [](auto& m) {
             m.push(Document);
-            m.add(DocumentStart, 2);
-            m.add(NewLine, 3);
+            m.add(DocumentStart, 1);
+            m.add(NewLine, 2);
             m.mode("document");
           },
 
-        "(^)" >>
+        "^" >>
           [](auto& m) {
             m.push(Document);
             m.mode("document");
@@ -231,6 +238,10 @@ namespace trieste::yaml
 
         R"(\r?\n)" >> [](auto& m) { m.add(NewLine); },
 
+        // text that looks like a directive in a document
+        // %[[:alpha:]]+ : A percent sign followed by one or more alphabetic characters
+        // (?:[ \t]+[^\s]+) : One or more spaces or tabs followed by one or more characters which are NOT whitespace
+        // ([ \t]+#[^\r\n]*)? : Zero or one spaces or tabs followed by a comment (optional)
         R"((%[[:alpha:]]+(?:[ \t]+[^\s]+))([ \t]+#[^\r\n]*)?)" >>
           [](auto& m) {
             m.add(MaybeDirective, 1);
@@ -242,7 +253,8 @@ namespace trieste::yaml
 
         R"((---)(\r?\n))" >>
           [](auto& m) {
-            m.term({Document});
+            m.term();
+            m.pop(Document);
             m.push(Document);
             m.add(DocumentStart, 1);
             m.add(NewLine, 2);
@@ -250,7 +262,8 @@ namespace trieste::yaml
 
         R"((---)([ \t]+))" >>
           [](auto& m) {
-            m.term({Document});
+            m.term();
+            m.pop(Document);
             m.push(Document);
             m.add(DocumentStart, 1);
             m.add(Whitespace, 2);
@@ -259,7 +272,8 @@ namespace trieste::yaml
         R"((\.\.\.)([ \t]*|[ \t]+#[^\r\n]*)?\r?\n)" >>
           [](auto& m) {
             m.add(DocumentEnd, 1);
-            m.term({Document});
+            m.term();
+            m.pop(Document);
             m.mode("directives");
           },
 
@@ -302,7 +316,14 @@ namespace trieste::yaml
             *flow_level = 1;
           },
 
-        R"(([[a-zA-Z0-9\?:-](?:[^\s]|[^:\r\n] [^\s#])*) *(:)(?:[ \t]+|\r?(\n)|(,)))" >>
+        // Key with a colon
+        // [a-zA-Z0-9\?:-] : An alphanumeric character, a colon, a question mark, or a hyphen
+        // (?:[^\s]|[^:\r\n] [^\s#])* : Either a character which is NOT whitespace,
+        //                              or a character which is NOT a colon or newline, followed by a space,
+        //                              followed by a character which is NOT whitespace or a hash, zero or more times
+        //  *(:) : zero or more spaces followed by a colon
+        // (?:[ \t]+|\r?(\n)) : Either one or more spaces or tabs, or a newline
+        R"(([[a-zA-Z0-9\?:-](?:[^\s]|[^:\r\n] [^\s#])*) *(:)(?:[ \t]+|\r?(\n)))" >>
           [anchors](auto& m) {
             m.add(Value, 1);
             m.add(Colon, 2);
@@ -310,12 +331,13 @@ namespace trieste::yaml
             {
               m.add(NewLine, 3);
             }
-            if (m.match(4).len > 0)
-            {
-              m.add(Comma, 4);
-            }
           },
 
+        // Alias with a colon
+        // \*([^\[\]\{\}\, \r\n]+) : An asterisk followed by one or more characters which are NOT brackets, braces,
+        //                           commas, whitespace, or newline
+        // (:) : A colon
+        // (?:[ \t]+|\r?(\n)) : Either one or more spaces or tabs, or a newline
         R"((\*([^\[\]\{\}\, \r\n]+)(:))(?:[ \t]+|\r?(\n)))" >>
           [anchors](auto& m) {
             if (is_alias_key(anchors, m.match(1).view()))
@@ -346,6 +368,10 @@ namespace trieste::yaml
 
         R"(:$)" >> [](auto& m) { m.add(Colon); },
 
+        // Anchor
+        // &([^\[\]\{\}\, \r\n]+) : An ampersand followed by one or more characters which are NOT brackets, braces,
+        //                          commas, whitespace, or newline
+        // (?:[ \t]+|\r?(\n)) : Either one or more spaces or tabs, or a newline
         R"((&[^\[\]\{\}\, \r\n]+)(?:[ \t]+|\r?(\n)))" >>
           [anchors](auto& m) {
             m.add(Anchor, 1);
@@ -357,12 +383,19 @@ namespace trieste::yaml
           },
 
         // verbatim-tag
+        // ![0-9A-Za-z\-]+!|!!|! : An exclamation mark followed by one or more alphanumeric characters or hyphens,
+        //                         followed by an exclamation mark, or two exclamation marks, or a single exclamation mark
+        // <(?:[\w#;\/\?:@&=+$,_.!~*'()[\]{}]|%\d+)+> : A less than sign followed by
+        //                                              one or more of: a word character and #;/?:@&=+$,_.!~*'()[\]{}],
+        //                                                  or a percent sign followed by one or more digits,
+        //                                              followed by a greater than sign
         R"((![0-9A-Za-z\-]+!|!!|!)(<(?:[\w#;\/\?:@&=+$,_.!~*'()[\]{}]|%\d+)+>)(?:[ \t]+|\r?(\n)))" >>
           [](auto& m) {
             m.push(Tag);
             m.add(TagPrefix, 1);
             m.add(VerbatimTag, 2);
-            m.term({Tag});
+            m.term();
+            m.pop(Tag);
 
             if (m.match(3).len > 0)
             {
@@ -371,12 +404,18 @@ namespace trieste::yaml
           },
 
         // ns-shorthand-tag
+        // ![0-9A-Za-z\-]*!|!!|! : An exclamation mark followed by zero or more alphanumeric characters or hyphens,
+        //                         followed by an exclamation mark, or two exclamation marks, or a single exclamation mark
+        // (?:[\w#;\/\?:@&=+$_.~*'()]|%\d\d)+ : One or more of: a word character and #;/?:@&=+$_.~*'(),
+        //                                      or a percent sign followed by two digits
+        // (?:[ \t]+|\r?(\n)) : Either one or more spaces or tabs, or a newline
         R"((![0-9A-Za-z\-]+!|!!|!)((?:[\w#;\/\?:@&=+$,_.!~*'()[\]{}]|%\d+)+)(?:[ \t]+|\r?(\n)))" >>
           [](auto& m) {
             m.push(Tag);
             m.add(TagPrefix, 1);
             m.add(ShorthandTag, 2);
-            m.term({Tag});
+            m.term();
+            m.pop(Tag);
 
             if (m.match(3).len > 0)
             {
@@ -389,7 +428,8 @@ namespace trieste::yaml
           [](auto& m) {
             m.push(Tag);
             m.add(TagPrefix, 1);
-            m.term({Tag});
+            m.term();
+            m.pop(Tag);
             if (m.match(2).len > 0)
             {
               m.add(NewLine, 3);
@@ -398,6 +438,11 @@ namespace trieste::yaml
 
         R"(\*[^\[\]\{\}\, \r\n]+)" >> [](auto& m) { m.add(Alias); },
 
+        // Block scalar
+        // [>|\|] : A greater than sign or a pipe
+        // ([0-9]|[+-])? : Either a digit, or a plus or minus sign (optional)
+        // ([0-9]|[+-])? : Either a digit, or a plus or minus sign (optional)
+        // (#)? : A hash sign (error)
         R"(([>|\|])([0-9]|[+-])?([0-9]|[+-])?(#)?)" >>
           [](detail::Make& m) {
             auto block_match = m.match(1).view();
@@ -420,6 +465,14 @@ namespace trieste::yaml
             }
           },
 
+        // Single-quote. NB this captures absolutely everything at this stage, and is cleaned up
+        // in the quotes() pass, because the semantics of quoted strings are too complex
+        // to handle in this parser.
+        // '(?:''|[^'])*' : A single quote followed by zero or more of:
+        //                    two single quotes, or
+        //                    a character which is NOT a single quote
+        //                  followed by a single quote
+        // (#)? : A hash sign (error)
         R"('(?:''|[^'])*'(#)?)" >>
           [](auto& m) {
             if (m.match(1).len > 0)
@@ -431,6 +484,15 @@ namespace trieste::yaml
             m.add(SingleQuote);
           },
 
+        // Double-quote. NB this captures absolutely everything at this stage, and is cleaned up
+        // in the quotes() pass, because the semantics of quoted strings are too complex
+        // to handle in this parser.
+        // "(?:\\\\|\\"|[^"])*" : A double quote followed by zero or more of:
+        //                          two backslashes, or
+        //                          a backslash and a double quote, or
+        //                          a character which is NOT a double quote
+        //                        followed by a double quote
+        // (#)? : A hash sign (error)
         R"("(?:\\\\|\\"|[^"])*"(#)?)" >>
           [](auto& m) {
             if (m.match(1).len > 0)
@@ -452,6 +514,16 @@ namespace trieste::yaml
             m.error("Single quoted string without closing quote");
           },
 
+        // Value. Fairly expansive in YAML, it is either:
+        // [^\s:\?-] : A character which is NOT whitespace, a colon, a question mark, or a hyphen
+        // :[^\s] : A colon followed by a character which is NOT whitespace
+        // \?[^\s] : A question mark followed by a character which is NOT whitespace
+        // -[^\s] : A hyphen followed by a character which is NOT whitespace
+        // And then zero or more of either:
+        // [^\r\n \t:#] : Not a newline, space, tab, or hash
+        // :[^\s] : A colon followed by a character which is NOT whitespace
+        // #[^\s] : A hash followed by a character which is NOT whitespace
+        // [ \t][^\r\n \t:#] : A space or tab followed by a character which is NOT a newline, space, tab, or hash
         R"((?:[^\s:\?-]|:[^\s]|\?[^\s]|-[^\s])(?:[^\r\n \t:#]|:[^\s]|#[^\s]|[ \t][^\r\n \t:#])*)" >>
           [](auto& m) { m.add(Value); },
       });
@@ -507,7 +579,8 @@ namespace trieste::yaml
         R"((\}))" >>
           [flow_level](auto& m) {
             m.add(FlowMappingEnd);
-            m.term({FlowMapping});
+            m.term();
+            m.pop(FlowMapping);
             *flow_level -= 1;
             if (*flow_level == 0)
             {
@@ -523,7 +596,8 @@ namespace trieste::yaml
             }
 
             m.add(FlowSequenceEnd, 1);
-            m.term({FlowSequence});
+            m.term();
+            m.pop(FlowSequence);
             *flow_level -= 1;
             if (*flow_level == 0)
             {
@@ -591,7 +665,8 @@ namespace trieste::yaml
             m.push(Tag);
             m.add(TagPrefix, 1);
             m.add(VerbatimTag, 2);
-            m.term({Tag});
+            m.term();
+            m.pop(Tag);
             if (m.match(3).len > 0)
             {
               m.add(Comma, 3);
@@ -604,7 +679,8 @@ namespace trieste::yaml
             m.push(Tag);
             m.add(TagPrefix, 1);
             m.add(ShorthandTag, 2);
-            m.term({Tag});
+            m.term();
+            m.pop(Tag);
             if (m.match(3).len > 0)
             {
               m.add(Comma, 3);
@@ -616,7 +692,8 @@ namespace trieste::yaml
           [](auto& m) {
             m.push(Tag);
             m.add(TagPrefix, 1);
-            m.term({Tag});
+            m.term();
+            m.pop(Tag);
           },
 
         R"(\*[^\[\]\{\}\, \r\n]+)" >> [](auto& m) { m.add(Alias); },
