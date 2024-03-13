@@ -418,7 +418,7 @@ namespace trieste::yaml
   class YAMLEmitter
   {
   public:
-    YAMLEmitter(const std::string& indent = "  ");
+    YAMLEmitter(const std::string& indent = "  ", const std::string& newline = "\n");
 
     void emit(std::ostream& os, const Node& value) const;
     void emit_events(std::ostream& os, const Node& value) const;
@@ -452,6 +452,7 @@ namespace trieste::yaml
     void write_quote(std::ostream& os, const Node& node, bool is_single) const;
 
     std::string m_indent;
+    std::string m_newline;
   };
 
   class YAMLReader

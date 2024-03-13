@@ -13,7 +13,7 @@ namespace
 
 namespace trieste::yaml
 {
-  YAMLEmitter::YAMLEmitter(const std::string& indent) : m_indent(indent) {}
+  YAMLEmitter::YAMLEmitter(const std::string& indent, const std::string& newline) : m_indent(indent), m_newline(newline) {}
 
   void YAMLEmitter::emit(std::ostream& os, const Node&) const
   {
@@ -39,7 +39,7 @@ namespace trieste::yaml
     {
       os << " :" << escape_chars(value->location().view(), {'\\'});
     }
-    os << std::endl;
+    os << m_newline;
 
     return false;
   }
@@ -55,7 +55,7 @@ namespace trieste::yaml
 
     Node node = handle_tag_anchor(os, maybe_node);
 
-    os << std::endl;
+    os << m_newline;
     for (auto child : *node)
     {
       if (emit_event(os, child))
@@ -63,7 +63,7 @@ namespace trieste::yaml
         return true;
       }
     }
-    os << "-MAP" << std::endl;
+    os << "-MAP" << m_newline;
     return false;
   }
 
@@ -79,7 +79,7 @@ namespace trieste::yaml
 
     Node node = handle_tag_anchor(os, maybe_node);
 
-    os << std::endl;
+    os << m_newline;
     for (auto child : *node)
     {
       if (emit_event(os, child))
@@ -87,13 +87,13 @@ namespace trieste::yaml
         return true;
       }
     }
-    os << "-SEQ" << std::endl;
+    os << "-SEQ" << m_newline;
     return false;
   }
 
   bool YAMLEmitter::emit_alias_event(std::ostream& os, const Node& node) const
   {
-    os << "=ALI *" << node->location().view() << std::endl;
+    os << "=ALI *" << node->location().view() << m_newline;
     return false;
   }
 
@@ -104,7 +104,7 @@ namespace trieste::yaml
 
     Node node = handle_tag_anchor(os, maybe_node);
 
-    os << " |" << block_to_string(node, true) << std::endl;
+    os << " |" << block_to_string(node, true) << m_newline;
     return false;
   }
 
@@ -115,7 +115,7 @@ namespace trieste::yaml
 
     Node node = handle_tag_anchor(os, maybe_node);
 
-    os << " >" << block_to_string(node, true) << std::endl;
+    os << " >" << block_to_string(node, true) << m_newline;
     return false;
   }
 
@@ -143,7 +143,7 @@ namespace trieste::yaml
         os << " ";
       }
     }
-    os << escape_chars(node->back()->location().view(), escape) << std::endl;
+    os << escape_chars(node->back()->location().view(), escape) << m_newline;
     return false;
   }
 
@@ -156,7 +156,7 @@ namespace trieste::yaml
 
     os << " \"";
     write_quote(os, node, true);
-    os << std::endl;
+    os << m_newline;
     return false;
   }
 
@@ -169,7 +169,7 @@ namespace trieste::yaml
 
     os << " '";
     write_quote(os, node, true);
-    os << std::endl;
+    os << m_newline;
     return false;
   }
 
@@ -216,7 +216,7 @@ namespace trieste::yaml
     {
       os << "=VAL";
       handle_tag_anchor(os, node);
-      os << " :" << std::endl;
+      os << " :" << m_newline;
       return false;
     }
 
@@ -280,7 +280,7 @@ namespace trieste::yaml
       {
         os << " " << start->location().view();
       }
-      os << std::endl;
+      os << m_newline;
       if (emit_event(os, value))
       {
         return true;
@@ -290,13 +290,13 @@ namespace trieste::yaml
       {
         os << " " << end->location().view();
       }
-      os << std::endl;
+      os << m_newline;
       return false;
     }
 
     if (node_type == Stream)
     {
-      os << "+STR" << std::endl;
+      os << "+STR" << m_newline;
       for (Node child : *node->back())
       {
         if (emit_event(os, child))
@@ -304,7 +304,7 @@ namespace trieste::yaml
           return true;
         }
       }
-      os << "-STR" << std::endl;
+      os << "-STR" << m_newline;
       return false;
     }
 
@@ -328,7 +328,7 @@ namespace trieste::yaml
       // anchor for empty node
       os << "=VAL";
       handle_tag_anchor(os, node);
-      os << " :" << std::endl;
+      os << " :" << m_newline;
       return false;
     }
 
