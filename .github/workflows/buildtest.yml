@@ -36,12 +36,12 @@ jobs:
         - platform: "ubuntu-latest"
           variant: "asan"
           build-type: "Release"
-          cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANTIZE=address"
+          cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANITIZE=address"
 
         - platform: "ubuntu-latest"
           variant: "ubsan"
           build-type: "Release"
-          cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANTIZE=undefined"
+          cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANITIZE=undefined"
 
         exclude:
         # Mac is already using clang.
