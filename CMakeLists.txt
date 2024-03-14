@@ -33,6 +33,9 @@ set(SNMALLOC_USE_CXX17 ${TRIESTE_USE_CXX17})
 
 set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
 
+set(TRIESTE_SANITIZE "" CACHE STRING "Argument to pass to sanitize (disabled by default)")
+
+
 FetchContent_Declare(
   snmalloc
   GIT_REPOSITORY https://github.com/microsoft/snmalloc
@@ -84,6 +87,11 @@ if(TRIESTE_USE_CXX17)
   target_compile_definitions(trieste INTERFACE cxx_std_17)
 else()
   target_compile_definitions(trieste INTERFACE cxx_std_20)
+endif()
+
+if (TRIESTE_SANITIZE)
+  target_compile_options(trieste INTERFACE -g -fsanitize=${TRIESTE_SANITIZE} -fno-omit-frame-pointer)
+  target_link_libraries(trieste INTERFACE -fsanitize=${TRIESTE_SANITIZE})
 endif()
 
 if(MSVC)

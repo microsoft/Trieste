@@ -30,6 +30,14 @@ jobs:
           build-type: "Release"
           cmake-options: "-DTRIESTE_BUILD_PARSER_TESTS=1"
 
+        - platform: "ubuntu-latest"
+          build-type: "Release"
+          cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANTIZE=address"
+
+        - platform: "ubuntu-latest"
+          build-type: "Release"
+          cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANTIZE=undefined"
+
         exclude:
         # Mac is already using clang.
         - platform: "macos-latest"
