@@ -157,29 +157,34 @@ namespace trieste
   public:
     ~NodeDef()
     {
-      thread_local std::vector<Nodes> work_list;
-      thread_local bool recursive = false;
+      // Contains a pointer to a vector on the stack for handling the
+      // recursive destruction of the AST.
+      // We don't use an actual vector in the TLS as the destruction
+      // of the TLS can cause problems on some platforms.
+      thread_local std::vector<Nodes>* work_list;
 
-      work_list.push_back(std::move(children));
-
-      if (recursive)
+      if (work_list)
       {
+        work_list->push_back(std::move(children));
         return;
       }
 
-      recursive = true;
+      std::vector<Nodes> work_list_local;
+      work_list = &work_list_local;
 
-      while (!work_list.empty())
+      work_list_local.push_back(std::move(children));
+      
+      while (!work_list_local.empty())
       {
         // clear will potentially call destructor recursively, so we need to
         // have finished modifying the work_list before calling it, hence moving
         // the nodes out of the work_list into a local variable.
-        auto nodes = std::move(work_list.back());
-        work_list.pop_back();
+        auto nodes = std::move(work_list_local.back());
+        work_list_local.pop_back();
         nodes.clear();
       }
 
-      recursive = false;
+      work_list = nullptr;
     }
 
     static Node create(const Token& type)
