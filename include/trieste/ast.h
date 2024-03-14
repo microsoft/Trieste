@@ -658,26 +658,36 @@ namespace trieste
         parent->find(q->shared_from_this());
     }
 
-    void str(std::ostream& out, size_t level) const
+    void str(std::ostream& out) const
     {
-      out << indent(level) << "(" << type_.str();
+      size_t level = 0;
 
-      if (type_ & flag::print)
-        out << " " << location_.view().size() << ":" << location_.view();
+      auto pre = [&](Node& node) {
+        if (level != 0)
+          out << std::endl;
 
-      if (symtab_)
-      {
-        out << std::endl;
-        symtab_->str(out, level + 1);
-      }
+        out << indent(level) << "(" << node->type_.str();
 
-      for (auto child : children)
-      {
-        out << std::endl;
-        child->str(out, level + 1);
-      }
+        if (node->type_ & flag::print)
+          out << " " << node->location_.view().size() << ":" << node->location_.view();
 
-      out << ")";
+        if (node->symtab_)
+        {
+          out << std::endl;
+          node->symtab_->str(out, level + 1);
+        }
+
+        level++;
+        return true;
+      };
+
+      auto post = [&](Node&) {
+        out << ")";
+        level--;
+      };
+
+      // Cast is safe as traverse only mutates if pre and post do.
+      const_cast<NodeDef*>(this)->traverse(pre, post);
     }
 
     template<typename Pre, typename Post>
@@ -840,7 +850,7 @@ namespace trieste
   {
     if (node)
     {
-      node->str(os, 0);
+      node->str(os);
       os << std::endl;
     }
 
@@ -855,7 +865,7 @@ namespace trieste
   inline std::ostream& operator<<(std::ostream& os, const NodeRange& range)
   {
     for (auto it = range.first; it != range.second; ++it)
-      (*it)->str(os, 0);
+      (*it)->str(os);
 
     return os;
   }
