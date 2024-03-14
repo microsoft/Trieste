@@ -6,21 +6,24 @@ namespace
   using namespace trieste::json;
 
   std::size_t
-  invalid_tokens(Node n, const std::map<Token, std::string>& token_messages)
+  invalid_tokens(Node node, const std::map<Token, std::string>& token_messages)
   {
     std::size_t changes = 0;
-    for (auto child : *n)
-    {
-      if (token_messages.count(child->type()) > 0)
+
+    node->traverse([&](Node& n){
+      if (n->type() == Error)
+        return false;
+
+      for (auto child : *n)
       {
-        n->replace(child, err(child, token_messages.at(child->type())));
-        changes += 1;
+        if (token_messages.count(child->type()) > 0)
+        {
+          n->replace(child, err(child, token_messages.at(child->type())));
+          changes += 1;
+        }
       }
-      else
-      {
-        changes += invalid_tokens(child, token_messages);
-      }
-    }
+      return true;
+    });
 
     return changes;
   }

@@ -484,51 +484,61 @@ namespace trieste
         if (shapes.empty())
           return true;
 
-        if (!node)
-          return false;
+        bool ok = true;
 
-        if (node == Error)
-          return true;
+        node->traverse([&](auto& current) {
+          if (current == Error)
+            return false;
 
-        auto find = shapes.find(node->type());
-
-        if (find == shapes.end())
-        {
-          // If the shape isn't present, assume it should be empty.
-          if (node->empty())
-            return true;
-
-          logging::Error() << node->location().origin_linecol()
-                           << ": expected 0 children, found " << node->size()
-                           << std::endl
-                           << node->location().str() << node << std::endl;
-          return false;
-        }
-
-        bool ok = std::visit(
-          [&](auto& shape) { return shape.check(node); }, find->second);
-
-        for (auto& child : *node)
-        {
-          if (child->parent() != node.get())
+          if (!current)
           {
-            logging::Error()
-              << child->location().origin_linecol()
-              << ": this node appears in the AST multiple times:" << std::endl
-              << child->location().str() << child << std::endl
-              << node->location().origin_linecol() << ": here:" << std::endl
-              << node << std::endl
-              << child->parent()->location().origin_linecol()
-              << ": and here:" << std::endl
-              << child->parent() << std::endl
-              << "Your language implementation needs to explicitly clone "
-                 "nodes if they're duplicated."
-              << std::endl;
             ok = false;
+            return false;
           }
 
-          ok = check(child) && ok;
-        }
+          auto find = shapes.find(current->type());
+
+          if (find == shapes.end())
+          {
+            // If the shape isn't present, assume it should be empty.
+            if (current->empty())
+              return false;
+
+            logging::Error()
+              << current->location().origin_linecol()
+              << ": expected 0 children, found " << current->size() << std::endl
+              << current->location().str() << current << std::endl;
+            ok = false;
+            return false;
+          }
+
+          ok = std::visit(
+                 [&](auto& shape) { return shape.check(current); },
+                 find->second) &&
+            ok;
+
+          for (auto& child : *current)
+          {
+            if (child->parent() != current.get())
+            {
+              logging::Error()
+                << child->location().origin_linecol()
+                << ": this node appears in the AST multiple times:" << std::endl
+                << child->location().str() << child << std::endl
+                << current->location().origin_linecol()
+                << ": here:" << std::endl
+                << current << std::endl
+                << child->parent()->location().origin_linecol()
+                << ": and here:" << std::endl
+                << child->parent() << std::endl
+                << "Your language implementation needs to explicitly clone "
+                   "nodes if they're duplicated."
+                << std::endl;
+              ok = false;
+            }
+          }
+          return true;
+        });
 
         return ok;
       }
@@ -638,19 +648,17 @@ namespace trieste
 
       bool build_st(Node& node) const
       {
-        if (!node)
-          return false;
-
-        if (node == Error)
-          return true;
-
-        std::vector<Node> stack;
-        stack.push_back(node);
-
         bool ok = true;
-        while(!stack.empty()){
-          Node current = stack.back();
-          stack.pop_back();        
+
+        node->traverse([&](Node& current) {
+          if (!current)
+          {
+            ok = false;
+            return false;
+          }
+
+          if (current == Error)
+            return false;
 
           current->clear_symbols();
 
@@ -659,11 +667,12 @@ namespace trieste
           if (find != shapes.end())
           {
             ok = std::visit(
-              [&](auto& shape) { return shape.build_st(current); }, find->second) && ok;
+                   [&](auto& shape) { return shape.build_st(current); },
+                   find->second) &&
+              ok;
           }
-
-          stack.insert(stack.end(), current->begin(), current->end());
-        }
+          return true;
+        });
 
         return ok;
       }
