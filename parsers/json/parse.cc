@@ -17,12 +17,6 @@ namespace trieste::json
 
        "{" >>
          [stack](auto& m) {
-           if (stack->size() > 500)
-           {
-             // TODO: Remove this once Trieste can handle deeper stacks
-             m.error("Too many nested objects");
-             return;
-           }
            m.push(Object);
            m.push(Group);
            stack->push_back('{');
@@ -42,12 +36,6 @@ namespace trieste::json
 
        R"(\[)" >>
          [stack](auto& m) {
-           if (stack->size() > 500)
-           {
-             // TODO: Remove this once Trieste can handle deeper stacks
-             m.error("Too many nested objects");
-             return;
-           }
            m.push(Array);
            m.push(Group);
            stack->push_back('[');
