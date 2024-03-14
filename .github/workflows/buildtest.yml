@@ -14,6 +14,7 @@ jobs:
         build-type: [ "Release", "Debug" ]
         standard: [ "", "-DTRIESTE_USE_CXX17=ON" ]
         compiler: [ "", "clang" ]
+        variant: [""]
         
         include:
         - platform: "ubuntu-latest"
@@ -23,18 +24,22 @@ jobs:
           dependencies: "sudo apt install ninja-build"
 
         - platform: "windows-latest"
+          variant:  "build-parser-tests"
           build-type: "Release"
           cmake-options: "-DTRIESTE_BUILD_PARSER_TESTS=1"
         
         - platform: "macos-latest"
+          variant:  "build-parser-tests"
           build-type: "Release"
           cmake-options: "-DTRIESTE_BUILD_PARSER_TESTS=1"
 
         - platform: "ubuntu-latest"
+          variant: "asan"
           build-type: "Release"
           cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANTIZE=address"
 
         - platform: "ubuntu-latest"
+          variant: "ubsan"
           build-type: "Release"
           cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANTIZE=undefined"
 
@@ -50,6 +55,8 @@ jobs:
       fail-fast: false
 
     runs-on: ${{matrix.platform}}
+
+    name: ${{matrix.platform}} ${{matrix.build-type}} ${{matrix.standard}} ${{matrix.compiler}} ${{matrix.variant}}
 
     steps:
     - uses: actions/checkout@v3
