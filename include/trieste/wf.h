@@ -486,7 +486,7 @@ namespace trieste
 
         bool ok = true;
 
-        auto pre = [&](auto& current) {
+        node->traverse([&](auto& current) {
           if (current == Error)
             return false;
 
@@ -504,16 +504,18 @@ namespace trieste
             if (current->empty())
               return false;
 
-            logging::Error() << current->location().origin_linecol()
-                            << ": expected 0 children, found " << current->size()
-                            << std::endl
-                            << current->location().str() << current << std::endl;
+            logging::Error()
+              << current->location().origin_linecol()
+              << ": expected 0 children, found " << current->size() << std::endl
+              << current->location().str() << current << std::endl;
             ok = false;
             return false;
           }
 
           ok = std::visit(
-            [&](auto& shape) { return shape.check(current); }, find->second) && ok;
+                 [&](auto& shape) { return shape.check(current); },
+                 find->second) &&
+            ok;
 
           for (auto& child : *current)
           {
@@ -523,21 +525,20 @@ namespace trieste
                 << child->location().origin_linecol()
                 << ": this node appears in the AST multiple times:" << std::endl
                 << child->location().str() << child << std::endl
-                << current->location().origin_linecol() << ": here:" << std::endl
+                << current->location().origin_linecol()
+                << ": here:" << std::endl
                 << current << std::endl
                 << child->parent()->location().origin_linecol()
                 << ": and here:" << std::endl
                 << child->parent() << std::endl
                 << "Your language implementation needs to explicitly clone "
-                  "nodes if they're duplicated."
+                   "nodes if they're duplicated."
                 << std::endl;
               ok = false;
             }
           }
           return true;
-        };
-
-        node->traverse(pre, [](Node&){});
+        });
 
         return ok;
       }
@@ -647,19 +648,17 @@ namespace trieste
 
       bool build_st(Node& node) const
       {
-        if (!node)
-          return false;
-
-        if (node == Error)
-          return true;
-
-        std::vector<Node> stack;
-        stack.push_back(node);
-
         bool ok = true;
-        while(!stack.empty()){
-          Node current = stack.back();
-          stack.pop_back();        
+
+        node->traverse([&](Node& current) {
+          if (!current)
+          {
+            ok = false;
+            return false;
+          }
+
+          if (current == Error)
+            return false;
 
           current->clear_symbols();
 
@@ -668,11 +667,12 @@ namespace trieste
           if (find != shapes.end())
           {
             ok = std::visit(
-              [&](auto& shape) { return shape.build_st(current); }, find->second) && ok;
+                   [&](auto& shape) { return shape.build_st(current); },
+                   find->second) &&
+              ok;
           }
-
-          stack.insert(stack.end(), current->begin(), current->end());
-        }
+          return true;
+        });
 
         return ok;
       }

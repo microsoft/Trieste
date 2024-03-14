@@ -169,7 +169,7 @@ namespace trieste
 
       recursive = true;
 
-      while(!work_list.empty())
+DF      while (!work_list.empty())
       {
         // clear will potentially call destructor recursively, so we need to
         // have finished modifying the work_list before calling it, hence moving
@@ -669,7 +669,8 @@ namespace trieste
         out << indent(level) << "(" << node->type_.str();
 
         if (node->type_ & flag::print)
-          out << " " << node->location_.view().size() << ":" << node->location_.view();
+          out << " " << node->location_.view().size() << ":"
+              << node->location_.view();
 
         if (node->symtab_)
         {
@@ -690,8 +691,31 @@ namespace trieste
       const_cast<NodeDef*>(this)->traverse(pre, post);
     }
 
-    template<typename Pre, typename Post>
-    SNMALLOC_FAST_PATH void traverse(Pre pre, Post post)
+    class NopPost
+    {
+    public:
+      void operator()(Node&) {}
+    };
+
+    /**
+     * @brief This function performs a traversal of the node structure.
+     *
+     * It takes both a pre-order and a post-order function that are called when
+     * a node is first visited, and once all its children have been visited.
+     *
+     * The pre-order action is expected to be of the form
+     *   [..](Node& node) -> bool { .. }
+     * where it returns true if the traversal should proceed to the children,
+     * and false if it should not inspect the children.
+     *
+     * The post-order action will only be called if the pre-order action
+     * returned true.
+     *
+     * The traversal is allowed to modify the structure below the current node
+     * passed to the action, but not above.
+     */
+    template<typename Pre, typename Post = NopPost>
+    SNMALLOC_FAST_PATH void traverse(Pre pre, Post post = NopPost())
     {
       Node root = shared_from_this();
       if (!pre(root))
@@ -725,24 +749,15 @@ namespace trieste
      */
     void get_errors(Nodes& errors)
     {
-      std::vector<Node> stack;
-      stack.push_back(shared_from_this());
+      traverse([&](Node& current) {
+        // Only add Error nodes that do not contain further Error nodes.
+        if (current->get_and_reset_contains_error())
+          return true;
 
-      while(!stack.empty()){
-        Node current = stack.back();
-        stack.pop_back();
-
-        if (!current->get_and_reset_contains_error())
-        {
-          // Only add Error nodes that do not contain further Error nodes.
-          if (current->type_ == Error)
-            errors.push_back(current);
-
-          continue;
-        }
-
-        stack.insert(stack.end(), current->children.begin(), current->children.end());
-      }
+        if (current->type_ == Error)
+          errors.push_back(current);
+        return false;
+      });
     }
 
     bool get_and_reset_contains_error()
