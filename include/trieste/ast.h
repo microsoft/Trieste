@@ -169,7 +169,7 @@ namespace trieste
 
       recursive = true;
 
-DF      while (!work_list.empty())
+      while (!work_list.empty())
       {
         // clear will potentially call destructor recursively, so we need to
         // have finished modifying the work_list before calling it, hence moving
