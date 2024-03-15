@@ -778,7 +778,6 @@ namespace trieste
           path.pop_back();
         }
       }
-      post(root);
     }
 
     /**
