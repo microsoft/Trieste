@@ -695,10 +695,8 @@ namespace trieste
         parent->find(q->shared_from_this());
     }
 
-    void str(std::ostream& out) const
+    void str(std::ostream& out, size_t level = 0) const
     {
-      size_t level = 0;
-
       auto pre = [&](Node& node) {
         if (level != 0)
           out << std::endl;
