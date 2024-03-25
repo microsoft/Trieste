@@ -7,7 +7,7 @@ namespace trieste::json
   {}
 
   void JSONEmitter::emit_object(
-    std::ostream& os, const std::string& indent, const Node& object)
+    std::ostream& os, const std::string& indent, const Node& object) const
   {
     if (object->empty())
     {
@@ -55,7 +55,7 @@ namespace trieste::json
   }
 
   void JSONEmitter::emit_array(
-    std::ostream& os, const std::string& indent, const Node& array)
+    std::ostream& os, const std::string& indent, const Node& array) const
   {
     if (array->empty())
     {
@@ -96,7 +96,7 @@ namespace trieste::json
   }
 
   void JSONEmitter::emit_value(
-    std::ostream& os, const std::string& indent, const Node& value)
+    std::ostream& os, const std::string& indent, const Node& value) const
   {
     if (value->in({Number, String, True, False, Null}))
     {
@@ -118,7 +118,7 @@ namespace trieste::json
     }
   }
 
-  void JSONEmitter::emit(std::ostream& os, const Node& value)
+  void JSONEmitter::emit(std::ostream& os, const Node& value) const
   {
     if (value == Top)
     {
