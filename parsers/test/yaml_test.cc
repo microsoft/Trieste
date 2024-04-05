@@ -236,7 +236,7 @@ struct TestCase
       return {false, result.error_message()};
     }
 
-    auto actual_event = dest->file("./actual.event");
+    auto actual_event = dest->file(std::filesystem::path(".") / "actual.event");
 
     trieste::logging::Debug() << actual_event;
 

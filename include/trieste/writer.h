@@ -17,8 +17,8 @@ namespace trieste
   private:
     enum class Mode
     {
-      // Files will be written to a directory structure
-      Directory,
+      // Files will be written to the file system
+      FileSystem,
       // Files will be output directly to console
       Console,
       // Files are stored in memory and accessible via dst.files()
@@ -42,14 +42,17 @@ namespace trieste
     {
       switch (mode_)
       {
-        case Mode::Directory:
+        case Mode::FileSystem:
           return fstream_;
 
         case Mode::Console:
           return std::cout;
 
         case Mode::Synthetic:
-          return sstream_;
+          return sstream_;       
+
+        default:
+          throw std::runtime_error("Invalid destination mode");
       }
     }
 
@@ -69,7 +72,7 @@ namespace trieste
       path_ = path_ / path;
       switch (mode_)
       {
-        case Mode::Directory:
+        case Mode::FileSystem:
           std::filesystem::create_directories(path_.parent_path());
           fstream_.open(path_);
           return is_open_ = fstream_.is_open();
@@ -80,6 +83,9 @@ namespace trieste
 
         case Mode::Synthetic:
           return is_open_ = true;
+
+        default:
+          throw std::runtime_error("Invalid destination mode");
       }
     }
 
@@ -93,7 +99,7 @@ namespace trieste
       std::string contents;
       switch (mode_)
       {
-        case Mode::Directory:
+        case Mode::FileSystem:
           if (fstream_.is_open())
           {
             fstream_.close();
@@ -108,7 +114,7 @@ namespace trieste
           contents = sstream_.str();
           if (!contents.empty())
           {
-            files_[path_] = contents;
+            files_[path_.string()] = contents;
             sstream_ = std::ostringstream();
           }
           break;
@@ -123,15 +129,15 @@ namespace trieste
       return files_;
     }
 
-    const std::string& file(const std::string& path) const
+    const std::string& file(const std::filesystem::path& path) const
     {
-      return files_.at(path);
+      return files_.at(path.string());
     }
 
     static Destination dir(const std::filesystem::path& path)
     {
       auto d = std::make_shared<DestinationDef>();
-      d->mode_ = Mode::Directory;
+      d->mode_ = Mode::FileSystem;
       d->path_ = path;
       return d;
     }

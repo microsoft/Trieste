@@ -238,7 +238,7 @@ struct TestCase
       return {false, result.error_message(), false};
     }
 
-    auto actual_json = dest->file("./actual.json");
+    auto actual_json = dest->file(std::filesystem::path(".") / "actual.json");
 
     trieste::logging::Debug() << actual_json;
 
