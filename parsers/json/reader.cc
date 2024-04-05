@@ -39,11 +39,11 @@ namespace
 
     std::vector<Node> lhs_members(lhs->begin(), lhs->end());
     std::vector<Node> rhs_members(rhs->begin(), rhs->end());
-    std::sort(lhs_members.begin(), lhs_members.end(), [](Node lhs, Node rhs) {
-      return lhs->front()->location().view() < rhs->front()->location().view();
+    std::sort(lhs_members.begin(), lhs_members.end(), [](Node x, Node y) {
+      return x->front()->location().view() < y->front()->location().view();
     });
-    std::sort(rhs_members.begin(), rhs_members.end(), [](Node lhs, Node rhs) {
-      return lhs->front()->location().view() < rhs->front()->location().view();
+    std::sort(rhs_members.begin(), rhs_members.end(), [](Node x, Node y) {
+      return x->front()->location().view() < y->front()->location().view();
     });
 
     for (std::size_t i = 0; i < lhs_members.size(); ++i)
