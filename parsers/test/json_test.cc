@@ -1,5 +1,6 @@
 #include "trieste/json.h"
 #include "trieste/logging.h"
+#include "trieste/trieste.h"
 #include "trieste/utf8.h"
 
 #include <CLI/CLI.hpp>
@@ -20,8 +21,7 @@ enum class Outcome
   Maybe
 };
 
-using namespace trieste::utf8;
-using namespace trieste::json;
+using namespace trieste;
 
 std::string replace_whitespace(const std::string& str)
 {
@@ -34,11 +34,11 @@ std::string replace_whitespace(const std::string& str)
     switch (str[i])
     {
       case ' ':
-        os << rune(183);
+        os << utf8::rune(183);
         break;
 
       case '\t':
-        os << rune(2192);
+        os << utf8::rune(2192);
         break;
 
       default:
@@ -89,6 +89,17 @@ void diff_line(
   os << std::endl;
 }
 
+std::size_t newline_or_end(const std::string& str, std::size_t start)
+{
+  std::size_t newline = str.find('\n', start);
+  if (newline == std::string::npos)
+  {
+    return str.size();
+  }
+
+  return newline;
+}
+
 void diff(
   const std::string& actual,
   const std::string& wanted,
@@ -101,10 +112,12 @@ void diff(
   bool error = false;
   while (a < actual.size() && w < wanted.size())
   {
-    std::size_t a_end = actual.find("\n", a);
-    std::size_t w_end = wanted.find("\n", w);
+    std::size_t a_end = newline_or_end(actual, a);
     std::string a_line = actual.substr(a, a_end - a);
+  
+    std::size_t w_end = newline_or_end(wanted, w);
     std::string w_line = wanted.substr(w, w_end - w);
+  
     if (a_line != w_line)
     {
       diff_line(a_line, w_line, os);
@@ -124,7 +137,7 @@ void diff(
   {
     while (a < actual.size())
     {
-      std::size_t a_end = actual.find("\n", a);
+      std::size_t a_end = newline_or_end(actual, a);
       std::string a_line = actual.substr(a, a_end - a);
       os << "+ " << a_line << std::endl;
       a = a_end + 1;
@@ -132,7 +145,11 @@ void diff(
 
     while (w < wanted.size())
     {
-      std::size_t w_end = wanted.find("\n", w);
+      std::size_t w_end = newline_or_end(wanted, w);
+      if(w_end == std::string::npos){
+        w_end = wanted.size();
+      }
+
       std::string w_line = wanted.substr(w, w_end - w);
       os << "- " << w_line << std::endl;
       w = w_end + 1;
@@ -184,10 +201,10 @@ bool diff_json(const std::string& actual, const std::string& wanted)
     skip_whitespace(w, wanted.end());
   }
 
-  return false;
+  return a != actual.end() || w != wanted.end();
 }
 
-struct Result
+struct TestResult
 {
   bool accepted;
   std::string error;
@@ -201,30 +218,26 @@ struct TestCase
   std::filesystem::path filename;
   Outcome outcome;
 
-  Result run(const std::filesystem::path& debug_path, bool wf_checks)
+  TestResult run(const std::filesystem::path& debug_path, bool wf_checks)
   {
-    JSONEmitter emitter;
-    JSONReader reader(json);
-    reader.debug_enabled(!debug_path.empty())
-      .debug_path(debug_path)
-      .well_formed_checks_enabled(wf_checks);
-    reader.read();
-    if (reader.has_errors())
+    auto dest = DestinationDef::synthetic();
+    auto result = json::reader()
+                    .synthetic(json)
+                    .debug_enabled(!debug_path.empty())
+                    .debug_path(debug_path)
+                    .wf_check_enabled(wf_checks) >>
+      json::writer("actual.json")
+        .destination(dest)
+        .debug_enabled(!debug_path.empty())
+        .debug_path(debug_path)
+        .wf_check_enabled(wf_checks);
+
+    if (!result.ok)
     {
-      return {false, reader.error_message(), false};
+      return {false, result.error_message(), false};
     }
 
-    std::string actual_json;
-    try
-    {
-      std::ostringstream os;
-      emitter.emit(os, reader.element());
-      actual_json = os.str();
-    }
-    catch (const std::exception& ex)
-    {
-      return {false, ex.what(), false};
-    }
+    auto actual_json = dest->file("./actual.json");
 
     trieste::logging::Debug() << actual_json;
 
@@ -253,7 +266,7 @@ struct TestCase
       std::filesystem::path file = file_or_dir;
       if (file.extension() == ".json")
       {
-        std::string json = read_to_end(file, true);
+        std::string json = utf8::read_to_end(file, true);
         std::string name = file.stem().string();
         Outcome outcome;
         switch (name[0])

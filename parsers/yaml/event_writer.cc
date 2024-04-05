@@ -1,40 +1,73 @@
+#include "internal.h"
 #include "trieste/utf8.h"
 #include "yaml.h"
 
-namespace
+namespace writer
 {
-  enum class Chomp
-  {
-    Clip,
-    Strip,
-    Keep,
-  };
+  using namespace trieste;
+  using namespace trieste::yaml;
 
-  bool is_space(char c)
+  Node handle_tag_anchor(std::ostream& os, const Node& node)
   {
-    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
-  }
-}
+    Node anchor = nullptr;
+    std::string tag = "";
+    Node value = node;
+    if (node->type() == AnchorValue)
+    {
+      anchor = node / Anchor;
+      value = node / Value;
+    }
 
-namespace trieste::yaml
-{
-  YAMLEmitter::YAMLEmitter(
-    const std::string& indent, const std::string& newline)
-  : m_indent(indent), m_newline(newline)
-  {}
+    if (value->type() == TagValue)
+    {
+      std::string handle = "";
+      Node prefix_node = value / TagPrefix;
+      Node handle_node = prefix_node->lookup()[0];
+      if (handle_node != nullptr)
+      {
+        handle = handle_node->back()->location().view();
+      }
+      Node name_node = value / TagName;
 
-  void YAMLEmitter::emit(std::ostream& os, const Node&) const
-  {
-    os << "Not implemented";
-  }
+      value = value / Value;
+      auto tagname = unescape_url_chars(name_node->location().view());
+      std::ostringstream tags;
+      if (
+        tagname.size() >= 2 && tagname.front() == '<' && tagname.back() == '>')
+      {
+        tags << tagname;
+      }
+      else
+      {
+        tags << "<" << handle << tagname << ">";
+      }
+      tag = tags.str();
+    }
 
-  void YAMLEmitter::emit_events(std::ostream& os, const Node& stream) const
-  {
-    emit_event(os, stream);
+    if (value->type() == AnchorValue)
+    {
+      anchor = value / Anchor;
+      value = value / Value;
+    }
+
+    if (anchor != nullptr)
+    {
+      os << " &" << anchor->location().view();
+    }
+
+    if (!tag.empty())
+    {
+      os << " " << tag;
+    }
+
+    return value;
   }
 
   bool
-  YAMLEmitter::emit_value_event(std::ostream& os, const Node& maybe_value) const
+  write_event(std::ostream& os, const std::string& newline, const Node& value);
+
+  bool write_value_event(
+    std::ostream& os, const std::string& newline, const Node& maybe_value)
   {
     os << "=VAL";
     Node value = handle_tag_anchor(os, maybe_value);
@@ -47,13 +80,16 @@ namespace trieste::yaml
     {
       os << " :" << escape_chars(value->location().view(), {'\\'});
     }
-    os << m_newline;
+    os << newline;
 
     return false;
   }
 
-  bool YAMLEmitter::emit_mapping_event(
-    std::ostream& os, const Node& maybe_node, bool is_flow) const
+  bool write_mapping_event(
+    std::ostream& os,
+    const std::string& newline,
+    const Node& maybe_node,
+    bool is_flow)
   {
     os << "+MAP";
     if (is_flow)
@@ -63,20 +99,23 @@ namespace trieste::yaml
 
     Node node = handle_tag_anchor(os, maybe_node);
 
-    os << m_newline;
+    os << newline;
     for (auto child : *node)
     {
-      if (emit_event(os, child))
+      if (write_event(os, newline, child))
       {
         return true;
       }
     }
-    os << "-MAP" << m_newline;
+    os << "-MAP" << newline;
     return false;
   }
 
-  bool YAMLEmitter::emit_sequence_event(
-    std::ostream& os, const Node& maybe_node, bool is_flow) const
+  bool write_sequence_event(
+    std::ostream& os,
+    const std::string& newline,
+    const Node& maybe_node,
+    bool is_flow)
   {
     os << "+SEQ";
 
@@ -87,101 +126,86 @@ namespace trieste::yaml
 
     Node node = handle_tag_anchor(os, maybe_node);
 
-    os << m_newline;
+    os << newline;
     for (auto child : *node)
     {
-      if (emit_event(os, child))
+      if (write_event(os, newline, child))
       {
         return true;
       }
     }
-    os << "-SEQ" << m_newline;
+    os << "-SEQ" << newline;
     return false;
   }
 
-  bool YAMLEmitter::emit_alias_event(std::ostream& os, const Node& node) const
+  bool write_alias_event(
+    std::ostream& os, const std::string& newline, const Node& node)
   {
-    os << "=ALI *" << node->location().view() << m_newline;
+    os << "=ALI *" << node->location().view() << newline;
     return false;
   }
 
-  bool YAMLEmitter::emit_literal_event(
-    std::ostream& os, const Node& maybe_node) const
-  {
-    os << "=VAL";
-
-    Node node = handle_tag_anchor(os, maybe_node);
-
-    os << " |" << block_to_string(node, true) << m_newline;
-    return false;
-  }
-
-  bool
-  YAMLEmitter::emit_folded_event(std::ostream& os, const Node& maybe_node) const
+  bool write_literal_event(
+    std::ostream& os, const std::string& newline, const Node& maybe_node)
   {
     os << "=VAL";
 
     Node node = handle_tag_anchor(os, maybe_node);
 
-    os << " >" << block_to_string(node, true) << m_newline;
+    os << " |";
+    block_to_string(os, node, true) << newline;
     return false;
   }
 
-  bool
-  YAMLEmitter::emit_plain_event(std::ostream& os, const Node& maybe_node) const
+  bool write_folded_event(
+    std::ostream& os, const std::string& newline, const Node& maybe_node)
+  {
+    os << "=VAL";
+
+    Node node = handle_tag_anchor(os, maybe_node);
+
+    os << " >";
+    block_to_string(os, node, true) << newline;
+    return false;
+  }
+
+  bool write_plain_event(
+    std::ostream& os, const std::string& newline, const Node& maybe_node)
   {
     os << "=VAL";
 
     Node node = handle_tag_anchor(os, maybe_node);
 
     os << " :";
-    std::set<char> escape = {'\\', '\n', '\r'};
-    for (std::size_t i = 0; i < node->size() - 1; ++i)
-    {
-      if (node->at(i) == EmptyLine)
-      {
-        os << "\\n";
-        continue;
-      }
-      auto current = node->at(i)->location().view();
-      auto next = node->at(i + 1)->location().view();
-      os << escape_chars(current, escape);
-      if (!is_space(current.front()) && !is_space(next.front()))
-      {
-        os << " ";
-      }
-    }
-    os << escape_chars(node->back()->location().view(), escape) << m_newline;
+    block_to_string(os, node, true) << newline;
     return false;
   }
 
-  bool YAMLEmitter::emit_doublequote_event(
-    std::ostream& os, const Node& maybe_node) const
+  bool write_doublequote_event(
+    std::ostream& os, const std::string& newline, const Node& maybe_node)
   {
     os << "=VAL";
 
     Node node = handle_tag_anchor(os, maybe_node);
 
     os << " \"";
-    write_quote(os, node, true);
-    os << m_newline;
+    quote_to_string(os, node, true) << newline;
     return false;
   }
 
-  bool YAMLEmitter::emit_singlequote_event(
-    std::ostream& os, const Node& maybe_node) const
+  bool write_singlequote_event(
+    std::ostream& os, const std::string& newline, const Node& maybe_node)
   {
     os << "=VAL";
 
     Node node = handle_tag_anchor(os, maybe_node);
 
     os << " '";
-    write_quote(os, node, true);
-    os << m_newline;
+    quote_to_string(os, node, true) << newline;
     return false;
   }
 
-  Token YAMLEmitter::get_type(const Node& node) const
+  Token get_type(const Node& node)
   {
     Node value = node;
     if (node->type() == AnchorValue)
@@ -202,69 +226,70 @@ namespace trieste::yaml
     return value->type();
   }
 
-  bool YAMLEmitter::emit_event(std::ostream& os, const Node& node) const
+  bool
+  write_event(std::ostream& os, const std::string& newline, const Node& node)
   {
     Token node_type = get_type(node);
     if (node_type.in({Value, Int, Float, Empty, True, False, Hex}))
     {
-      return emit_value_event(os, node);
+      return write_value_event(os, newline, node);
     }
 
     if (node_type == DoubleQuote)
     {
-      return emit_doublequote_event(os, node);
+      return write_doublequote_event(os, newline, node);
     }
 
     if (node_type == SingleQuote)
     {
-      return emit_singlequote_event(os, node);
+      return write_singlequote_event(os, newline, node);
     }
 
     if (node_type == Null)
     {
       os << "=VAL";
       handle_tag_anchor(os, node);
-      os << " :" << m_newline;
+      os << " :" << newline;
       return false;
     }
 
     if (node_type == Alias)
     {
-      return emit_alias_event(os, node);
+      return write_alias_event(os, newline, node);
     }
 
     if (node_type == Literal)
     {
-      return emit_literal_event(os, node);
+      return write_literal_event(os, newline, node);
     }
 
     if (node_type == Folded)
     {
-      return emit_folded_event(os, node);
+      return write_folded_event(os, newline, node);
     }
 
     if (node_type == Plain)
     {
-      return emit_plain_event(os, node);
+      return write_plain_event(os, newline, node);
     }
 
     if (node_type.in({FlowMappingItem, MappingItem}))
     {
-      if (emit_event(os, node->front()))
+      if (write_event(os, newline, node->front()))
       {
         return true;
       }
-      return emit_event(os, node->back());
+      return write_event(os, newline, node->back());
     }
 
     if (node_type.in({Sequence, FlowSequence}))
     {
-      return emit_sequence_event(os, node, node_type == FlowSequence);
+      return write_sequence_event(os, newline, node, node_type == FlowSequence);
     }
 
     if (node_type.in({Mapping, FlowMapping}))
     {
-      return emit_mapping_event(os, node, node_type == FlowMapping);
+      return write_mapping_event(os, newline, node, node_type == FlowMapping);
     }
 
     if (node_type == Document)
@@ -274,22 +299,16 @@ namespace trieste::yaml
         return false;
       }
 
-      Node start = node->at(0);
-      Node value = node->at(1);
-      Node end = node->at(2);
-      if (start == Directives)
-      {
-        start = value;
-        value = end;
-        end = node->at(3);
-      }
+      Node start = node / DocumentStart;
+      Node value = node / Value;
+      Node end = node / DocumentEnd;
       os << "+DOC";
       if (start->location().len > 0)
       {
         os << " " << start->location().view();
       }
-      os << m_newline;
-      if (emit_event(os, value))
+      os << newline;
+      if (write_event(os, newline, value))
       {
         return true;
       }
@@ -298,27 +317,27 @@ namespace trieste::yaml
       {
         os << " " << end->location().view();
       }
-      os << m_newline;
+      os << newline;
       return false;
     }
 
     if (node_type == Stream)
     {
-      os << "+STR" << m_newline;
+      os << "+STR" << newline;
       for (Node child : *node->back())
       {
-        if (emit_event(os, child))
+        if (write_event(os, newline, child))
         {
           return true;
         }
       }
-      os << "-STR" << m_newline;
+      os << "-STR" << newline;
       return false;
     }
 
     if (node_type == Top)
     {
-      return emit_event(os, node->front());
+      return write_event(os, newline, node->front());
     }
 
     if (node_type.in({TagDirective, VersionDirective, UnknownDirective}))
@@ -336,7 +355,7 @@ namespace trieste::yaml
       // anchor for empty node
       os << "=VAL";
       handle_tag_anchor(os, node);
-      os << " :" << m_newline;
+      os << " :" << newline;
       return false;
     }
 
@@ -345,182 +364,80 @@ namespace trieste::yaml
     throw std::runtime_error(error);
   }
 
-  Node YAMLEmitter::handle_tag_anchor(std::ostream& os, const Node& node) const
+  // clang-format off
+  const auto wf_to_event_file =
+    yaml::wf
+    | (Top <<= File)
+    | (File <<= Path * Stream)
+    ;
+  // clang-format on
+
+  PassDef to_event_file(const std::filesystem::path& path)
   {
-    Node anchor = nullptr;
-    std::string tag = "";
-    Node value = node;
-    if (node->type() == AnchorValue)
-    {
-      anchor = node->front();
-      value = node->back();
-    }
-
-    if (value->type() == TagValue)
-    {
-      Node tag_node;
-      std::string handle = "";
-      if (value->size() > 2)
+    return {
+      "to_event_file",
+      wf_to_event_file,
+      dir::bottomup | dir::once,
       {
-        Node prefix_node = value->front();
-        Node handle_node = prefix_node->lookup()[0];
-        if (handle_node != nullptr)
-        {
-          handle = handle_node->back()->location().view();
-        }
-        tag_node = value->at(1);
-      }
-      else
-      {
-        tag_node = value->front();
-      }
+        In(Top) * T(Stream)[Stream] >>
+          [path](Match& _) {
+            return File << (Path ^ path.string()) << _(Stream);
+          },
+      }};
+  }
+}
 
-      value = value->back();
-      auto tagname = unescape_url_chars(tag_node->location().view());
-      std::ostringstream tags;
-      if (
-        tagname.size() >= 2 && tagname.front() == '<' && tagname.back() == '>')
-      {
-        tags << tagname;
-      }
-      else
-      {
-        tags << "<" << handle << tagname << ">";
-      }
-      tag = tags.str();
-    }
-
-    if (value->type() == AnchorValue)
-    {
-      anchor = value->front();
-      value = value->back();
-    }
-
-    if (anchor != nullptr)
-    {
-      os << " &" << anchor->location().view();
-    }
-
-    if (!tag.empty())
-    {
-      os << " " << tag;
-    }
-
-    return value;
+namespace trieste::yaml
+{
+  Writer event_writer(const std::string& path, const std::string& newline)
+  {
+    return Writer(
+      "yaml",
+      {writer::to_event_file(path)},
+      yaml::wf,
+      [newline](std::ostream& os, const Node& value) {
+        return writer::write_event(os, newline, value);
+      });
   }
 
-  void YAMLEmitter::escape_char(std::ostream& os, char c) const
+  std::ostream&
+  block_to_string(std::ostream& os, const Node& node, bool raw_quotes)
   {
-    switch (c)
-    {
-      case '\n':
-        os << "\\n";
-        break;
-
-      case '\r':
-        os << "\\r";
-        break;
-
-      case '\b':
-        os << "\\b";
-        break;
-
-      case '\f':
-        os << "\\f";
-        break;
-
-      case '\t':
-        os << "\\t";
-        break;
-
-      case ' ':
-      case '/':
-        os << c;
-        break;
-
-      default:
-        os << "\\" << c;
-        break;
-    }
-  }
-
-  std::string YAMLEmitter::escape_chars(
-    const std::string_view& str, const std::set<char>& to_escape) const
-  {
-    std::string input = utf8::unescape_hexunicode(str);
-    std::ostringstream os;
-    bool escape = false;
-    for (auto c : input)
-    {
-      if (escape)
-      {
-        escape_char(os, c);
-        escape = false;
-      }
-      else
-      {
-        if (to_escape.find(c) != to_escape.end())
-        {
-          escape_char(os, c);
-        }
-        else if (c == '\\')
-        {
-          escape = true;
-        }
-        else if (is_space(c))
-        {
-          os << ' ';
-        }
-        else
-        {
-          os << c;
-        }
-      }
-    }
-    return os.str();
-  }
-
-  std::string
-  YAMLEmitter::unescape_url_chars(const std::string_view& input) const
-  {
-    std::ostringstream output;
-    auto it = input.begin();
-    while (it != input.end())
-    {
-      if (*it == '%')
-      {
-        std::string hex(it + 1, it + 3);
-        int code = std::stoi(hex, 0, 16);
-        output << (char)code;
-        it += 3;
-      }
-      else
-      {
-        output << *it;
-        it++;
-      }
-    }
-
-    return output.str();
-  }
-
-  std::string
-  YAMLEmitter::block_to_string(const Node& node, bool raw_quotes) const
-  {
-    if (node->size() == 2)
-    {
-      return "";
-    }
-
     std::set<char> escape = {'\\', '\n', '\r', '\t'};
     if (!raw_quotes)
     {
       escape.insert('"');
     }
-    std::ostringstream os;
-    Node indent_node = node->at(0);
-    Node chomp_node = node->at(1);
-    Node lines_node = node->at(2);
+
+    if (node == Plain)
+    {
+      for (std::size_t i = 0; i < node->size() - 1; ++i)
+      {
+        if (node->at(i) == EmptyLine)
+        {
+          os << "\\n";
+          continue;
+        }
+        auto current = node->at(i)->location().view();
+        auto next = node->at(i + 1)->location().view();
+        os << escape_chars(current, escape);
+        if (!std::isspace(current.front()) && !std::isspace(next.front()))
+        {
+          os << " ";
+        }
+      }
+      os << escape_chars(node->back()->location().view(), escape);
+      return os;
+    }
+
+    if (node->size() == 2)
+    {
+      return os;
+    }
+
+    Node indent_node = node / AbsoluteIndent;
+    Node chomp_node = node / ChompIndicator;
+    Node lines_node = node / Lines;
     std::string indent_string(indent_node->location().view());
     std::size_t indent = std::stoul(indent_string);
     Chomp chomp = Chomp::Clip;
@@ -559,7 +476,7 @@ namespace trieste::yaml
 
     if (lines.empty())
     {
-      return "";
+      return os;
     }
 
     bool is_indented = false;
@@ -658,26 +575,11 @@ namespace trieste::yaml
       }
     }
 
-    return os.str();
+    return os;
   }
 
-  std::string YAMLEmitter::replace_all(
-    const std::string_view& v,
-    const std::string_view& find,
-    const std::string_view& replace) const
-  {
-    std::string s(v);
-    auto pos = s.find(find);
-    while (pos != std::string::npos)
-    {
-      s = s.replace(pos, find.size(), replace);
-      pos = s.find(find);
-    }
-    return s;
-  }
-
-  void YAMLEmitter::write_quote(
-    std::ostream& os, const Node& node, bool raw_quote) const
+  std::ostream&
+  quote_to_string(std::ostream& os, const Node& node, bool raw_quote)
   {
     std::set<char> escape;
     if (node == DoubleQuote)
@@ -740,6 +642,7 @@ namespace trieste::yaml
         }
       }
     }
+
     if (node->back() == EmptyLine)
     {
       os << "\\n";
@@ -767,6 +670,121 @@ namespace trieste::yaml
         os << replace_all(escape_chars(last, escape), "''", "'");
       }
     }
+
+    return os;
   }
 
+  bool is_space(char c)
+  {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+  }
+
+  void escape_char(std::ostream& os, char c)
+  {
+    switch (c)
+    {
+      case '\n':
+        os << "\\n";
+        break;
+
+      case '\r':
+        os << "\\r";
+        break;
+
+      case '\b':
+        os << "\\b";
+        break;
+
+      case '\f':
+        os << "\\f";
+        break;
+
+      case '\t':
+        os << "\\t";
+        break;
+
+      case ' ':
+      case '/':
+        os << c;
+        break;
+
+      default:
+        os << "\\" << c;
+        break;
+    }
+  }
+
+  std::string
+  escape_chars(const std::string_view& str, const std::set<char>& to_escape)
+  {
+    std::string input = utf8::unescape_hexunicode(str);
+    std::ostringstream os;
+    bool escape = false;
+    for (auto c : input)
+    {
+      if (escape)
+      {
+        escape_char(os, c);
+        escape = false;
+      }
+      else
+      {
+        if (to_escape.find(c) != to_escape.end())
+        {
+          escape_char(os, c);
+        }
+        else if (c == '\\')
+        {
+          escape = true;
+        }
+        else if (is_space(c))
+        {
+          os << ' ';
+        }
+        else
+        {
+          os << c;
+        }
+      }
+    }
+    return os.str();
+  }
+
+  std::string unescape_url_chars(const std::string_view& input)
+  {
+    std::ostringstream output;
+    auto it = input.begin();
+    while (it != input.end())
+    {
+      if (*it == '%')
+      {
+        std::string hex(it + 1, it + 3);
+        int code = std::stoi(hex, 0, 16);
+        output << (char)code;
+        it += 3;
+      }
+      else
+      {
+        output << *it;
+        it++;
+      }
+    }
+
+    return output.str();
+  }
+
+  std::string replace_all(
+    const std::string_view& v,
+    const std::string_view& find,
+    const std::string_view& replace)
+  {
+    std::string s(v);
+    auto pos = s.find(find);
+    while (pos != std::string::npos)
+    {
+      s = s.replace(pos, find.size(), replace);
+      pos = s.find(find);
+    }
+    return s;
+  }
 }

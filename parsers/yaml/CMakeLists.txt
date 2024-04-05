@@ -1,8 +1,8 @@
 set( SOURCES
 parse.cc
-emitter.cc
-reader.cc
+event_writer.cc
 yaml.cc
+to_json.cc
 )
 
 add_library(yaml STATIC ${SOURCES})

@@ -10,7 +10,7 @@ namespace
   {
     std::size_t changes = 0;
 
-    node->traverse([&](Node& n){
+    node->traverse([&](Node& n) {
       if (n->type() == Error)
         return false;
 
@@ -27,6 +27,91 @@ namespace
 
     return changes;
   }
+
+  bool value_equal(Node lhs, Node rhs);
+
+  bool object_equal(Node lhs, Node rhs)
+  {
+    if (lhs->size() != rhs->size())
+    {
+      return false;
+    }
+
+    std::vector<Node> lhs_members(lhs->begin(), lhs->end());
+    std::vector<Node> rhs_members(rhs->begin(), rhs->end());
+    std::sort(lhs_members.begin(), lhs_members.end(), [](Node lhs, Node rhs) {
+      return lhs->front()->location().view() < rhs->front()->location().view();
+    });
+    std::sort(rhs_members.begin(), rhs_members.end(), [](Node lhs, Node rhs) {
+      return lhs->front()->location().view() < rhs->front()->location().view();
+    });
+
+    for (std::size_t i = 0; i < lhs_members.size(); ++i)
+    {
+      if (
+        lhs_members[i]->front()->location().view() !=
+        rhs_members[i]->front()->location().view())
+      {
+        return false;
+      }
+      if (!value_equal(lhs_members[i]->back(), rhs_members[i]->back()))
+      {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool array_equal(Node lhs, Node rhs)
+  {
+    if (lhs->size() != rhs->size())
+    {
+      return false;
+    }
+
+    for (std::size_t i = 0; i < lhs->size(); ++i)
+    {
+      if (!value_equal(lhs->at(i), rhs->at(i)))
+      {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool value_equal(Node lhs, Node rhs)
+  {
+    if (lhs->type() != rhs->type())
+    {
+      return false;
+    }
+
+    if (lhs->type() == Object)
+    {
+      return object_equal(lhs, rhs);
+    }
+
+    if (lhs->type() == Array)
+    {
+      return array_equal(lhs, rhs);
+    }
+
+    if (lhs->type() == Top)
+    {
+      return array_equal(lhs, rhs);
+    }
+
+    if (lhs->type() == Number)
+    {
+      double lhs_value = std::stod(std::string(lhs->location().view()));
+      double rhs_value = std::stod(std::string(rhs->location().view()));
+      return lhs_value == rhs_value;
+    }
+
+    return lhs->location().view() == rhs->location().view();
+  }
 }
 
 namespace trieste::json
@@ -34,7 +119,7 @@ namespace trieste::json
 
   const auto ValueToken = T(Object, Array, String, Number, True, False, Null);
 
-  PassDef groups()
+  PassDef groups(bool allow_multiple)
   {
     PassDef groups = {
       "groups",
@@ -48,8 +133,22 @@ namespace trieste::json
           [](Match& _) { return ObjectGroup << *_[Group]; },
 
         In(Top) *
-            (T(File) << ((T(Group) << (ValueToken[Value] * End)) * End)) >>
-          [](Match& _) { return _(Value); },
+            (T(File) << ((T(Group) << (ValueToken++[Value] * End)) * End)) >>
+          [allow_multiple](Match& _) {
+            auto values = _[Value];
+            if (values.first == values.second)
+            {
+              return err("Invalid JSON");
+            }
+
+            if (
+              std::distance(values.first, values.second) > 1 && !allow_multiple)
+            {
+              return err("Multiple top-level values not allowed");
+            }
+
+            return Seq << _[Value];
+          },
 
         // errors
         In(Top) * T(File)[File] >>
@@ -104,8 +203,18 @@ namespace trieste::json
     return structure;
   };
 
-  std::vector<Pass> passes()
+  std::vector<Pass> passes(bool allow_multiple)
   {
-    return {groups(), structure()};
+    return {groups(allow_multiple), structure()};
+  }
+
+  Reader reader(bool allow_multiple)
+  {
+    return Reader{"json", passes(allow_multiple), parser()};
+  }
+
+  bool equal(Node lhs, Node rhs)
+  {
+    return value_equal(lhs, rhs);
   }
 }

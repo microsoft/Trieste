@@ -1,17 +1,16 @@
+// Copyright Microsoft and Project Verona Contributors.
+// SPDX-License-Identifier: MIT
 #pragma once
 
-// Trieste-based rewriter for YAML
-
 #include "trieste/token.h"
-
-#include <trieste/trieste.h>
+#include "trieste/trieste.h"
 
 namespace trieste::yaml
 {
   using namespace wf::ops;
 
-  inline const auto Stream = TokenDef("yaml-stream", flag::symtab);
-  inline const auto Document = TokenDef("yaml-document", flag::symtab);
+  inline const auto Stream = TokenDef("yaml-stream", flag::symtab | flag::defbeforeuse);
+  inline const auto Document = TokenDef("yaml-document", flag::symtab | flag::defbeforeuse);
   inline const auto Documents = TokenDef("yaml-documents");
   inline const auto Sequence = TokenDef("yaml-sequence");
   inline const auto SequenceItem = TokenDef("yaml-sequenceitem");
@@ -347,8 +346,8 @@ namespace trieste::yaml
   // clang-format off
   inline const auto wf_attributes =
     wf_collections
-    | (AnchorValue <<= Anchor * (Value >>= wf_attributes_tokens))
-    | (TagValue <<= TagPrefix * TagName * (Value >>= wf_attributes_tokens))
+    | (AnchorValue <<= Anchor * (Value >>= wf_attributes_value_tokens))
+    | (TagValue <<= TagPrefix * TagName * (Value >>= wf_attributes_value_tokens))
     | (DocumentGroup <<= wf_attributes_tokens++)
     | (FlowGroup <<= wf_attributes_flow_tokens++)
     | (KeyGroup <<= wf_attributes_value_tokens++)
@@ -373,6 +372,8 @@ namespace trieste::yaml
     | (FlowMappingItem <<= (Key >>= wf_structure_flow_tokens) * (Value >>= wf_structure_flow_tokens))
     | (MappingItem <<= (Key >>= wf_structure_tokens) * (Value >>= wf_structure_tokens))
     | (TagDirective <<= TagPrefix * TagHandle)[TagPrefix]
+    | (AnchorValue <<= Anchor * (Value >>= wf_structure_tokens))
+    | (TagValue <<= TagPrefix * TagName * (Value >>= wf_structure_tokens))
     ;
   // clang-format on
 
@@ -395,7 +396,15 @@ namespace trieste::yaml
     ;
   // clang-format on
 
-  inline const auto wf_anchors = wf_quotes;
+  // clang-format off
+  inline const auto wf_anchors =
+    wf_quotes
+    | (AnchorValue <<= Anchor * (Value >>= wf_structure_tokens))[Anchor]
+    ;
+  // clang-format on
+
+  inline const auto wf = wf_anchors;
+
 
   inline auto err(Node node, const std::string& msg)
   {
@@ -414,75 +423,16 @@ namespace trieste::yaml
 
   Parse parser();
   std::vector<Pass> passes();
+  Reader reader();
+  Writer event_writer(const std::string& name, const std::string& newline = "\n");
+  Rewriter to_json();
+  std::ostream& block_to_string(std::ostream& os, const Node& node, bool raw_quotes = false);
+  std::ostream& quote_to_string(std::ostream& os, const Node& quote, bool raw_quotes = false);
 
-  class YAMLEmitter
+  enum class Chomp
   {
-  public:
-    YAMLEmitter(
-      const std::string& indent = "  ", const std::string& newline = "\n");
-
-    void emit(std::ostream& os, const Node& value) const;
-    void emit_events(std::ostream& os, const Node& value) const;
-
-  private:
-    bool emit_event(std::ostream& os, const Node& node) const;
-    bool emit_value_event(std::ostream& os, const Node& node) const;
-    bool
-    emit_mapping_event(std::ostream& os, const Node& node, bool is_flow) const;
-    bool
-    emit_sequence_event(std::ostream& os, const Node& node, bool is_flow) const;
-    bool emit_alias_event(std::ostream& os, const Node& node) const;
-    bool emit_literal_event(std::ostream& os, const Node& node) const;
-    bool emit_folded_event(std::ostream& os, const Node& node) const;
-    bool emit_plain_event(std::ostream& os, const Node& node) const;
-    bool emit_doublequote_event(std::ostream& os, const Node& node) const;
-    bool emit_singlequote_event(std::ostream& os, const Node& node) const;
-
-    Token get_type(const Node& node) const;
-    Node handle_tag_anchor(std::ostream& os, const Node& node) const;
-    void escape_char(std::ostream& os, char c) const;
-    std::string escape_chars(
-      const std::string_view& str, const std::set<char>& to_escape) const;
-    std::string unescape_url_chars(const std::string_view& str) const;
-    std::string block_to_string(const Node& node, bool raw_quotes) const;
-    std::string replace_all(
-      const std::string_view& v,
-      const std::string_view& find,
-      const std::string_view& replace) const;
-    Node lookup_nearest(Node ref) const;
-    void write_quote(std::ostream& os, const Node& node, bool is_single) const;
-
-    std::string m_indent;
-    std::string m_newline;
-  };
-
-  class YAMLReader
-  {
-  public:
-    YAMLReader(const std::filesystem::path& path);
-    YAMLReader(const std::string& yaml);
-    YAMLReader(const Source& source);
-
-    void read();
-
-    const Node& stream() const;
-    bool has_errors() const;
-    std::string error_message() const;
-
-    YAMLReader& debug_enabled(bool value);
-    bool debug_enabled() const;
-
-    YAMLReader& debug_path(const std::filesystem::path& path);
-    const std::filesystem::path& debug_path() const;
-
-    YAMLReader& well_formed_checks_enabled(bool value);
-    bool well_formed_checks_enabled() const;
-
-  private:
-    Source m_source;
-    Node m_stream;
-    bool m_debug_enabled;
-    std::filesystem::path m_debug_path;
-    bool m_well_formed_checks_enabled;
+    Clip,
+    Strip,
+    Keep,
   };
 }

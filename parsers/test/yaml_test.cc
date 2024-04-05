@@ -7,8 +7,7 @@
 #include <fstream>
 #include <type_traits>
 
-using namespace trieste::utf8;
-using namespace trieste::yaml;
+using namespace trieste;
 
 const std::string Green = "\x1b[32m";
 const std::string Reset = "\x1b[0m";
@@ -76,11 +75,11 @@ std::string replace_whitespace(const std::string& str)
     switch (str[i])
     {
       case ' ':
-        os << rune(183);
+        os << utf8::rune(183);
         break;
 
       case '\t':
-        os << rune(2192);
+        os << utf8::rune(2192);
         break;
 
       default:
@@ -131,6 +130,17 @@ void diff_line(
   os << std::endl;
 }
 
+std::size_t newline_or_end(const std::string& str, std::size_t start)
+{
+  std::size_t newline = str.find('\n', start);
+  if (newline == std::string::npos)
+  {
+    return str.size();
+  }
+
+  return newline;
+}
+
 void diff(
   const std::string& actual,
   const std::string& wanted,
@@ -143,8 +153,8 @@ void diff(
   bool error = false;
   while (a < actual.size() && w < wanted.size())
   {
-    std::size_t a_end = actual.find("\n", a);
-    std::size_t w_end = wanted.find("\n", w);
+    std::size_t a_end = newline_or_end(actual, a);
+    std::size_t w_end = newline_or_end(wanted, w);
     std::string a_line = actual.substr(a, a_end - a);
     std::string w_line = wanted.substr(w, w_end - w);
     if (a_line != w_line)
@@ -166,7 +176,7 @@ void diff(
   {
     while (a < actual.size())
     {
-      std::size_t a_end = actual.find("\n", a);
+      std::size_t a_end = newline_or_end(actual, a);
       std::string a_line = actual.substr(a, a_end - a);
       os << "+ " << a_line << std::endl;
       a = a_end + 1;
@@ -174,7 +184,7 @@ void diff(
 
     while (w < wanted.size())
     {
-      std::size_t w_end = wanted.find("\n", w);
+      std::size_t w_end = newline_or_end(wanted, w);
       std::string w_line = wanted.substr(w, w_end - w);
       os << "- " << w_line << std::endl;
       w = w_end + 1;
@@ -184,14 +194,14 @@ void diff(
   os << "--- " << label << " ---" << std::endl;
 }
 
-struct Result
-{
-  bool passed;
-  std::string error;
-};
-
 struct TestCase
 {
+  struct Result
+  {
+    bool passed;
+    std::string error;
+  };
+
   std::string id;
   std::size_t index;
   std::string name;
@@ -213,32 +223,39 @@ struct TestCase
       crlf = false;
     }
 
-    YAMLEmitter emitter("  ", crlf ? "\r\n" : "\n");
-    YAMLReader reader(in_yaml);
-    reader.debug_enabled(!debug_path.empty())
-      .debug_path(debug_path)
-      .well_formed_checks_enabled(wf_checks);
-    reader.read();
-    if (reader.has_errors())
+    auto result = yaml::reader()
+                    .synthetic(in_yaml)
+                    .wf_check_enabled(wf_checks)
+                    .debug_enabled(!debug_path.empty())
+                    .debug_path(debug_path / "yaml")
+                    .read();
+
+    if (!result.ok)
     {
-      return {error, reader.error_message()};
+      return {error, result.error_message()};
     }
+
+    Node actual_yaml = result.ast;
 
     // YAML event streams are unambiguous, unique representations of
     // the YAML AST. As such, a correct event stream means the parser
     // is working.
 
-    std::string actual_event;
-    try
+    std::string event_name = "actual.event";
+    Destination dest = DestinationDef::synthetic();
+    result =
+      actual_yaml >> yaml::event_writer("actual.event", crlf ? "\r\n" : "\n")
+                       .wf_check_enabled(wf_checks)
+                       .debug_enabled(!debug_path.empty())
+                       .debug_path(debug_path / "event_writer")
+                       .destination(dest);
+
+    if (!result.ok)
     {
-      std::ostringstream os;
-      emitter.emit_events(os, reader.stream());
-      actual_event = os.str();
+      return {false, result.error_message()};
     }
-    catch (const std::exception& ex)
-    {
-      return {false, ex.what()};
-    }
+
+    auto actual_event = dest->file("./actual.event");
 
     trieste::logging::Debug() << actual_event;
 
@@ -258,8 +275,46 @@ struct TestCase
       return {false, os.str()};
     }
 
+    if (!in_json.empty())
+    {
+      result = actual_yaml >> yaml::to_json()
+                                .wf_check_enabled(wf_checks)
+                                .debug_enabled(!debug_path.empty())
+                                .debug_path(debug_path / "yaml_to_json");
+
+      if (!result.ok)
+      {
+        return {false, result.error_message()};
+      }
+
+      Node actual_json = result.ast;
+
+      result = json::reader(true)
+                 .wf_check_enabled(wf_checks)
+                 .debug_enabled(!debug_path.empty())
+                 .debug_path(debug_path / "json")
+                 .synthetic(in_json)
+                 .read();
+      if (!result.ok)
+      {
+        return {false, result.error_message()};
+      }
+
+      Node wanted_json = result.ast;
+
+      if (!json::equal(actual_json, wanted_json))
+      {
+        std::ostringstream os;
+        diff(
+          json::to_string(actual_json, true),
+          json::to_string(wanted_json, true),
+          "JSON",
+          os);
+        return {false, os.str()};
+      }
+    }
+
     // TODO test YAML emitter
-    // TODO test YAML to JSON emitter
 
     return {true, ""};
   }
@@ -329,22 +384,22 @@ struct TestCase
       testcase.id = id;
       testcase.index = index;
       testcase.filename = test_dir / "in.yaml";
-      testcase.name = read_to_end(test_dir / "===");
+      testcase.name = utf8::read_to_end(test_dir / "===");
       if (testcase.name.back() == '\n')
       {
         testcase.name.pop_back();
       }
 
       testcase.in_yaml =
-        normalize_crlf(read_to_end(test_dir / "in.yaml"), crlf);
+        normalize_crlf(utf8::read_to_end(test_dir / "in.yaml"), crlf);
       testcase.in_json =
-        normalize_crlf(read_to_end(test_dir / "in.json"), crlf);
+        normalize_crlf(utf8::read_to_end(test_dir / "in.json"), crlf);
       testcase.out_yaml =
-        normalize_crlf(read_to_end(test_dir / "out.yaml"), crlf);
+        normalize_crlf(utf8::read_to_end(test_dir / "out.yaml"), crlf);
       testcase.emit_yaml =
-        normalize_crlf(read_to_end(test_dir / "emit.yaml"), crlf);
+        normalize_crlf(utf8::read_to_end(test_dir / "emit.yaml"), crlf);
       testcase.event =
-        normalize_crlf(read_to_end(test_dir / "test.event"), crlf);
+        normalize_crlf(utf8::read_to_end(test_dir / "test.event"), crlf);
       testcase.error = std::filesystem::exists(test_dir / "error");
       if (!testcase.in_yaml.empty())
       {

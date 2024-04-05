@@ -2473,6 +2473,12 @@ namespace trieste::yaml
             T(Anchor)[Anchor] >>
           [](Match& _) { return err(_(Anchor), "Invalid anchor"); },
 
+        In(AnchorValue) * (T(Anchor) * T(Anchor, Tag)[Value]) >>
+          [](Match& _) { return err(_(Value), "Invalid anchor"); },
+
+        In(TagValue) * (T(TagPrefix) * T(TagName) * T(Anchor, Tag)[Value]) >>
+          [](Match& _) { return err(_(Value), "Invalid tag"); },
+
       }};
 
     structure.post([](Node n) {
@@ -2714,5 +2720,10 @@ namespace trieste::yaml
       quotes(),
       anchors(),
     };
+  }
+
+  Reader reader()
+  {
+    return {"yaml", passes(), parser()};
   }
 } // namespace trieste::yaml

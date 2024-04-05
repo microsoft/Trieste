@@ -1,8 +1,7 @@
 set( SOURCES
 parse.cc
 json.cc
-emitter.cc
-reader.cc
+writer.cc
 )
 
 add_library(json STATIC ${SOURCES})
