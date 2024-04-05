@@ -18,19 +18,19 @@ namespace
     return c == ' ' || c == '\t';
   }
 
-  bool is_in(NodeDef* node, Token parent)
+  bool is_in(Node node, Token token)
   {
-    if (node == Top)
+    NodeDef* parent = node->parent();
+    while (parent != Top)
     {
-      return false;
+      if (parent == token)
+      {
+        return true;
+      }
+      parent = parent->parent();
     }
 
-    if (node == parent)
-    {
-      return true;
-    }
-
-    return is_in(node->parent(), parent);
+    return false;
   }
 
   struct ValuePattern
@@ -360,16 +360,9 @@ namespace
     for (std::size_t i = 1; i < lines.size() - 1; i++)
     {
       Location line = trim(lines[i], min_indent);
-      if (line.len == 0)
+      if (line.len == 0 && line.linecol().second == 0)
       {
-        if (line.linecol().second == 0)
-        {
-          result.push_back(EmptyLine ^ line);
-        }
-        else
-        {
-          result.push_back(BlockLine ^ line);
-        }
+        result.push_back(EmptyLine ^ line);
       }
       else
       {
@@ -805,16 +798,10 @@ namespace trieste::yaml
                        << _(Value);
           },
 
-        In(TagGroup) * T(VerbatimTag)[VerbatimTag]([](auto& n) {
-          auto view = n.first[0]->location().view();
-          return view.find_first_of("{}") != std::string::npos;
-        }) >>
+        In(TagGroup) * T(VerbatimTag, R"(.*[\{\}].*)")[VerbatimTag] >>
           [](Match& _) { return err(_(VerbatimTag), "Invalid tag"); },
 
-        In(TagGroup) * T(ShorthandTag)[ShorthandTag]([](auto& n) {
-          auto view = n.first[0]->location().view();
-          return view.find_first_of("{}[],") != std::string::npos;
-        }) >>
+        In(TagGroup) * T(ShorthandTag, R"(.*[\{\}\[\],].*)")[ShorthandTag] >>
           [](Match& _) { return err(_(ShorthandTag), "Invalid tag"); },
 
         In(Stream) * (T(StreamGroup) << (T(Document)++[Documents] * End)) >>
@@ -910,21 +897,13 @@ namespace trieste::yaml
         In(FlowMapping, FlowSequence) * T(FlowGroup)[FlowGroup] >>
           [](Match& _) { return Seq << *_[FlowGroup]; },
 
-        In(FlowSequence) *
-            (T(Value)[Value] * T(Comma, FlowSequenceEnd))([](auto& n) {
-              Location loc = n.first[0]->location();
-              return loc.view() == "-";
-            }) >>
+        In(FlowSequence) * (T(Value, "-")[Value] * T(Comma, FlowSequenceEnd)) >>
           [](Match& _) {
             return err(_(Value), "Plain dashes in flow sequence");
           },
 
         In(FlowMapping, FlowSequence) *
-            (FlowToken[Lhs] * T(Comment)++ * T(Value)[Rhs])([](auto& n) {
-              Node rhs = *(n.second - 1);
-              Location loc = rhs->location();
-              return loc.view().front() == ':';
-            }) >>
+            (FlowToken[Lhs] * T(Comment)++ * T(Value, ":.*")[Rhs]) >>
           [](Match& _) {
             Location loc = _(Rhs)->location();
             Location colon = loc;
@@ -1225,11 +1204,7 @@ namespace trieste::yaml
             (LineToken[Head] * LineToken++[Tail] * T(NewLine)) >>
           [](Match& _) { return Line << _(Head) << _[Tail]; },
 
-        In(DocumentGroup) *
-            (LineToken[Head] * LineToken++[Tail] * End)([](auto& n) {
-              Node head = n.first[0];
-              return head->parent()->parent() == Document;
-            }) >>
+        In(DocumentGroup) * (LineToken[Head] * LineToken++[Tail] * End) >>
           [](Match& _) { return Line << _(Head) << _[Tail]; },
 
         In(DocumentGroup) *
@@ -1563,15 +1538,8 @@ namespace trieste::yaml
           return err(_(Indent), "Wrong indentation");
         },
 
-        In(Line) * T(Comment)[Comment]([](auto& n) {
-          Node comment = n.first[0];
-          if (!is_in(comment->parent(), MappingIndent))
-          {
-            return false;
-          }
-
-          auto view = comment->location().view();
-          return view.find(": ") != std::string::npos;
+        In(Line) * T(Comment, ".*: .*")[Comment]([](auto& n) {
+          return is_in(n.first[0], MappingIndent);
         }) >>
           [](Match& _) -> Node {
           return err(_(Comment), "Comment that looks like a mapping key");
@@ -1698,12 +1666,7 @@ namespace trieste::yaml
             return SequenceItem << (ValueGroup << _(Tag) << (Null ^ "null"));
           },
 
-        In(MappingGroup) *
-            (T(Line) << (T(Whitespace)[Whitespace]))([](auto& n) {
-              Node ws = n.first[0]->front();
-              auto view = ws->location().view();
-              return view.find('\t') != std::string::npos;
-            }) >>
+        In(MappingGroup) * (T(Line) << (T(Whitespace, ".*\t.*")[Whitespace])) >>
           [](Match& _) {
             return err(_(Whitespace), "Tab character in indentation");
           },
@@ -2212,14 +2175,9 @@ namespace trieste::yaml
         In(Plain) * T(WhitespaceLine)[WhitespaceLine] >>
           [](Match& _) { return EmptyLine ^ _(WhitespaceLine); },
 
-        In(BlockGroup) * T(BlockLine)[BlockLine]([](auto& n) {
+        In(BlockGroup) * T(BlockLine, ".*\n.*")[BlockLine]([](auto& n) {
           Location loc = n.first[0]->location();
-          if (loc.len == 0)
-          {
-            return false;
-          }
-
-          return loc.view().find('\n') != std::string::npos;
+          return loc.len != 0;
         }) >>
           [](Match& _) {
             Nodes lines;
@@ -2246,22 +2204,14 @@ namespace trieste::yaml
             return Seq << lines;
           },
 
-        In(Plain) * T(BlockLine)[BlockLine]([](auto& n) {
+        In(Plain) * T(BlockLine, R"(.*[ \t])")[BlockLine]([](auto& n) {
           auto loc = n.first[0]->location();
-          if (loc.len == 0)
-          {
-            return false;
-          }
-          char c = loc.view().back();
-          return c == ' ' || c == '\t';
+          return loc.len != 0;
         }) >>
           [](Match& _) {
             Location loc = _(BlockLine)->location();
             auto view = loc.view();
-            auto it = std::find_if(view.rbegin(), view.rend(), [](char c) {
-              return c != ' ' && c != '\t';
-            });
-            loc.len = std::distance(it, view.rend());
+            loc.len = view.find_last_not_of(" \t");
             return BlockLine ^ loc;
           },
 
@@ -2306,14 +2256,9 @@ namespace trieste::yaml
             return err(_(IndentIndicator), "Invalid indent indicator");
           },
 
-        In(BlockGroup) * T(BlockLine)[BlockLine]([](auto& n) {
+        In(BlockGroup) * T(BlockLine, "\t.*")[BlockLine]([](auto& n) {
           Location loc = n.first[0]->location();
-          if (loc.len == 0)
-          {
-            return false;
-          }
-
-          return loc.view()[0] == '\t';
+          return loc.len != 0;
         }) >>
           [](Match& _) {
             return err(_(BlockLine), "Tab being used as indentation");
@@ -2425,12 +2370,8 @@ namespace trieste::yaml
           },
 
         In(TagValue) *
-            (T(TagPrefix)[TagPrefix] * T(TagName)[TagName] *
-             T(Null))([](auto& n) {
-              auto pre = n.first[0]->location().view();
-              auto tag = n.first[1]->location().view();
-              return pre == "!!" && tag == "str";
-            }) >>
+            (T(TagPrefix, "!!")[TagPrefix] * T(TagName, "str")[TagName] *
+             T(Null)) >>
           [](Match& _) {
             return Seq << _(TagPrefix) << _(TagName) << (Value ^ "");
           },
@@ -2701,10 +2642,7 @@ namespace trieste::yaml
             return Anchor ^ loc;
           },
 
-        T(Alias)[Alias]([](auto& n) {
-          Node anchor = n.first[0];
-          return anchor->location().view().front() == '*';
-        }) >>
+        T(Alias, R"(\*.*)")[Alias] >>
           [](Match& _) {
             Location loc = _(Alias)->location();
             loc.pos += 1;
