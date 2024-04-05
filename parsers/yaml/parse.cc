@@ -267,22 +267,20 @@ namespace trieste::yaml
             }
           },
 
-        R"((---)(\r?\n))" >>
+        R"((---)(\r?\n|[ \t]+))" >>
           [](auto& m) {
             m.term();
             m.pop(Document);
             m.push(Document);
             m.add(DocumentStart, 1);
-            m.add(NewLine, 2);
-          },
-
-        R"((---)([ \t]+))" >>
-          [](auto& m) {
-            m.term();
-            m.pop(Document);
-            m.push(Document);
-            m.add(DocumentStart, 1);
-            m.add(Whitespace, 2);
+            if (m.match(2).view().back() == '\n')
+            {
+              m.add(NewLine, 2);
+            }
+            else
+            {
+              m.add(Whitespace, 2);
+            }
           },
 
         R"((\.\.\.)([ \t]*|[ \t]+#[^\r\n]*)?\r?\n)" >>

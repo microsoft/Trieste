@@ -2604,6 +2604,10 @@ namespace trieste::yaml
       wf_anchors,
       dir::bottomup,
       {
+        // these two rules are here to clear out empty block lines that
+        // are artifacts of the previous pass. They cannot run until
+        // the previous pass has completed, which is why they are located
+        // here.
         In(SingleQuote, DoubleQuote) *
             (T(BlockLine)[Lhs] * T(BlockLine)[Rhs])([](auto& n) {
               return n.first[0]->location().len == 0 &&
