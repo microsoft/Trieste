@@ -213,37 +213,18 @@ struct TestCase
   std::filesystem::path filename;
   bool error;
 
-  Result run(const std::filesystem::path& debug_path, bool wf_checks, bool crlf)
+  // YAML event streams are unambiguous, unique representations of
+  // the YAML AST. As such, a correct event stream means the parser
+  // is working.
+  Result compare_events(
+    Node actual_yaml,
+    const std::filesystem::path& debug_path,
+    bool wf_checks,
+    bool crlf)
   {
-    if (id == "7T8X" || id == "JEF9" || id == "K858")
-    {
-      // These tests reproduce whitespace from the input and
-      // check it against explicit output strings which encode
-      // just the linefeed.
-      crlf = false;
-    }
-
-    auto result = yaml::reader()
-                    .synthetic(in_yaml)
-                    .wf_check_enabled(wf_checks)
-                    .debug_enabled(!debug_path.empty())
-                    .debug_path(debug_path / "yaml")
-                    .read();
-
-    if (!result.ok)
-    {
-      return {error, result.error_message()};
-    }
-
-    Node actual_yaml = result.ast;
-
-    // YAML event streams are unambiguous, unique representations of
-    // the YAML AST. As such, a correct event stream means the parser
-    // is working.
-
     std::string event_name = "actual.event";
     Destination dest = DestinationDef::synthetic();
-    result =
+    auto result =
       actual_yaml >> yaml::event_writer("actual.event", crlf ? "\r\n" : "\n")
                        .wf_check_enabled(wf_checks)
                        .debug_enabled(!debug_path.empty())
@@ -263,10 +244,8 @@ struct TestCase
     {
       if (id == "Y79Y" && index >= 4 && index <= 9)
       {
-        // TODO
         // these tests currently have incorrect event files
-        // https://github.com/yaml/yaml-test-suite/issues/126
-        // remove once this issue has been resolved
+        // open issue: https://github.com/yaml/yaml-test-suite/issues/126
         return {true, ""};
       }
 
@@ -275,12 +254,18 @@ struct TestCase
       return {false, os.str()};
     }
 
+    return {true, ""};
+  }
+
+  Result compare_json(
+    Node actual_yaml, const std::filesystem::path& debug_path, bool wf_checks)
+  {
     if (!in_json.empty())
     {
-      result = actual_yaml >> yaml::to_json()
-                                .wf_check_enabled(wf_checks)
-                                .debug_enabled(!debug_path.empty())
-                                .debug_path(debug_path / "yaml_to_json");
+      auto result = actual_yaml >> yaml::to_json()
+                                     .wf_check_enabled(wf_checks)
+                                     .debug_enabled(!debug_path.empty())
+                                     .debug_path(debug_path / "yaml_to_json");
 
       if (!result.ok)
       {
@@ -314,9 +299,116 @@ struct TestCase
       }
     }
 
-    // TODO test YAML emitter
+    return {true, ""};
+  }
+
+  Result compare_yaml(Node actual_yaml, bool crlf)
+  {
+    if (!out_yaml.empty() || !emit_yaml.empty())
+    {
+      bool emit_mode = !emit_yaml.empty();
+      std::string wanted_yaml = emit_mode ? emit_yaml : out_yaml;
+      std::string actual_out_yaml =
+        yaml::to_string(actual_yaml, crlf ? "\r\n" : "\n", 2, emit_mode);
+
+      if (id == "4ABK" || id == "L24T" || id == "MJS9" || id == "R4YG")
+      {
+        // these tests have non-standard YAML output
+        // 4ABK open issue: https://github.com/yaml/yaml-test-suite/issues/133
+        // L24T open issue: https://github.com/yaml/yaml-test-suite/issues/134
+        // MJS9/R4YG do the same thing as L24T but is in the out.yaml so less
+        // can be ignored as an alternate production.
+        return {true, ""};
+      }
+
+      std::string docend = crlf ? "...\r\n" : "...\n";
+
+      if (id == "K54U" || id == "PUW8" || id == "XLQ9")
+      {
+        // this test adds an otherwise unwarranted document end marker
+        // open issue: https://github.com/yaml/yaml-test-suite/issues/131
+        actual_out_yaml += docend;
+      }
+
+      if (id == "M7A3")
+      {
+        // this example has an odd emitter output which omits the document start
+        // in a way the code below will not catch, so we fix it here
+        auto pos = wanted_yaml.find(docend);
+        wanted_yaml.replace(pos, docend.size(), docend + "--- ");
+      }
+
+      trieste::logging::Debug() << actual_out_yaml;
+
+      if (emit_mode)
+      {
+        auto docstart = actual_out_yaml.substr(0, 4);
+        if (docstart.back() == '\r')
+        {
+          docstart = actual_out_yaml.substr(0, 5);
+        }
+
+        if (wanted_yaml.find(docstart) != 0)
+        {
+          wanted_yaml = docstart + wanted_yaml;
+        }
+      }
+
+      if (actual_out_yaml != wanted_yaml)
+      {
+        std::ostringstream os;
+        diff(actual_out_yaml, wanted_yaml, "YAML", os);
+        return {false, os.str()};
+      }
+    }
 
     return {true, ""};
+  }
+
+  Result run(const std::filesystem::path& debug_path, bool wf_checks, bool crlf)
+  {
+    if (id == "7T8X" || id == "JEF9" || id == "K858")
+    {
+      // These tests reproduce whitespace from the input and
+      // check it against explicit output strings which encode
+      // just the linefeed.
+      crlf = false;
+    }
+
+    auto result = yaml::reader()
+                    .synthetic(in_yaml)
+                    .wf_check_enabled(wf_checks)
+                    .debug_enabled(!debug_path.empty())
+                    .debug_path(debug_path / "yaml")
+                    .read();
+
+    if (!result.ok)
+    {
+      return {error, result.error_message()};
+    }
+
+    Node actual_yaml = result.ast;
+
+    Result test_result =
+      compare_events(actual_yaml, debug_path, wf_checks, crlf);
+    if (!test_result.passed)
+    {
+      return test_result;
+    }
+
+    if (error)
+    {
+      return {true, ""};
+    }
+
+    test_result = compare_json(actual_yaml, debug_path, wf_checks);
+    if (!test_result.passed)
+    {
+      return test_result;
+    }
+
+    test_result = compare_yaml(actual_yaml, crlf);
+    return test_result;
   }
 
   static void load(

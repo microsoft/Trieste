@@ -1,7 +1,8 @@
 set( SOURCES
 parse.cc
 event_writer.cc
-yaml.cc
+writer.cc
+reader.cc
 to_json.cc
 )
 

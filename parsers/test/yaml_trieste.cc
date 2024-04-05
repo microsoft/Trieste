@@ -3,7 +3,6 @@
 
 int main(int argc, char** argv)
 {
-  trieste::Driver driver(
-    "yaml", nullptr, trieste::yaml::parser(), trieste::yaml::passes());
+  trieste::Driver driver(trieste::yaml::reader(), nullptr);
   return driver.run(argc, argv);
 }

@@ -1,4 +1,4 @@
-#include "json.h"
+#include "internal.h"
 
 namespace
 {
@@ -112,10 +112,16 @@ namespace
 
     return lhs->location().view() == rhs->location().view();
   }
-}
 
-namespace trieste::json
-{
+  // clang-format off
+  inline const auto wf_groups =
+    (Top <<= wf_value_tokens++[1])
+    | (Object <<= ObjectGroup)
+    | (Array <<= ArrayGroup)
+    | (ObjectGroup <<= (wf_value_tokens | Colon | Comma)++)
+    | (ArrayGroup <<= (wf_value_tokens | Comma)++)
+    ;
+  // clang-format on
 
   const auto ValueToken = T(Object, Array, String, Number, True, False, Null);
 
@@ -165,7 +171,7 @@ namespace trieste::json
   {
     PassDef structure = {
       "structure",
-      wf_structure,
+      json::wf,
       dir::bottomup,
       {
         In(ArrayGroup) * (Start * ValueToken[Value]) >>
@@ -202,19 +208,20 @@ namespace trieste::json
 
     return structure;
   };
+}
 
-  std::vector<Pass> passes(bool allow_multiple)
+namespace trieste
+{
+  namespace json
   {
-    return {groups(allow_multiple), structure()};
-  }
+    Reader reader(bool allow_multiple)
+    {
+      return Reader{"json", {groups(allow_multiple), structure()}, parser()};
+    }
 
-  Reader reader(bool allow_multiple)
-  {
-    return Reader{"json", passes(allow_multiple), parser()};
-  }
-
-  bool equal(Node lhs, Node rhs)
-  {
-    return value_equal(lhs, rhs);
+    bool equal(Node lhs, Node rhs)
+    {
+      return value_equal(lhs, rhs);
+    }
   }
 }

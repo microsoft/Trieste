@@ -1,5 +1,4 @@
-#include "yaml.h"
-
+#include "internal.h"
 #include "trieste/pass.h"
 #include "trieste/rewrite.h"
 #include "trieste/source.h"
@@ -18,19 +17,19 @@ namespace
     return c == ' ' || c == '\t';
   }
 
-  bool is_in(Node node, Token token)
+  bool is_in(NodeDef* node, Token parent)
   {
-    NodeDef* parent = node->parent();
-    while (parent != Top)
+    if (node == Top)
     {
-      if (parent == token)
-      {
-        return true;
-      }
-      parent = parent->parent();
+      return false;
     }
 
-    return false;
+    if (node == parent)
+    {
+      return true;
+    }
+
+    return is_in(node->parent(), parent);
   }
 
   struct ValuePattern
@@ -360,9 +359,16 @@ namespace
     for (std::size_t i = 1; i < lines.size() - 1; i++)
     {
       Location line = trim(lines[i], min_indent);
-      if (line.len == 0 && line.linecol().second == 0)
+      if (line.len == 0)
       {
-        result.push_back(EmptyLine ^ line);
+        if (line.linecol().second == 0)
+        {
+          result.push_back(EmptyLine ^ line);
+        }
+        else
+        {
+          result.push_back(BlockLine ^ line);
+        }
       }
       else
       {
@@ -618,10 +624,266 @@ namespace
 
     return changes;
   }
-}
 
-namespace trieste::yaml
-{
+  // clang-format off
+  inline const auto wf_groups =
+    (Top <<= Stream)
+    | (Stream <<= StreamGroup)
+    | (Document <<= DocumentGroup)
+    | (Tag <<= TagGroup)
+    | (FlowMapping <<= FlowGroup)
+    | (FlowSequence <<= FlowGroup)
+    | (TagDirective <<= TagDirectiveGroup)
+    | (StreamGroup <<= wf_parse_tokens++)
+    | (DocumentGroup <<= wf_parse_tokens++)
+    | (TagGroup <<= wf_parse_tokens++)
+    | (FlowGroup <<= wf_parse_tokens++)
+    | (TagDirectiveGroup <<= wf_parse_tokens++)
+    ;
+
+  inline const auto wf_values_tokens = (wf_parse_tokens | Placeholder) -
+    (Stream | Document | TagHandle | TagPrefix | ShorthandTag | VerbatimTag |
+     TagDirective | VersionDirective | UnknownDirective);
+
+  // clang-format off
+  inline const auto wf_values =
+    wf_groups
+    | (Stream <<= Directives * Documents)
+    | (Directives <<= (TagDirective | VersionDirective | UnknownDirective)++)
+    | (TagDirective <<= TagPrefix * TagHandle)
+    | (Tag <<= TagPrefix * (TagName >>= ShorthandTag | VerbatimTag | NonSpecificTag))
+    | (Documents <<= Document++)
+    | (Document <<= Directives * DocumentGroup)
+    | (DocumentGroup <<= wf_values_tokens++)
+    ;
+  // clang-format on
+
+  inline const auto wf_flow_tokens = (wf_values_tokens | Placeholder | Empty) -
+    (Comma | FlowMappingStart | FlowMappingEnd | FlowSequenceStart |
+     FlowSequenceEnd);
+
+  inline const auto wf_flowgroup_tokens = (wf_flow_tokens | Plain | Empty) -
+    (Hyphen | Colon | Literal | Folded | IndentIndicator | ChompIndicator |
+     NewLine | Placeholder | Whitespace | MaybeDirective | DocumentStart |
+     DocumentEnd | Comment | Key);
+
+  // clang-format off
+  inline const auto wf_flow =
+    wf_values
+    | (FlowMapping <<= FlowMappingStart * FlowMappingItems * FlowMappingEnd)
+    | (FlowMappingItems <<= FlowMappingItem++)
+    | (FlowMappingItem <<= FlowGroup * FlowGroup)
+    | (FlowSequence <<= FlowSequenceStart * FlowSequenceItems * FlowSequenceEnd)
+    | (FlowSequenceItems <<= FlowSequenceItem++)
+    | (FlowSequenceItem <<= FlowGroup)
+    | (FlowGroup <<= wf_flowgroup_tokens++)
+    | (Plain <<= BlockLine++[1])
+    | (DocumentGroup <<= wf_flow_tokens++)
+    ;
+  // clang-format on
+
+  inline const auto wf_lines_tokens =
+    (wf_flow_tokens | BlockStart) - (NewLine | DocumentStart | DocumentEnd);
+
+  inline const auto wf_doc_tokens = DocumentStart | DocumentEnd | Indent |
+    MappingIndent | SequenceIndent | ManualIndent | BlockStart | EmptyLine |
+    WhitespaceLine | BlockIndent | Empty;
+
+  inline const auto wf_block_tokens =
+    (wf_lines_tokens | Literal | Folded | IndentIndicator | ChompIndicator) -
+    (Hyphen);
+
+  inline const auto wf_lines_indent_tokens = Line | WhitespaceLine |
+    BlockStart | EmptyLine | SequenceIndent | MappingIndent;
+
+  // clang-format off
+  inline const auto wf_lines =
+    wf_flow
+    | (DocumentGroup <<= wf_doc_tokens++)
+    | (Indent <<= wf_lines_indent_tokens++[1])
+    | (MappingIndent <<= wf_lines_indent_tokens++[1])
+    | (SequenceIndent <<= wf_lines_indent_tokens++[1])
+    | (ManualIndent <<= AbsoluteIndent)
+    | (BlockIndent <<= wf_lines_indent_tokens++)
+    | (Line <<= wf_lines_tokens++)
+    | (BlockStart <<= wf_block_tokens++[1])
+    ;
+  // clang-format on
+
+  inline const auto indents_tokens = Line | Indent | MappingIndent |
+    SequenceIndent | EmptyLine | WhitespaceLine | BlockStart | BlockIndent |
+    ManualIndent;
+
+  // clang-format off
+  inline const auto wf_indents =
+    wf_lines
+    | (SequenceIndent <<= indents_tokens++[1])
+    | (MappingIndent <<= indents_tokens++[1])
+    | (BlockIndent <<= indents_tokens++)
+    | (Indent <<= indents_tokens++[1])
+    | (ManualIndent <<= (AbsoluteIndent | indents_tokens)++[1])
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline const auto wf_colgroups =
+    wf_indents
+    | (SequenceIndent <<= SequenceGroup)
+    | (MappingIndent <<= MappingGroup)
+    | (SequenceGroup <<= indents_tokens++[1])
+    | (MappingGroup <<= indents_tokens++[1])
+    ;
+  // clang-format off
+
+  inline const auto wf_items_tokens =
+    (wf_lines_tokens | Line | Indent | MappingIndent | SequenceIndent |
+     ManualIndent | Empty | EmptyLine | WhitespaceLine | BlockIndent |
+     DocumentStart | DocumentEnd) -
+    Placeholder;
+
+  inline const auto wf_items_value_tokens =
+    wf_items_tokens - (DocumentStart | DocumentEnd);
+
+  // clang-format off
+  inline const auto wf_items =
+    wf_indents
+    | (MappingIndent <<= (MappingItem|ComplexKey|ComplexValue)++[1])
+    | (ComplexKey <<= wf_items_value_tokens++)
+    | (ComplexValue <<= wf_items_value_tokens++)
+    | (SequenceIndent <<= SequenceItem++[1])
+    | (MappingItem <<= KeyGroup * ValueGroup)
+    | (SequenceItem <<= ValueGroup)
+    | (DocumentGroup <<= wf_items_tokens++)
+    | (KeyGroup <<= wf_items_value_tokens++)
+    | (ValueGroup <<= wf_items_value_tokens++)
+    ;
+  // clang-format on
+
+  inline const auto wf_complex_tokens = wf_items_tokens - (Key | Colon);
+  inline const auto wf_complex_value_tokens =
+    wf_items_value_tokens - (Key | Colon);
+
+  // clang-format off
+  inline const auto wf_complex =
+    wf_items
+    | (MappingIndent <<= MappingItem++[1])
+    | (KeyGroup <<= wf_complex_value_tokens++)
+    | (ValueGroup <<= wf_complex_value_tokens++)
+    | (DocumentGroup <<= wf_complex_tokens++)
+    ;
+  // clang-format on
+
+  inline const auto wf_blocks_tokens =
+    (wf_complex_tokens | Plain | Literal | Folded) -
+    (Indent | BlockIndent | ManualIndent | ChompIndicator | IndentIndicator |
+     Hyphen | Line | MaybeDirective | BlockStart | Placeholder | EmptyLine);
+
+  inline const auto wf_blocks_value_tokens =
+    wf_blocks_tokens - (DocumentStart | DocumentEnd);
+
+  // clang-format off
+  inline const auto wf_blocks =
+    wf_complex
+    | (Plain <<= (BlockLine | EmptyLine)++[1])
+    | (Literal <<= BlockGroup)
+    | (Folded <<= BlockGroup)
+    | (DocumentGroup <<= wf_blocks_tokens++)
+    | (KeyGroup <<= wf_blocks_value_tokens++)
+    | (ValueGroup <<= wf_blocks_value_tokens++)
+    | (BlockGroup <<= (ChompIndicator | IndentIndicator | BlockLine)++)
+    ;
+  // clang-format on
+
+  inline const auto wf_collections_tokens =
+    (wf_blocks_tokens | Mapping | Sequence) -
+    (MappingIndent | SequenceIndent | Whitespace | Comment | WhitespaceLine |
+     Placeholder);
+
+  inline const auto wf_collections_value_tokens =
+    wf_collections_tokens - (DocumentStart | DocumentEnd);
+
+  // clang-format off
+  inline const auto wf_collections =
+    wf_blocks
+    | (Mapping <<= MappingItem++[1])
+    | (Sequence <<= SequenceItem++[1])
+    | (FlowMapping <<= FlowMappingItem++)
+    | (FlowSequence <<= FlowSequenceItem++)
+    | (DocumentGroup <<= wf_collections_tokens++)
+    | (KeyGroup <<= wf_collections_value_tokens++)
+    | (ValueGroup <<= wf_collections_value_tokens++)
+    ;
+  // clang-format on
+
+  inline const auto wf_attributes_tokens =
+    (wf_collections_tokens | AnchorValue | TagValue);
+
+  inline const auto wf_attributes_value_tokens =
+    wf_attributes_tokens - (DocumentStart | DocumentEnd);
+
+  inline const auto wf_attributes_flow_tokens =
+    wf_flowgroup_tokens | AnchorValue | TagValue;
+
+  // clang-format off
+  inline const auto wf_attributes =
+    wf_collections
+    | (AnchorValue <<= Anchor * (Value >>= wf_attributes_value_tokens))
+    | (TagValue <<= TagPrefix * TagName * (Value >>= wf_attributes_value_tokens))
+    | (DocumentGroup <<= wf_attributes_tokens++)
+    | (FlowGroup <<= wf_attributes_flow_tokens++)
+    | (KeyGroup <<= wf_attributes_value_tokens++)
+    | (ValueGroup <<= wf_attributes_value_tokens++)
+    ;
+  // clang-format on
+
+  inline const auto wf_structure_tokens = Mapping | Sequence | Value | Int |
+    Float | True | False | Hex | Null | SingleQuote | DoubleQuote | Plain |
+    AnchorValue | Alias | TagValue | Literal | Folded | Empty | FlowMapping |
+    FlowSequence;
+
+  inline const auto wf_structure_flow_tokens =
+    wf_structure_tokens - (Mapping | Sequence);
+
+  // clang-format off
+  inline const auto wf_structure = 
+    wf_attributes
+    | (Document <<= Directives * DocumentStart * (Value >>= wf_structure_tokens) * DocumentEnd)
+    | (SequenceItem <<= wf_structure_tokens)
+    | (FlowSequenceItem <<= wf_structure_flow_tokens)
+    | (FlowMappingItem <<= (Key >>= wf_structure_flow_tokens) * (Value >>= wf_structure_flow_tokens))
+    | (MappingItem <<= (Key >>= wf_structure_tokens) * (Value >>= wf_structure_tokens))
+    | (TagDirective <<= TagPrefix * TagHandle)[TagPrefix]
+    | (AnchorValue <<= Anchor * (Value >>= wf_structure_tokens))
+    | (TagValue <<= TagPrefix * TagName * (Value >>= wf_structure_tokens))
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline const auto wf_tags =
+    wf_structure
+    | (Sequence <<= wf_structure_tokens++[1])
+    | (FlowSequence <<= wf_structure_flow_tokens++)
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline const auto wf_quotes =
+    wf_tags
+    | (SingleQuote <<= (BlockLine|EmptyLine)++[1])
+    | (DoubleQuote <<= (BlockLine|EmptyLine)++[1])
+    | (Literal <<= AbsoluteIndent * ChompIndicator * Lines)
+    | (Folded <<= AbsoluteIndent * ChompIndicator * Lines)
+    | (Lines <<= (BlockLine|EmptyLine)++)
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline const auto wf_anchors =
+    wf_quotes
+    | (AnchorValue <<= Anchor * (Value >>= wf_structure_tokens))[Anchor]
+    ;
+  // clang-format on
+
   const auto FlowToken =
     T(Whitespace,
       Value,
@@ -642,7 +904,8 @@ namespace trieste::yaml
       IndentIndicator,
       ChompIndicator,
       FlowMapping,
-      FlowSequence);
+      FlowSequence,
+      Empty);
 
   const auto LineToken =
     FlowToken / T(Comment, Colon, Key, Placeholder, MaybeDirective);
@@ -798,10 +1061,16 @@ namespace trieste::yaml
                        << _(Value);
           },
 
-        In(TagGroup) * T(VerbatimTag, R"(.*[\{\}].*)")[VerbatimTag] >>
+        In(TagGroup) * T(VerbatimTag)[VerbatimTag]([](auto& n) {
+          auto view = n.first[0]->location().view();
+          return view.find_first_of("{}") != std::string::npos;
+        }) >>
           [](Match& _) { return err(_(VerbatimTag), "Invalid tag"); },
 
-        In(TagGroup) * T(ShorthandTag, R"(.*[\{\}\[\],].*)")[ShorthandTag] >>
+        In(TagGroup) * T(ShorthandTag)[ShorthandTag]([](auto& n) {
+          auto view = n.first[0]->location().view();
+          return view.find_first_of("{}[],") != std::string::npos;
+        }) >>
           [](Match& _) { return err(_(ShorthandTag), "Invalid tag"); },
 
         In(Stream) * (T(StreamGroup) << (T(Document)++[Documents] * End)) >>
@@ -897,13 +1166,21 @@ namespace trieste::yaml
         In(FlowMapping, FlowSequence) * T(FlowGroup)[FlowGroup] >>
           [](Match& _) { return Seq << *_[FlowGroup]; },
 
-        In(FlowSequence) * (T(Value, "-")[Value] * T(Comma, FlowSequenceEnd)) >>
+        In(FlowSequence) *
+            (T(Value)[Value] * T(Comma, FlowSequenceEnd))([](auto& n) {
+              Location loc = n.first[0]->location();
+              return loc.view() == "-";
+            }) >>
           [](Match& _) {
             return err(_(Value), "Plain dashes in flow sequence");
           },
 
         In(FlowMapping, FlowSequence) *
-            (FlowToken[Lhs] * T(Comment)++ * T(Value, ":.*")[Rhs]) >>
+            (FlowToken[Lhs] * T(Comment)++ * T(Value)[Rhs])([](auto& n) {
+              Node rhs = *(n.second - 1);
+              Location loc = rhs->location();
+              return loc.view().front() == ':';
+            }) >>
           [](Match& _) {
             Location loc = _(Rhs)->location();
             Location colon = loc;
@@ -992,21 +1269,28 @@ namespace trieste::yaml
             auto value = FlowGroup << _[Value];
             if (value->empty())
             {
-              value = FlowGroup << (Null ^ "null");
+              value = FlowGroup << (Empty ^ "");
             }
             return FlowMappingItem << (FlowGroup << _[Key]) << value;
           },
 
         In(FlowMapping) * (T(FlowKeyValue) << (FlowToken++[Key] * End)) >>
           [](Match& _) {
-            return FlowMappingItem << (FlowGroup << _[Key])
-                                   << (FlowGroup << (Null ^ "null"));
+            auto key = FlowGroup << _[Key];
+            Node value = FlowGroup << (Empty ^ "");
+            if (
+              !key->empty() &&
+              key->back()->location().view().find(':') != std::string::npos)
+            {
+              value = FlowGroup << (Empty ^ "");
+            }
+            return FlowMappingItem << key << value;
           },
 
         In(FlowMapping) * (T(FlowKeyValue) << (T(Key) * End)) >>
           [](Match&) {
             return FlowMappingItem << (FlowGroup << (Empty ^ ""))
-                                   << (FlowGroup << (Null ^ "null"));
+                                   << (FlowGroup << (Empty ^ ""));
           },
 
         In(DocumentGroup) *
@@ -1026,14 +1310,12 @@ namespace trieste::yaml
         In(FlowMappingItem) *
             ((T(FlowGroup) << End) * (T(FlowGroup)[Value] << Any)) >>
           [](Match& _) {
-            return Seq << (FlowGroup << (Null ^ "null")) << _(Value);
+            return Seq << (FlowGroup << (Empty ^ "")) << _(Value);
           },
 
         In(FlowMappingItem) *
             ((T(FlowGroup)[Key] << Any) * (T(FlowGroup) << End)) >>
-          [](Match& _) {
-            return Seq << _(Key) << (FlowGroup << (Null ^ "null"));
-          },
+          [](Match& _) { return Seq << _(Key) << (FlowGroup << (Empty ^ "")); },
 
         In(DocumentGroup) *
             (T(Colon)[Colon] * AnchorTag++[Lhs] * T(NewLine) * ~T(Whitespace) *
@@ -1204,7 +1486,11 @@ namespace trieste::yaml
             (LineToken[Head] * LineToken++[Tail] * T(NewLine)) >>
           [](Match& _) { return Line << _(Head) << _[Tail]; },
 
-        In(DocumentGroup) * (LineToken[Head] * LineToken++[Tail] * End) >>
+        In(DocumentGroup) *
+            (LineToken[Head] * LineToken++[Tail] * End)([](auto& n) {
+              Node head = n.first[0];
+              return head->parent()->parent() == Document;
+            }) >>
           [](Match& _) { return Line << _(Head) << _[Tail]; },
 
         In(DocumentGroup) *
@@ -1538,8 +1824,15 @@ namespace trieste::yaml
           return err(_(Indent), "Wrong indentation");
         },
 
-        In(Line) * T(Comment, ".*: .*")[Comment]([](auto& n) {
-          return is_in(n.first[0], MappingIndent);
+        In(Line) * T(Comment)[Comment]([](auto& n) {
+          Node comment = n.first[0];
+          if (!is_in(comment->parent(), MappingIndent))
+          {
+            return false;
+          }
+
+          auto view = comment->location().view();
+          return view.find(": ") != std::string::npos;
         }) >>
           [](Match& _) -> Node {
           return err(_(Comment), "Comment that looks like a mapping key");
@@ -1655,7 +1948,7 @@ namespace trieste::yaml
             Node value = _(Value);
             if (value == nullptr)
             {
-              value = Null ^ "null";
+              value = Empty ^ "";
             }
             return SequenceItem << (ValueGroup << _[Anchor] << value);
           },
@@ -1663,10 +1956,15 @@ namespace trieste::yaml
         In(SequenceGroup) *
             (T(Line) << (~T(Whitespace) * T(Hyphen) * T(Tag)[Tag] * End)) >>
           [](Match& _) {
-            return SequenceItem << (ValueGroup << _(Tag) << (Null ^ "null"));
+            return SequenceItem << (ValueGroup << _(Tag) << (Empty ^ ""));
           },
 
-        In(MappingGroup) * (T(Line) << (T(Whitespace, ".*\t.*")[Whitespace])) >>
+        In(MappingGroup) *
+            (T(Line) << (T(Whitespace)[Whitespace]))([](auto& n) {
+              Node ws = n.first[0]->front();
+              auto view = ws->location().view();
+              return view.find('\t') != std::string::npos;
+            }) >>
           [](Match& _) {
             return err(_(Whitespace), "Tab character in indentation");
           },
@@ -1730,7 +2028,7 @@ namespace trieste::yaml
             Node value = _(Value);
             if (value == nullptr)
             {
-              value = Null ^ "null";
+              value = Empty ^ "";
             }
             return MappingItem << (KeyGroup << _[Lhs] << Empty)
                                << (ValueGroup << _[Rhs] << value);
@@ -1741,14 +2039,14 @@ namespace trieste::yaml
                 AnchorTag++[Rhs] * End) >>
           [](Match& _) {
             return MappingItem << (KeyGroup << _[Lhs] << _(Key))
-                               << (ValueGroup << _[Rhs] << (Null ^ "null"));
+                               << (ValueGroup << _[Rhs] << (Empty ^ ""));
           },
 
         In(MappingGroup) * T(Line)
             << (~T(Whitespace) * T(Tag)[Lhs] * T(Colon) * T(Tag)[Rhs] * End) >>
           [](Match& _) {
             return MappingItem << (KeyGroup << _(Lhs) << Empty)
-                               << (ValueGroup << _(Rhs) << (Null ^ "null"));
+                               << (ValueGroup << _(Rhs) << (Empty ^ ""));
           },
 
         In(MappingGroup) *
@@ -1792,7 +2090,7 @@ namespace trieste::yaml
           [](Match& _) { return Seq << _(Anchor) << (Empty ^ ""); },
 
         In(ComplexValue) * (AnchorTag[Anchor] * End) >>
-          [](Match& _) { return Seq << _(Anchor) << (Null ^ "null"); },
+          [](Match& _) { return Seq << _(Anchor) << (Empty ^ ""); },
 
         In(DocumentGroup, KeyGroup, ValueGroup) * ((T(Indent, Line)) << End) >>
           [](Match&) -> Node { return nullptr; },
@@ -1802,7 +2100,7 @@ namespace trieste::yaml
           [](Match&) -> Node { return nullptr; },
 
         In(MappingGroup) * (T(ComplexValue) << End) >>
-          [](Match&) { return ComplexValue << (Null ^ "null"); },
+          [](Match&) { return ComplexValue << (Empty ^ ""); },
 
         In(ComplexKey, ComplexValue) *
             ((T(Indent) << (T(Line) << (~T(Whitespace) * T(Comment)))) * End) >>
@@ -1975,7 +2273,7 @@ namespace trieste::yaml
         In(MappingIndent) * T(ComplexKey)[Key] >>
           [](Match& _) {
             return MappingItem << (KeyGroup << *_[Key])
-                               << (ValueGroup << (Null ^ "null"));
+                               << (ValueGroup << (Empty ^ ""));
           },
 
         In(MappingIndent) * T(ComplexValue)[Value] >>
@@ -2175,9 +2473,14 @@ namespace trieste::yaml
         In(Plain) * T(WhitespaceLine)[WhitespaceLine] >>
           [](Match& _) { return EmptyLine ^ _(WhitespaceLine); },
 
-        In(BlockGroup) * T(BlockLine, ".*\n.*")[BlockLine]([](auto& n) {
+        In(BlockGroup) * T(BlockLine)[BlockLine]([](auto& n) {
           Location loc = n.first[0]->location();
-          return loc.len != 0;
+          if (loc.len == 0)
+          {
+            return false;
+          }
+
+          return loc.view().find('\n') != std::string::npos;
         }) >>
           [](Match& _) {
             Nodes lines;
@@ -2204,14 +2507,22 @@ namespace trieste::yaml
             return Seq << lines;
           },
 
-        In(Plain) * T(BlockLine, R"(.*[ \t])")[BlockLine]([](auto& n) {
+        In(Plain) * T(BlockLine)[BlockLine]([](auto& n) {
           auto loc = n.first[0]->location();
-          return loc.len != 0;
+          if (loc.len == 0)
+          {
+            return false;
+          }
+          char c = loc.view().back();
+          return c == ' ' || c == '\t';
         }) >>
           [](Match& _) {
             Location loc = _(BlockLine)->location();
             auto view = loc.view();
-            loc.len = view.find_last_not_of(" \t");
+            auto it = std::find_if(view.rbegin(), view.rend(), [](char c) {
+              return c != ' ' && c != '\t';
+            });
+            loc.len = std::distance(it, view.rend());
             return BlockLine ^ loc;
           },
 
@@ -2256,9 +2567,14 @@ namespace trieste::yaml
             return err(_(IndentIndicator), "Invalid indent indicator");
           },
 
-        In(BlockGroup) * T(BlockLine, "\t.*")[BlockLine]([](auto& n) {
+        In(BlockGroup) * T(BlockLine)[BlockLine]([](auto& n) {
           Location loc = n.first[0]->location();
-          return loc.len != 0;
+          if (loc.len == 0)
+          {
+            return false;
+          }
+
+          return loc.view()[0] == '\t';
         }) >>
           [](Match& _) {
             return err(_(BlockLine), "Tab being used as indentation");
@@ -2274,6 +2590,7 @@ namespace trieste::yaml
          {Colon, "Invalid mapping item"},
          {Hyphen, "Invalid sequence item"},
          {Line, "Invalid indentation"},
+         {Key, "Invalid complex key"},
          {MaybeDirective, "Unexpected stream directive"},
          {BlockStart, "Invalid block scalar"},
          {Placeholder, "Token on same line as document start"}});
@@ -2318,7 +2635,7 @@ namespace trieste::yaml
           [](Match& _) { return Seq << *_[FlowSequenceItems]; },
 
         In(MappingItem) * (T(ValueGroup)[Value] << End) >>
-          [](Match& _) { return _(Value) << (Null ^ "null"); },
+          [](Match& _) { return _(Value) << (Empty ^ ""); },
 
         // errors
 
@@ -2353,11 +2670,11 @@ namespace trieste::yaml
 
         In(KeyGroup, ValueGroup, DocumentGroup, FlowGroup) *
             (T(Tag)[Tag] * End) >>
-          [](Match& _) { return TagValue << _(Tag) << (Value ^ ""); },
+          [](Match& _) { return TagValue << _(Tag) << (Empty ^ ""); },
 
         In(DocumentStart) * (T(Tag)[Tag] * T(DocumentEnd)[DocumentEnd]) >>
           [](Match& _) {
-            return Seq << (TagValue << _(Tag) << (Value ^ ""))
+            return Seq << (TagValue << _(Tag) << (Empty ^ ""))
                        << _(DocumentEnd);
           },
 
@@ -2370,10 +2687,14 @@ namespace trieste::yaml
           },
 
         In(TagValue) *
-            (T(TagPrefix, "!!")[TagPrefix] * T(TagName, "str")[TagName] *
-             T(Null)) >>
+            (T(TagPrefix)[TagPrefix] * T(TagName)[TagName] *
+             T(Null))([](auto& n) {
+              auto pre = n.first[0]->location().view();
+              auto tag = n.first[1]->location().view();
+              return pre == "!!" && tag == "str";
+            }) >>
           [](Match& _) {
-            return Seq << _(TagPrefix) << _(TagName) << (Value ^ "");
+            return Seq << _(TagPrefix) << _(TagName) << (Empty ^ "");
           },
 
         // errors
@@ -2418,12 +2739,12 @@ namespace trieste::yaml
 
         In(DocumentGroup) * (T(DocumentStart)[DocumentStart] * End) >>
           [](Match& _) {
-            return Seq << _(DocumentStart) << (Null ^ "null")
+            return Seq << _(DocumentStart) << (Empty ^ "")
                        << (DocumentEnd ^ "");
           },
 
         In(DocumentGroup) * (T(DocumentStart)[Lhs] * T(DocumentEnd)[Rhs]) >>
-          [](Match& _) { return Seq << _(Lhs) << (Null ^ "null") << _(Rhs); },
+          [](Match& _) { return Seq << _(Lhs) << (Empty ^ "") << _(Rhs); },
 
         In(DocumentGroup) * (ValueToken[Value] * End) >>
           [](Match& _) { return Seq << _(Value) << (DocumentEnd ^ ""); },
@@ -2610,10 +2931,6 @@ namespace trieste::yaml
       wf_anchors,
       dir::bottomup,
       {
-        // these two rules are here to clear out empty block lines that
-        // are artifacts of the previous pass. They cannot run until
-        // the previous pass has completed, which is why they are located
-        // here.
         In(SingleQuote, DoubleQuote) *
             (T(BlockLine)[Lhs] * T(BlockLine)[Rhs])([](auto& n) {
               return n.first[0]->location().len == 0 &&
@@ -2652,7 +2969,10 @@ namespace trieste::yaml
             return Anchor ^ loc;
           },
 
-        T(Alias, R"(\*.*)")[Alias] >>
+        T(Alias)[Alias]([](auto& n) {
+          Node anchor = n.first[0];
+          return anchor->location().view().front() == '*';
+        }) >>
           [](Match& _) {
             Location loc = _(Alias)->location();
             loc.pos += 1;
@@ -2700,30 +3020,34 @@ namespace trieste::yaml
           },
       }};
   }
+}
 
-  std::vector<Pass> passes()
+namespace trieste
+{
+  namespace yaml
   {
-    return {
-      groups(),
-      values(),
-      flow(),
-      lines(),
-      indents(),
-      colgroups(),
-      items(),
-      complex(),
-      blocks(),
-      collections(),
-      attributes(),
-      structure(),
-      tags(),
-      quotes(),
-      anchors(),
-    };
+    Reader reader()
+    {
+      return {
+        "yaml",
+        {
+          groups(),
+          values(),
+          flow(),
+          lines(),
+          indents(),
+          colgroups(),
+          items(),
+          complex(),
+          blocks(),
+          collections(),
+          attributes(),
+          structure(),
+          tags(),
+          quotes(),
+          anchors(),
+        },
+        parser()};
+    }
   }
-
-  Reader reader()
-  {
-    return {"yaml", passes(), parser()};
-  }
-} // namespace trieste::yaml
+}

@@ -114,10 +114,10 @@ void diff(
   {
     std::size_t a_end = newline_or_end(actual, a);
     std::string a_line = actual.substr(a, a_end - a);
-  
+
     std::size_t w_end = newline_or_end(wanted, w);
     std::string w_line = wanted.substr(w, w_end - w);
-  
+
     if (a_line != w_line)
     {
       diff_line(a_line, w_line, os);
@@ -146,7 +146,8 @@ void diff(
     while (w < wanted.size())
     {
       std::size_t w_end = newline_or_end(wanted, w);
-      if(w_end == std::string::npos){
+      if (w_end == std::string::npos)
+      {
         w_end = wanted.size();
       }
 

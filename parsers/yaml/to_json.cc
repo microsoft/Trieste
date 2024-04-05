@@ -1,8 +1,7 @@
 #include "internal.h"
 #include "trieste/json.h"
-#include "yaml.h"
 
-namespace rewriter
+namespace
 {
   using namespace trieste;
   using namespace trieste::yaml;
@@ -19,16 +18,17 @@ namespace rewriter
       Null,
       True,
       False,
-      Hex);
+      Hex,
+      Empty);
 
-  inline const auto wf_strings_tokens = wf_structure_tokens -
-    (Literal | Folded | Plain | DoubleQuote | SingleQuote);
+  inline const auto wf_strings_tokens =
+    wf_tokens - (Literal | Folded | Plain | DoubleQuote | SingleQuote);
   inline const auto wf_strings_flow_tokens =
-    wf_structure_flow_tokens - (Plain | DoubleQuote | SingleQuote);
+    wf_flow_tokens - (Plain | DoubleQuote | SingleQuote);
 
   // clang-format off
   inline const auto wf_strings =
-    wf_anchors
+    yaml::wf
     | (Document <<= Directives * DocumentStart * (Value >>= wf_strings_tokens) * DocumentEnd)
     | (Sequence <<= wf_strings_tokens++)
     | (FlowSequence <<= wf_strings_flow_tokens++)
@@ -68,7 +68,7 @@ namespace rewriter
   // clang-format off
 
   inline const auto wf_value_tokens = Mapping | FlowMapping | Sequence |
-    FlowSequence | Int | Float | Hex | True | False | Null | Value;
+    FlowSequence | Int | Float | Hex | True | False | Null | Value | Empty;
 
   // clang-format off
   inline const auto wf_value =
@@ -230,6 +230,9 @@ namespace rewriter
         T(json::Value) << T(Null)[Value] >>
           [](Match& _) { return json::Null ^ _(Value); },
 
+        T(json::Value) << T(Empty) >>
+          [](Match&) { return json::Null ^ "null"; },
+
         T(json::Value) << T(Hex)[Hex] >>
           [](Match& _) {
             std::string hex(_(Hex)->location().view());
@@ -250,17 +253,16 @@ namespace rewriter
   }
 }
 
-namespace trieste::yaml
+namespace trieste
 {
-  Rewriter to_json()
+  namespace yaml
   {
-    return Rewriter{
-      "yaml_to_json",
-      {rewriter::strings(),
-       rewriter::lookup(),
-       rewriter::tags(),
-       rewriter::value(),
-       rewriter::convert()},
-      yaml::wf};
+    Rewriter to_json()
+    {
+      return Rewriter{
+        "yaml_to_json",
+        {strings(), lookup(), tags(), value(), convert()},
+        yaml::wf};
+    }
   }
 }

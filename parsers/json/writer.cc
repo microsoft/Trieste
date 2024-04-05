@@ -1,7 +1,7 @@
-#include "json.h"
+#include "internal.h"
 #include "trieste/wf.h"
 
-namespace writer
+namespace
 {
   using namespace trieste;
   using namespace trieste::json;
@@ -169,30 +169,34 @@ namespace writer
   }
 }
 
-namespace trieste::json
+namespace trieste
 {
-  Writer
-  writer(const std::string& name, bool prettyprint, const std::string& indent)
+  namespace json
   {
-    return Writer(
-      "json",
-      {writer::to_file(name)},
-      json::wf,
-      [prettyprint, indent](std::ostream& os, Node contents) {
-        for (Node value : *contents)
-        {
-          writer::write_value(os, {prettyprint, indent}, "", value);
-        }
-        return true;
-      });
-  }
+    Writer
+    writer(const std::string& name, bool prettyprint, const std::string& indent)
+    {
+      return Writer(
+        "json",
+        {to_file(name)},
+        json::wf,
+        [prettyprint, indent](std::ostream& os, Node contents) {
+          for (Node value : *contents)
+          {
+            write_value(os, {prettyprint, indent}, "", value);
+          }
+          return true;
+        });
+    }
 
-  std::string to_string(Node json, bool prettyprint, const std::string& indent)
-  {
-    wf::push_back(json::wf);
-    std::ostringstream os;
-    writer::write_value(os, {prettyprint, indent}, "", json);
-    wf::pop_front();
-    return os.str();
+    std::string
+    to_string(Node json, bool prettyprint, const std::string& indent)
+    {
+      wf::push_back(json::wf);
+      std::ostringstream os;
+      write_value(os, {prettyprint, indent}, "", json);
+      wf::pop_front();
+      return os.str();
+    }
   }
 }

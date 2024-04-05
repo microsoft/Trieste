@@ -1,6 +1,6 @@
 set( SOURCES
 parse.cc
-json.cc
+reader.cc
 writer.cc
 )
 

@@ -30,36 +30,11 @@ namespace trieste
     inline const auto ArrayGroup = TokenDef("json-array-group");
     inline const auto ObjectGroup = TokenDef("json-object-group");
 
-    inline const auto wf_parse_tokens =
-      Object | Array | String | Number | True | False | Null | Comma | Colon;
-
-    // clang-format off
-    inline const auto wf_parse =
-      (Top <<= File)
-      | (File <<= Group++)
-      | (Value <<= Group)
-      | (Array <<= Group)
-      | (Object <<= Group)
-      | (Member <<= Group)
-      | (Group <<= wf_parse_tokens++)
-      ;
-    // clang-format on
-
     inline const auto wf_value_tokens =
       Object | Array | String | Number | True | False | Null;
 
     // clang-format off
-    inline const auto wf_groups =
-      (Top <<= wf_value_tokens++[1])
-      | (Object <<= ObjectGroup)
-      | (Array <<= ArrayGroup)
-      | (ObjectGroup <<= (wf_value_tokens | Colon | Comma)++)
-      | (ArrayGroup <<= (wf_value_tokens | Comma)++)
-      ;
-    // clang-format on
-
-    // clang-format off
-    inline const auto wf_structure =
+    inline const auto wf =
       (Top <<= wf_value_tokens++[1])
       | (Object <<= Member++)
       | (Member <<= String * (Value >>= wf_value_tokens))
@@ -67,31 +42,14 @@ namespace trieste
       ;
     // clang-format on
 
-    inline const auto wf = wf_structure;
-
-    inline auto err(Node node, const std::string& msg)
-    {
-      return Error << (ErrorMsg ^ msg) << (ErrorAst << node->clone());
-    }
-
-    inline Node err(const NodeRange& r, const std::string& msg)
-    {
-      return Error << (ErrorMsg ^ msg) << (ErrorAst << r);
-    }
-
-    inline auto err(const std::string& msg)
-    {
-      return Error << (ErrorMsg ^ msg);
-    }
-
     Parse parser();
-    std::vector<Pass> passes(bool allow_multiple=false);
-    Reader reader(bool allow_multiple=false);
+    Reader reader(bool allow_multiple = false);
     Writer writer(
       const std::string& name,
       bool prettyprint = false,
       const std::string& indent = "  ");
-    std::string to_string(Node json, bool prettyprint = false, const std::string& indent = "  ");
+    std::string to_string(
+      Node json, bool prettyprint = false, const std::string& indent = "  ");
     bool equal(Node lhs_json, Node rhs_json);
   }
 }
