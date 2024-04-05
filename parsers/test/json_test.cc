@@ -25,6 +25,9 @@ using namespace trieste::json;
 
 std::string replace_whitespace(const std::string& str)
 {
+#ifdef _WIN32
+  return str;
+#else
   std::ostringstream os;
   for (std::size_t i = 0; i < str.size(); ++i)
   {
@@ -45,6 +48,7 @@ std::string replace_whitespace(const std::string& str)
   }
 
   return os.str();
+#endif
 }
 
 void diff_line(
@@ -148,9 +152,12 @@ void skip_whitespace(
 {
   while (it != end)
   {
-    if(is_ws(*it)){
+    if (is_ws(*it))
+    {
       it++;
-    } else {
+    }
+    else
+    {
       break;
     }
   }
