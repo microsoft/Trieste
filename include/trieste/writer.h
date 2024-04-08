@@ -49,7 +49,7 @@ namespace trieste
           return std::cout;
 
         case Mode::Synthetic:
-          return sstream_;       
+          return sstream_;
 
         default:
           throw std::runtime_error("Invalid destination mode");
@@ -290,11 +290,7 @@ namespace trieste
       if (!error_nodes.empty())
       {
         result.ok = false;
-        result.error = NodeDef::create(ErrorSeq);
-        for (auto& error : error_nodes)
-        {
-          result.error->push_back(error);
-        }
+        result.errors = error_nodes;
       }
 
       return result;

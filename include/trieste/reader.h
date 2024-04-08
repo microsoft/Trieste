@@ -43,11 +43,7 @@ namespace trieste
     {
       if (source_ == nullptr)
       {
-        return {
-          false,
-          parse_only,
-          nullptr,
-          ErrorSeq << (Error ^ "No source provided")};
+        return {false, parse_only, nullptr, {(Error ^ "No source provided")}};
       }
 
       Node ast = NodeDef::create(Top);
@@ -62,7 +58,7 @@ namespace trieste
             false,
             parse_only,
             nullptr,
-            ErrorSeq << (Error ^ ("Unknown pass: " + end_pass_))};
+            {Error ^ ("Unknown pass: " + end_pass_)}};
         }
       }
 
@@ -74,7 +70,7 @@ namespace trieste
             false,
             parse_only,
             nullptr,
-            ErrorSeq << (Error ^ ("Unknown pass: " + start_pass_))};
+            {Error ^ ("Unknown pass: " + start_pass_)}};
         }
 
         // Pass range is currently pointing at pass, but the output is the
@@ -92,7 +88,7 @@ namespace trieste
             false,
             parse_only,
             nullptr,
-            ErrorSeq << (Error ^ "Source is empty/does not exist")};
+            {Error ^ "Source is empty/does not exist"}};
         }
 
         ast << parser_.sub_parse(language_name_, File, source_);

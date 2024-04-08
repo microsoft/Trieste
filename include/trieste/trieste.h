@@ -3,6 +3,7 @@
 #include "parse.h"
 #include "passes.h"
 #include "reader.h"
+#include "rewriter.h"
 #include "writer.h"
 
 namespace CLI

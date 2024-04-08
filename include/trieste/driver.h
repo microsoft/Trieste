@@ -3,7 +3,6 @@
 #pragma once
 
 #include "trieste.h"
-#include "trieste/passes.h"
 
 #include <CLI/CLI.hpp>
 #include <filesystem>
@@ -145,7 +144,7 @@ namespace trieste
         auto result = reader.read();
         if (!result.ok)
         {
-          logging::Error() << result.error << std::endl;
+          logging::Error() << result.error_message() << std::endl;
           return -1;
         }
 

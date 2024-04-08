@@ -1,7 +1,6 @@
 #pragma once
 
 #include "pass.h"
-#include "trieste/gen.h"
 #include "wf.h"
 
 #include <chrono>
@@ -118,14 +117,17 @@ namespace trieste
     bool ok;
     std::string last_pass;
     Node ast;
-    Node error;
+    Nodes errors;
 
     std::string error_message() const
     {
       if (!ok)
       {
         std::ostringstream os;
-        os << error;
+        for (auto& error : errors)
+        {
+          os << error;
+        }
         return os.str();
       }
 
@@ -147,7 +149,7 @@ namespace trieste
     std::function<bool(Node&, std::string, size_t index, PassStatistics&)>
       pass_complete;
 
-    std::function<Node(Nodes&, std::string)> error_pass;
+    std::function<Nodes(Nodes&, std::string)> error_pass;
 
   public:
     Process(const PassRange<PassIterator>& passes) : pass_range(passes) {}
@@ -229,7 +231,7 @@ namespace trieste
      * @brief If a pass fails, then the supplied function is called with the
      * current AST and details of the pass that has just failed.
      */
-    Process& set_error_pass(std::function<Node(Nodes&, std::string)> f)
+    Process& set_error_pass(std::function<Nodes(Nodes&, std::string)> f)
     {
       error_pass = f;
       return *this;
@@ -241,10 +243,8 @@ namespace trieste
         logging::Sep sep{"----------------"};
         err << "Errors:";
 
-        Node errorseq = NodeDef::create(ErrorSeq);
         for (auto& error : errors)
         {
-          errorseq << error;
           err << sep << std::endl;
           for (auto& child : *error)
           {
@@ -258,7 +258,7 @@ namespace trieste
         err << "Pass " << name << " failed with " << errors.size()
             << " errors\n";
 
-        return errorseq;
+        return errors;
       };
 
       return *this;
@@ -305,7 +305,6 @@ namespace trieste
       // Check ast is well-formed before starting.
       auto ok = validate(ast, errors);
 
-      Node error;
       PassStatistics stats;
       std::string last_pass = pass_range.last_pass()->name();
       ok = pass_complete(ast, pass_range.entry_pass_name(), 0, stats) && ok;
@@ -337,91 +336,13 @@ namespace trieste
         if (!ok)
         {
           last_pass = pass->name();
-          error = error_pass(errors, last_pass);
+          errors = error_pass(errors, last_pass);
         }
       }
 
       wf::pop_front();
 
-      return {ok, last_pass, ast, error};
-    }
-  };
-
-  class Rewriter
-  {
-  private:
-    std::string name_;
-    std::vector<Pass> passes_;
-    const wf::Wellformed* wf_;
-    bool debug_enabled_;
-    bool wf_check_enabled_;
-    std::filesystem::path debug_path_;
-
-  public:
-    Rewriter(
-      const std::string& name,
-      const std::vector<Pass>& passes,
-      const wf::Wellformed& wf)
-    : name_(name),
-      passes_(passes),
-      wf_(&wf),
-      debug_enabled_(false),
-      wf_check_enabled_(true),
-      debug_path_(".")
-    {}
-
-    ProcessResult rewrite(Node ast)
-    {
-      PassRange pass_range(passes_, *wf_, name_);
-
-      logging::Info summary;
-      std::filesystem::path debug_path;
-      if (debug_enabled_)
-      {
-        debug_path = debug_path_;
-      }
-
-      summary << "---------" << std::endl;
-      auto result = Process(pass_range)
-                      .set_check_well_formed(wf_check_enabled_)
-                      .set_default_pass_complete(summary, name_, debug_path)
-                      .set_default_error_pass(summary)
-                      .run(ast);
-      summary << "---------" << std::endl;
-      return result;
-    }
-
-    Rewriter& debug_enabled(bool value)
-    {
-      debug_enabled_ = value;
-      return *this;
-    }
-
-    bool debug_enabled() const
-    {
-      return debug_enabled_;
-    }
-
-    Rewriter& wf_check_enabled(bool value)
-    {
-      wf_check_enabled_ = value;
-      return *this;
-    }
-
-    bool wf_check_enabled() const
-    {
-      return wf_check_enabled_;
-    }
-
-    Rewriter& debug_path(const std::filesystem::path& path)
-    {
-      debug_path_ = path;
-      return *this;
-    }
-
-    const std::filesystem::path& debug_path() const
-    {
-      return debug_path_;
+      return {ok, last_pass, ast, errors};
     }
   };
 } // namespace trieste
