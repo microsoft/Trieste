@@ -164,7 +164,7 @@ namespace trieste
         {
           logging::Error() << "Could not open " << output << " for writing."
                            << std::endl;
-          return -1;
+          return 1;
         }
       }
       else if (*test)
@@ -240,7 +240,7 @@ namespace trieste
               err << "============" << std::endl
                   << "Failed pass: " << pass->name() << ", seed: " << seed
                   << std::endl;
-              ret = -1;
+              ret = 1;
 
               if (test_failfast)
                 return ret;
