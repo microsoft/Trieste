@@ -249,10 +249,10 @@ namespace trieste
           for (auto& child : *error)
           {
             if (child->type() == ErrorMsg)
-              err << child->location().view();
+              err << child->location().view() << std::endl;
             else
               err << child->location().origin_linecol() << std::endl
-                  << child->location().str();
+                  << child->location().str() << std::endl;
           }
         }
         err << "Pass " << name << " failed with " << errors.size()
