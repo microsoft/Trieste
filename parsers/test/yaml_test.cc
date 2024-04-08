@@ -7,8 +7,7 @@
 #include <fstream>
 #include <type_traits>
 
-using namespace trieste::utf8;
-using namespace trieste::yaml;
+using namespace trieste;
 
 const std::string Green = "\x1b[32m";
 const std::string Reset = "\x1b[0m";
@@ -76,11 +75,11 @@ std::string replace_whitespace(const std::string& str)
     switch (str[i])
     {
       case ' ':
-        os << rune(183);
+        os << utf8::rune(183);
         break;
 
       case '\t':
-        os << rune(2192);
+        os << utf8::rune(2192);
         break;
 
       default:
@@ -131,6 +130,17 @@ void diff_line(
   os << std::endl;
 }
 
+std::size_t newline_or_end(const std::string& str, std::size_t start)
+{
+  std::size_t newline = str.find('\n', start);
+  if (newline == std::string::npos)
+  {
+    return str.size();
+  }
+
+  return newline;
+}
+
 void diff(
   const std::string& actual,
   const std::string& wanted,
@@ -143,8 +153,8 @@ void diff(
   bool error = false;
   while (a < actual.size() && w < wanted.size())
   {
-    std::size_t a_end = actual.find("\n", a);
-    std::size_t w_end = wanted.find("\n", w);
+    std::size_t a_end = newline_or_end(actual, a);
+    std::size_t w_end = newline_or_end(wanted, w);
     std::string a_line = actual.substr(a, a_end - a);
     std::string w_line = wanted.substr(w, w_end - w);
     if (a_line != w_line)
@@ -166,7 +176,7 @@ void diff(
   {
     while (a < actual.size())
     {
-      std::size_t a_end = actual.find("\n", a);
+      std::size_t a_end = newline_or_end(actual, a);
       std::string a_line = actual.substr(a, a_end - a);
       os << "+ " << a_line << std::endl;
       a = a_end + 1;
@@ -174,7 +184,7 @@ void diff(
 
     while (w < wanted.size())
     {
-      std::size_t w_end = wanted.find("\n", w);
+      std::size_t w_end = newline_or_end(wanted, w);
       std::string w_line = wanted.substr(w, w_end - w);
       os << "- " << w_line << std::endl;
       w = w_end + 1;
@@ -184,14 +194,14 @@ void diff(
   os << "--- " << label << " ---" << std::endl;
 }
 
-struct Result
-{
-  bool passed;
-  std::string error;
-};
-
 struct TestCase
 {
+  struct Result
+  {
+    bool passed;
+    std::string error;
+  };
+
   std::string id;
   std::size_t index;
   std::string name;
@@ -203,6 +213,158 @@ struct TestCase
   std::filesystem::path filename;
   bool error;
 
+  // YAML event streams are unambiguous, unique representations of
+  // the YAML AST. As such, a correct event stream means the parser
+  // is working.
+  Result compare_events(
+    Node actual_yaml,
+    const std::filesystem::path& debug_path,
+    bool wf_checks,
+    bool crlf)
+  {
+    std::string event_name = "actual.event";
+    Destination dest = DestinationDef::synthetic();
+    auto result =
+      actual_yaml >> yaml::event_writer("actual.event", crlf ? "\r\n" : "\n")
+                       .wf_check_enabled(wf_checks)
+                       .debug_enabled(!debug_path.empty())
+                       .debug_path(debug_path / "event_writer")
+                       .destination(dest);
+
+    if (!result.ok)
+    {
+      return {false, result.error_message()};
+    }
+
+    auto actual_event = dest->file(std::filesystem::path(".") / "actual.event");
+
+    trieste::logging::Debug() << actual_event;
+
+    if (event.size() > 0 && actual_event != event)
+    {
+      if (id == "Y79Y" && index >= 4 && index <= 9)
+      {
+        // these tests currently have incorrect event files
+        // open issue: https://github.com/yaml/yaml-test-suite/issues/126
+        return {true, ""};
+      }
+
+      std::ostringstream os;
+      diff(actual_event, event, "EVENT", os);
+      return {false, os.str()};
+    }
+
+    return {true, ""};
+  }
+
+  Result compare_json(
+    Node actual_yaml, const std::filesystem::path& debug_path, bool wf_checks)
+  {
+    if (!in_json.empty())
+    {
+      auto result = actual_yaml >> yaml::to_json()
+                                     .wf_check_enabled(wf_checks)
+                                     .debug_enabled(!debug_path.empty())
+                                     .debug_path(debug_path / "yaml_to_json");
+
+      if (!result.ok)
+      {
+        return {false, result.error_message()};
+      }
+
+      Node actual_json = result.ast;
+
+      result = json::reader(true)
+                 .wf_check_enabled(wf_checks)
+                 .debug_enabled(!debug_path.empty())
+                 .debug_path(debug_path / "json")
+                 .synthetic(in_json)
+                 .read();
+      if (!result.ok)
+      {
+        return {false, result.error_message()};
+      }
+
+      Node wanted_json = result.ast;
+
+      if (!json::equal(actual_json, wanted_json))
+      {
+        std::ostringstream os;
+        diff(
+          json::to_string(actual_json, true),
+          json::to_string(wanted_json, true),
+          "JSON",
+          os);
+        return {false, os.str()};
+      }
+    }
+
+    return {true, ""};
+  }
+
+  Result compare_yaml(Node actual_yaml, bool crlf)
+  {
+    if (!out_yaml.empty() || !emit_yaml.empty())
+    {
+      bool emit_mode = !emit_yaml.empty();
+      std::string wanted_yaml = emit_mode ? emit_yaml : out_yaml;
+      std::string actual_out_yaml =
+        yaml::to_string(actual_yaml, crlf ? "\r\n" : "\n", 2, emit_mode);
+
+      if (id == "4ABK" || id == "L24T" || id == "MJS9" || id == "R4YG")
+      {
+        // these tests have non-standard YAML output
+        // 4ABK open issue: https://github.com/yaml/yaml-test-suite/issues/133
+        // L24T open issue: https://github.com/yaml/yaml-test-suite/issues/134
+        // MJS9/R4YG do the same thing as L24T but is in the out.yaml so less
+        // can be ignored as an alternate production.
+        return {true, ""};
+      }
+
+      std::string docend = crlf ? "...\r\n" : "...\n";
+
+      if (id == "K54U" || id == "PUW8" || id == "XLQ9")
+      {
+        // this test adds an otherwise unwarranted document end marker
+        // open issue: https://github.com/yaml/yaml-test-suite/issues/131
+        actual_out_yaml += docend;
+      }
+
+      if (id == "M7A3")
+      {
+        // this example has an odd emitter output which omits the document start
+        // in a way the code below will not catch, so we fix it here
+        auto pos = wanted_yaml.find(docend);
+        wanted_yaml.replace(pos, docend.size(), docend + "--- ");
+      }
+
+      trieste::logging::Debug() << actual_out_yaml;
+
+      if (emit_mode)
+      {
+        auto docstart = actual_out_yaml.substr(0, 4);
+        if (docstart.back() == '\r')
+        {
+          docstart = actual_out_yaml.substr(0, 5);
+        }
+
+        if (wanted_yaml.find(docstart) != 0)
+        {
+          wanted_yaml = docstart + wanted_yaml;
+        }
+      }
+
+      if (actual_out_yaml != wanted_yaml)
+      {
+        std::ostringstream os;
+        diff(actual_out_yaml, wanted_yaml, "YAML", os);
+        return {false, os.str()};
+      }
+    }
+
+    return {true, ""};
+  }
+
   Result run(const std::filesystem::path& debug_path, bool wf_checks, bool crlf)
   {
     if (id == "7T8X" || id == "JEF9" || id == "K858")
@@ -213,55 +375,40 @@ struct TestCase
       crlf = false;
     }
 
-    YAMLEmitter emitter("  ", crlf ? "\r\n" : "\n");
-    YAMLReader reader(in_yaml);
-    reader.debug_enabled(!debug_path.empty())
-      .debug_path(debug_path)
-      .well_formed_checks_enabled(wf_checks);
-    reader.read();
-    if (reader.has_errors())
+    auto result = yaml::reader()
+                    .synthetic(in_yaml)
+                    .wf_check_enabled(wf_checks)
+                    .debug_enabled(!debug_path.empty())
+                    .debug_path(debug_path / "yaml")
+                    .read();
+
+    if (!result.ok)
     {
-      return {error, reader.error_message()};
+      return {error, result.error_message()};
     }
 
-    // YAML event streams are unambiguous, unique representations of
-    // the YAML AST. As such, a correct event stream means the parser
-    // is working.
+    Node actual_yaml = result.ast;
 
-    std::string actual_event;
-    try
+    Result test_result =
+      compare_events(actual_yaml, debug_path, wf_checks, crlf);
+    if (!test_result.passed)
     {
-      std::ostringstream os;
-      emitter.emit_events(os, reader.stream());
-      actual_event = os.str();
-    }
-    catch (const std::exception& ex)
-    {
-      return {false, ex.what()};
+      return test_result;
     }
 
-    trieste::logging::Debug() << actual_event;
-
-    if (event.size() > 0 && actual_event != event)
+    if (error)
     {
-      if (id == "Y79Y" && index >= 4 && index <= 9)
-      {
-        // TODO
-        // these tests currently have incorrect event files
-        // https://github.com/yaml/yaml-test-suite/issues/126
-        // remove once this issue has been resolved
-        return {true, ""};
-      }
-
-      std::ostringstream os;
-      diff(actual_event, event, "EVENT", os);
-      return {false, os.str()};
+      return {true, ""};
     }
 
-    // TODO test YAML emitter
-    // TODO test YAML to JSON emitter
+    test_result = compare_json(actual_yaml, debug_path, wf_checks);
+    if (!test_result.passed)
+    {
+      return test_result;
+    }
 
-    return {true, ""};
+    test_result = compare_yaml(actual_yaml, crlf);
+    return test_result;
   }
 
   static void load(
@@ -329,22 +476,22 @@ struct TestCase
       testcase.id = id;
       testcase.index = index;
       testcase.filename = test_dir / "in.yaml";
-      testcase.name = read_to_end(test_dir / "===");
+      testcase.name = utf8::read_to_end(test_dir / "===");
       if (testcase.name.back() == '\n')
       {
         testcase.name.pop_back();
       }
 
       testcase.in_yaml =
-        normalize_crlf(read_to_end(test_dir / "in.yaml"), crlf);
+        normalize_crlf(utf8::read_to_end(test_dir / "in.yaml"), crlf);
       testcase.in_json =
-        normalize_crlf(read_to_end(test_dir / "in.json"), crlf);
+        normalize_crlf(utf8::read_to_end(test_dir / "in.json"), crlf);
       testcase.out_yaml =
-        normalize_crlf(read_to_end(test_dir / "out.yaml"), crlf);
+        normalize_crlf(utf8::read_to_end(test_dir / "out.yaml"), crlf);
       testcase.emit_yaml =
-        normalize_crlf(read_to_end(test_dir / "emit.yaml"), crlf);
+        normalize_crlf(utf8::read_to_end(test_dir / "emit.yaml"), crlf);
       testcase.event =
-        normalize_crlf(read_to_end(test_dir / "test.event"), crlf);
+        normalize_crlf(utf8::read_to_end(test_dir / "test.event"), crlf);
       testcase.error = std::filesystem::exists(test_dir / "error");
       if (!testcase.in_yaml.empty())
       {

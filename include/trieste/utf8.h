@@ -5,8 +5,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -210,7 +210,8 @@ namespace trieste
       return write_rune(os, r.value);
     }
 
-    inline std::ostream& operator<<(std::ostream& os, const runestring_view& runes)
+    inline std::ostream&
+    operator<<(std::ostream& os, const runestring_view& runes)
     {
       for (uint32_t r : runes)
       {
@@ -238,8 +239,7 @@ namespace trieste
       std::size_t pos = 0;
       while (pos < input.size())
       {
-        auto [r, s] =
-          utf8_to_rune(input.substr(pos), unescape_hexunicode);
+        auto [r, s] = utf8_to_rune(input.substr(pos), unescape_hexunicode);
         runes.push_back(r.value);
         pos += s.size();
       }
@@ -473,7 +473,35 @@ namespace trieste
       return os.str();
     }
 
-    inline std::string read_to_end(const std::filesystem::path& path, bool autodetect = false)
+    inline std::string escape_unicode(const std::string_view& input)
+    {
+      std::ostringstream os;
+      std::size_t pos = 0;
+      while (pos < input.size())
+      {
+        auto [r, s] = utf8_to_rune(input.substr(pos), false);
+        if (r.value > 0x7FFF)
+        {
+          os << "\\U" << std::uppercase << std::setfill('0') << std::setw(8)
+             << std::hex << r.value;
+        }
+        else if (r.value > 0x7F)
+        {
+          os << "\\u" << std::uppercase << std::setfill('0') << std::setw(4)
+             << std::hex << r.value;
+        }
+        else
+        {
+          os << (char)r.value;
+        }
+        pos += s.size();
+      }
+
+      return os.str();
+    }
+
+    inline std::string
+    read_to_end(const std::filesystem::path& path, bool autodetect = false)
     {
       std::ifstream fs(path, std::ios::binary);
 
