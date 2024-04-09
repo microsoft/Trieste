@@ -73,7 +73,10 @@ namespace trieste
       switch (mode_)
       {
         case Mode::FileSystem:
-          std::filesystem::create_directories(path_.parent_path());
+          if (!path_.parent_path().empty())
+          {
+            std::filesystem::create_directories(path_.parent_path());
+          }
           fstream_.open(path_);
           return is_open_ = fstream_.is_open();
 
