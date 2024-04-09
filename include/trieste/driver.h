@@ -145,7 +145,7 @@ namespace trieste
         if (!result.ok)
         {
           logging::Error() << result.error_message() << std::endl;
-          return -1;
+          return 1;
         }
 
         if (output.empty())
