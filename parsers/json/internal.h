@@ -6,6 +6,8 @@ namespace trieste
 {
   namespace json
   {
+    Parse parser();
+
     inline const auto wf_parse_tokens =
       Object | Array | String | Number | True | False | Null | Comma | Colon;
 

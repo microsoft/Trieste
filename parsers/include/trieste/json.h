@@ -42,7 +42,6 @@ namespace trieste
       ;
     // clang-format on
 
-    Parse parser();
     Reader reader(bool allow_multiple = false);
     Writer writer(
       const std::string& name,
