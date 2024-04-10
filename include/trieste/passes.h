@@ -124,6 +124,8 @@ namespace trieste
       logging::Sep sep{"----------------"};
       err << "Errors:";
 
+      size_t count = 0;
+
       for (auto& error : errors)
       {
         err << sep << std::endl;
@@ -141,6 +143,11 @@ namespace trieste
             err << leader << std::endl
                 << child->location().str() << trailer << std::endl;
           }
+        }
+        if (count++ > 20)
+        {
+          err << "Too many errors, stopping here" << std::endl;
+          break;
         }
       }
       err << "Pass " << last_pass << " failed with " << errors.size()
