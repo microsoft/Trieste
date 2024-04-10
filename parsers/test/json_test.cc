@@ -235,7 +235,9 @@ struct TestCase
 
     if (!result.ok)
     {
-      return {false, result.error_message(), false};
+      logging::String err;
+      result.print_errors(err);
+      return {false, err.str(), false};
     }
 
     auto actual_json = dest->file(std::filesystem::path(".") / "actual.json");

@@ -233,7 +233,9 @@ struct TestCase
 
     if (!result.ok)
     {
-      return {false, result.error_message()};
+      logging::String err;
+      result.print_errors(err);
+      return {false, err.str()};
     }
 
     auto actual_event = dest->file(std::filesystem::path(".") / "actual.event");
@@ -269,7 +271,9 @@ struct TestCase
 
       if (!result.ok)
       {
-        return {false, result.error_message()};
+        logging::String err;
+        result.print_errors(err);
+        return {false, err.str()};
       }
 
       Node actual_json = result.ast;
@@ -282,7 +286,9 @@ struct TestCase
                  .read();
       if (!result.ok)
       {
-        return {false, result.error_message()};
+        logging::String err;
+        result.print_errors(err);
+        return {false, err.str()};
       }
 
       Node wanted_json = result.ast;
@@ -384,7 +390,9 @@ struct TestCase
 
     if (!result.ok)
     {
-      return {error, result.error_message()};
+      logging::String err;
+      result.print_errors(err);
+      return {error, err.str()};
     }
 
     Node actual_yaml = result.ast;
