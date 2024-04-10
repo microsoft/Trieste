@@ -106,7 +106,7 @@ namespace trieste
       }
       else
       {
-        std::visit([&](auto x) -> Node { ast = parser_.parse(x); }, input);
+        std::visit([&](auto x) { ast = parser_.parse(x); }, input);
       }
 
       logging::Info summary;
