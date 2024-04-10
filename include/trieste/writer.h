@@ -56,16 +56,6 @@ namespace trieste
       }
     }
 
-    void push_directory(const std::filesystem::path& path)
-    {
-      path_ /= path;
-    }
-
-    void pop_directory()
-    {
-      path_ = path_.parent_path();
-    }
-
     bool open(const std::filesystem::path& path)
     {
       close();
@@ -81,7 +71,7 @@ namespace trieste
           return is_open_ = fstream_.is_open();
 
         case Mode::Console:
-          std::cout << "OPEN " << path_;
+          std::cout << "OPEN " << path_ << std::endl << std::endl;
           return is_open_ = true;
 
         case Mode::Synthetic:
@@ -245,26 +235,11 @@ namespace trieste
         stack.pop_back();
         if (current == Directory)
         {
-          try
-          {
-            dest->push_directory((current / Path)->location().view());
-          }
-          catch (std::exception& e)
-          {
-            error_nodes.push_back(
-              Error << (ErrorMsg ^ e.what()) << (ErrorAst << current->clone()));
-          }
-
           auto files = current / FileSeq;
-          stack.push_back(NoChange);
           for (auto& file : *files)
           {
             stack.push_back(file);
           }
-        }
-        else if (current == NoChange)
-        {
-          dest->pop_directory();
         }
         else if (current == File)
         {

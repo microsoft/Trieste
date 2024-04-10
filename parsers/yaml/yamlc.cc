@@ -73,7 +73,7 @@ int main(int argc, char** argv)
   ProcessResult result;
   if (mode == "event")
   {
-    result = reader >> yaml::event_writer(output_path.filename().string())
+    result = reader >> yaml::event_writer(output_path)
                          .dir(output_path.parent_path())
                          .debug_enabled(!debug_path.empty())
                          .debug_path(debug_path)
@@ -86,7 +86,7 @@ int main(int argc, char** argv)
                          .debug_enabled(!debug_path.empty())
                          .debug_path(debug_path)
                          .wf_check_enabled(wf_checks) >>
-      json::writer(output_path.filename().string(), prettyprint)
+      json::writer(output_path, prettyprint)
         .dir(output_path.parent_path())
         .debug_enabled(!debug_path.empty())
         .debug_path(debug_path)

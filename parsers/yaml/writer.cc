@@ -805,7 +805,7 @@ namespace trieste
   namespace yaml
   {
     Writer writer(
-      const std::string& path,
+      const std::filesystem::path& path,
       const std::string& newline,
       std::size_t indent,
       bool canonical)

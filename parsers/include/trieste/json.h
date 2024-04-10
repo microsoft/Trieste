@@ -44,7 +44,7 @@ namespace trieste
 
     Reader reader(bool allow_multiple = false);
     Writer writer(
-      const std::string& name,
+      const std::filesystem::path& path,
       bool prettyprint = false,
       const std::string& indent = "  ");
     std::string to_string(

@@ -1,5 +1,4 @@
-#include "lang.h"
-#include "wf.h"
+#include "internal.h"
 
 namespace infix
 {

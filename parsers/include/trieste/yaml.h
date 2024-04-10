@@ -159,15 +159,10 @@ namespace trieste
 
     Parse parser();
     Reader reader();
-    Writer
-    event_writer(const std::string& name, const std::string& newline = "\n");
+    Writer event_writer(
+      const std::filesystem::path& path, const std::string& newline = "\n");
     Writer writer(
       const std::filesystem::path& path,
-      const std::string& newline = "\n",
-      std::size_t indent = 2,
-      bool canonical = false);
-    Writer writer(
-      const std::string& name,
       const std::string& newline = "\n",
       std::size_t indent = 2,
       bool canonical = false);
