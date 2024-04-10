@@ -119,19 +119,39 @@ namespace trieste
     Node ast;
     Nodes errors;
 
-    std::string error_message() const
+    void print_errors(logging::Log& err) const
     {
-      if (!ok)
-      {
-        std::ostringstream os;
-        for (auto& error : errors)
-        {
-          os << error;
-        }
-        return os.str();
-      }
+      logging::Sep sep{"----------------"};
+      err << "Errors:";
 
-      return "";
+      size_t count = 0;
+
+      for (auto& error : errors)
+      {
+        err << sep << std::endl;
+        for (auto& child : *error)
+        {
+          if (child->type() == ErrorMsg)
+            err << child->location().view() << std::endl;
+          else
+          {
+            std::string loc = child->location().origin_linecol();
+            std::string leader =
+              "------------------------------------------------------";
+            std::string trailer = leader;
+            leader = leader.replace(4, loc.size(), loc);
+            err << leader << std::endl
+                << child->location().str() << trailer << std::endl;
+          }
+        }
+        if (count++ > 20)
+        {
+          err << "Too many errors, stopping here" << std::endl;
+          break;
+        }
+      }
+      err << "Pass " << last_pass << " failed with " << errors.size()
+          << " errors\n";
     }
   };
 
@@ -228,43 +248,6 @@ namespace trieste
     }
 
     /**
-     * @brief If a pass fails, then the supplied function is called with the
-     * current AST and details of the pass that has just failed.
-     */
-    Process& set_error_pass(std::function<Nodes(Nodes&, std::string)> f)
-    {
-      error_pass = f;
-      return *this;
-    }
-
-    Process& set_default_error_pass(logging::Log& err)
-    {
-      error_pass = [&err](Nodes& errors, std::string name) {
-        logging::Sep sep{"----------------"};
-        err << "Errors:";
-
-        for (auto& error : errors)
-        {
-          err << sep << std::endl;
-          for (auto& child : *error)
-          {
-            if (child->type() == ErrorMsg)
-              err << child->location().view() << std::endl;
-            else
-              err << child->location().origin_linecol() << std::endl
-                  << child->location().str() << std::endl;
-          }
-        }
-        err << "Pass " << name << " failed with " << errors.size()
-            << " errors\n";
-
-        return errors;
-      };
-
-      return *this;
-    }
-
-    /**
      * @brief Specified is well-formedness should be checked between passes.
      */
     Process& set_check_well_formed(bool b)
@@ -306,7 +289,7 @@ namespace trieste
       auto ok = validate(ast, errors);
 
       PassStatistics stats;
-      std::string last_pass = pass_range.last_pass()->name();
+      std::string last_pass = pass_range.entry_pass_name();
       ok = pass_complete(ast, pass_range.entry_pass_name(), 0, stats) && ok;
 
       for (; ok && pass_range.has_next(); index++)
@@ -333,11 +316,7 @@ namespace trieste
 
         ok = pass_complete(ast, pass->name(), index, stats) && ok;
 
-        if (!ok)
-        {
-          last_pass = pass->name();
-          errors = error_pass(errors, last_pass);
-        }
+        last_pass = pass->name();
       }
 
       wf::pop_front();
