@@ -5,6 +5,9 @@
 #include "parse.h"
 #include "passes.h"
 
+#include <optional>
+#include <variant>
+
 namespace trieste
 {
   class Reader
@@ -12,10 +15,13 @@ namespace trieste
   private:
     constexpr static auto parse_only = "parse";
 
+    using InputSpec =
+      std::optional<std::variant<std::filesystem::path, Source>>;
+
     std::string language_name_;
     std::vector<Pass> passes_;
     Parse parser_;
-    Source source_;
+    InputSpec input_{};
     bool debug_enabled_;
     bool wf_check_enabled_;
     std::filesystem::path debug_path_;
@@ -41,12 +47,12 @@ namespace trieste
 
     ProcessResult read()
     {
-      if (source_ == nullptr)
+      if (!input_)
       {
         return {false, parse_only, nullptr, {(Error ^ "No source provided")}};
       }
 
-      Node ast = NodeDef::create(Top);
+      auto& input = *input_;
       PassRange pass_range(
         passes_.begin(), passes_.end(), parser_.wf(), parse_only);
 
@@ -62,6 +68,7 @@ namespace trieste
         }
       }
 
+      Node ast;
       if (!start_pass_.empty())
       {
         if (!pass_range.move_start(start_pass_))
@@ -73,25 +80,33 @@ namespace trieste
             {Error ^ ("Unknown pass: " + start_pass_)}};
         }
 
+        Source source;
+        if (std::holds_alternative<std::filesystem::path>(input))
+        {
+          auto& path = std::get<std::filesystem::path>(input);
+          if (std::filesystem::is_directory(path))
+            return {
+              false,
+              parse_only,
+              nullptr,
+              {Error ^ "Cannot use directory with intermediate pass."}};
+          source = SourceDef::load(path);
+        }
+        else
+        {
+          source = std::get<Source>(input);
+        }
+
         // Pass range is currently pointing at pass, but the output is the
-        // dump of that, so adavnce it one, so we start processing on the
+        // dump of that, so advance it one, so we start processing on the
         // next pass.
         ++pass_range;
 
-        ast = build_ast(source_, offset_);
+        ast = build_ast(source, offset_);
       }
       else
       {
-        if (source_->view().empty())
-        {
-          return {
-            false,
-            parse_only,
-            nullptr,
-            {Error ^ "Source is empty/does not exist"}};
-        }
-
-        ast << parser_.sub_parse(language_name_, File, source_);
+        std::visit([&](auto x) { ast = parser_.parse(x); }, input);
       }
 
       logging::Info summary;
@@ -229,25 +244,20 @@ namespace trieste
 
     Reader& source(const Source& s)
     {
-      source_ = s;
+      input_ = s;
       return *this;
     }
 
     Reader& file(const std::filesystem::path& path)
     {
-      source_ = SourceDef::load(path);
+      input_ = path;
       return *this;
     }
 
     Reader& synthetic(const std::string& contents)
     {
-      source_ = SourceDef::synthetic(contents);
+      input_ = SourceDef::synthetic(contents);
       return *this;
-    }
-
-    const Source& source() const
-    {
-      return source_;
     }
   };
 }

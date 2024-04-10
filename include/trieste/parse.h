@@ -328,6 +328,18 @@ namespace trieste
       return top;
     }
 
+    Node parse(const Source source) const
+    {
+      auto ast = parse_source(source->origin(), File, source);
+      auto top = NodeDef::create(Top);
+      top->push_back(ast);
+
+      if (postparse_)
+        postparse_(*this, {}, top);
+
+      return top;
+    }
+
     Node sub_parse(const std::filesystem::path& path) const
     {
       if (!std::filesystem::exists(path))
@@ -342,12 +354,6 @@ namespace trieste
         return parse_directory(cpath);
 
       return {};
-    }
-
-    Node sub_parse(
-      const std::string name, const Token& token, const Source& source) const
-    {
-      return parse_source(name, token, source);
     }
 
   private:
