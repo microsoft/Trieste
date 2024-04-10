@@ -221,7 +221,6 @@ namespace trieste
         Process(pass_range)
           .set_check_well_formed(wf_check_enabled_)
           .set_default_pass_complete(summary, language_name_, debug_path)
-          .set_default_error_pass(summary)
           .run(ast);
       summary << "---------" << std::endl;
 

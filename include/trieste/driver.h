@@ -142,11 +142,6 @@ namespace trieste
         }
 
         auto result = reader.read();
-        if (!result.ok)
-        {
-          logging::Error() << result.error_message() << std::endl;
-          return 1;
-        }
 
         if (output.empty())
           output = path.stem().replace_extension(".trieste");
@@ -164,6 +159,13 @@ namespace trieste
         {
           logging::Error() << "Could not open " << output << " for writing."
                            << std::endl;
+          return 1;
+        }
+
+        if (!result.ok)
+        {
+          logging::Error err;
+          result.print_errors(err);
           return 1;
         }
       }
