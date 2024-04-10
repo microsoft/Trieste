@@ -46,5 +46,7 @@ namespace infix
   // clang-format off
 
   Reader reader();
+  Writer writer(const std::filesystem::path& path = "infix");
   Writer result_writer(const std::filesystem::path& path = "result");
+  Writer postfix_writer(const std::filesystem::path& path = "postfix");
 }

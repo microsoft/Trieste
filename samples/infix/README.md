@@ -1500,7 +1500,7 @@ Driver& driver()
   }
 ```
 
-## Running the `infix` Executable
+## Running the `infix_trieste` Executable
 
 By defining a Driver, we can then define an executable which will do
 some incredibly useful things for us:
@@ -1516,7 +1516,7 @@ Usage:
 
 ```
 infix
-Usage: ./dist/infix/infix [OPTIONS] SUBCOMMAND
+Usage: ./dist/infix/infix_trieste [OPTIONS] SUBCOMMAND
 
 Options:
   -h,--help                   Print this help message and exit
@@ -1533,7 +1533,7 @@ AST file. Its usage is:
 
 ```
 Build a path
-Usage: ./dist/infix/infix build [OPTIONS] path
+Usage: ./dist/infix/infix_trieste build [OPTIONS] path
 
 Positionals:
   path TEXT REQUIRED          Path to compile.
@@ -1551,7 +1551,7 @@ Options:
 
 for example:
 
-    ./infix build simple.infix -l Info
+    ./infix_trieste build simple.infix -l Info
 
 outputs:
 
@@ -1591,7 +1591,7 @@ the well-formedness definitions. Usage:
 
 ```
 Run automated tests
-Usage: ./dist/infix/infix test [OPTIONS] [start] [end]
+Usage: ./dist/infix/infix_trieste test [OPTIONS] [start] [end]
 
 Positionals:
   start TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
@@ -1614,7 +1614,7 @@ For each pass, it will use its input WF definition to produce
 with the pass, and check them against the output WF definition. For
 example
 
-    ./infix test -f -c 1000 -l Info
+    ./infix_trieste test -f -c 1000 -l Info
 
 outputs:
 
@@ -1727,3 +1727,15 @@ In(Expression) *
 By finding these errors explicitly we can propagate the error up the
 tree, thus eventually allowing the bad subtree to be exempted from the
 WF check and allowing the testing to proceed.
+
+## Helper Constructs
+
+Trieste provides several helper constructs which language implementers can
+expose to their users to help them achieve various tasks such as reading files,
+writing files, and translating from one language to another. Let's take a look
+at how these are implemented for `infix`.
+
+### `Reader`
+
+Every language implementation should expose a `Reader` construct. In the
+case of `infix`, this construct consists of all the passes up to 
