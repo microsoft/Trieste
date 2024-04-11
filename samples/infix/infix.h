@@ -1,6 +1,6 @@
 #pragma once
 
-#include <trieste/driver.h>
+#include <trieste/trieste.h>
 
 namespace infix
 {
@@ -47,6 +47,6 @@ namespace infix
 
   Reader reader();
   Writer writer(const std::filesystem::path& path = "infix");
-  Writer result_writer(const std::filesystem::path& path = "result");
   Writer postfix_writer(const std::filesystem::path& path = "postfix");
+  Rewriter calculate();
 }

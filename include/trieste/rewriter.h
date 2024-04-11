@@ -18,10 +18,10 @@ namespace trieste
     Rewriter(
       const std::string& name,
       const std::vector<Pass>& passes,
-      const wf::Wellformed& wf)
+      const wf::Wellformed& input_wf)
     : name_(name),
       passes_(passes),
-      wf_(&wf),
+      wf_(&input_wf),
       debug_enabled_(false),
       wf_check_enabled_(true),
       debug_path_(".")

@@ -14,8 +14,8 @@ int main(int argc, char** argv)
   std::filesystem::path output_path;
   app.add_option("output", output_path, "Path to the output file ");
 
-  auto modes = {"result", "infix", "postfix"};
-  std::string mode = "result";
+  auto modes = {"calculate", "infix", "postfix"};
+  std::string mode = "calculate";
   app.add_option("-m,--mode", mode, "Output mode.")
     ->transform(CLI::IsMember(modes));
 
@@ -37,11 +37,25 @@ int main(int argc, char** argv)
   }
 
   ProcessResult result;
-  if (mode == "result")
+  if (mode == "calculate")
   {
-    result = reader >> infix::result_writer(output_path).destination(dest);
+    result = reader >> infix::calculate();
+    if(!result.ok){
+      logging::Error err;
+      result.print_errors(err);
+      return 1;
+    }
+
+    Node calc = result.ast->front();
+    for(auto& output : *calc){
+      auto str = output->front()->location().view();
+      auto val = output->back()->location().view();
+      std::cout << str << " " << val << std::endl;
+    }
+
+    return 0;
   }
-  else if (mode == "infix")
+  if (mode == "infix")
   {
     result = reader >> infix::writer(output_path).destination(dest);
   }
@@ -52,7 +66,8 @@ int main(int argc, char** argv)
 
   if (!result.ok)
   {
-    std::cerr << result.error_message() << std::endl;
+    logging::Error err;
+    result.print_errors(err);
     return 1;
   }
 

@@ -22,7 +22,7 @@ inline const auto wf =
 // clang-format on
 ```
 
-The language implementation exposes the following [helper constructs]()
+The language implementation exposes the following helpers:
 
 - `reader()` - `Reader` that parses any valid JSON file and produces an AST that conforms to `json::wf`. Optionally, this reader will read non-compliant JSON files which contain more than one JSON value at the top level of the file.
 - `writer()` - `Writer` that takes a JSON AST that conforms to `json::wf` and produces a JSON file.

@@ -20,7 +20,7 @@ namespace trieste
     Options* options;
 
   public:
-    Driver(const Reader& reader_, Options* options_)
+    Driver(const Reader& reader_, Options* options_ = nullptr)
     : reader(reader_), app(reader_.language_name()), options(options_)
     {}
 

@@ -185,6 +185,7 @@ namespace trieste
           for (Node value : *contents)
           {
             write_value(os, {prettyprint, indent}, "", value);
+            os << std::endl;
           }
           return true;
         });

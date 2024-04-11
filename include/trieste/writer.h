@@ -184,11 +184,11 @@ namespace trieste
     Writer(
       const std::string& language_name,
       const std::vector<Pass>& passes,
-      const wf::Wellformed& input_pass,
+      const wf::Wellformed& input_wf,
       WriteFile write_file)
     : language_name_(language_name),
       passes_(passes),
-      wf_(&input_pass),
+      wf_(&input_wf),
       write_file_(write_file),
       debug_enabled_(false),
       wf_check_enabled_(true),

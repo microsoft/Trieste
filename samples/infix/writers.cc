@@ -204,28 +204,13 @@ namespace
         In(Calculation) * T(Assign) >> [](Match&) -> Node { return {}; },
 
         T(Literal) << Any[Rhs] >> [](Match& _) { return _(Rhs); },
-      }};
-  }
-
-  // clang-format off
-  const auto wf_to_result_file =
-    wf_pass_cleanup
-    | (Top <<= File)
-    | (File <<= Path * Calculation)
-    ;
-  // clang-format on
-
-  PassDef to_result_file(const std::filesystem::path& path)
-  {
-    return {
-      "to_result_file",
-      wf_to_result_file,
-      dir::bottomup | dir::once,
-      {
-        In(Top) * T(Calculation)[Calculation] >>
-          [path](Match& _) {
-            return File << (Path ^ path.string()) << _(Calculation);
-          },
+      
+        T(String, R"("[^"]*")")[String] >> [](Match& _) {
+          Location loc = _(String)->location();
+          loc.pos += 1;
+          loc.len -= 2;
+          return String ^ loc;
+        },
       }};
   }
 
@@ -370,7 +355,7 @@ namespace
       {
         return true;
       }
-      
+
       os << " " << node->location().view();
 
       return false;
@@ -433,24 +418,9 @@ namespace
 
 namespace infix
 {
-  Writer result_writer(const std::filesystem::path& path)
+  Rewriter calculate()
   {
-    return {
-      "infix-result",
-      {maths(), cleanup(), to_result_file(path)},
-      infix::wf,
-      [](std::ostream& os, Node contents) {
-        for (Node output : *contents)
-        {
-          Location str = (output / String)->location();
-          // remove the quotes
-          str.pos += 1;
-          str.len -= 2;
-          os << str.view() << " " << (output / Expression)->location().view()
-             << std::endl;
-        }
-        return true;
-      }};
+    return {"calculate", {maths(), cleanup()}, infix::wf};
   }
 
   Writer writer(const std::filesystem::path& path)
@@ -464,7 +434,10 @@ namespace infix
   Writer postfix_writer(const std::filesystem::path& path)
   {
     return {
-      "postfix", {to_file(path)}, infix::wf, [](std::ostream& os, Node contents) {
+      "postfix",
+      {to_file(path)},
+      infix::wf,
+      [](std::ostream& os, Node contents) {
         return write_postfix(os, contents);
       }};
   }

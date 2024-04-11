@@ -3,6 +3,5 @@
 
 int main(int argc, char** argv)
 {
-  trieste::Driver driver(trieste::yaml::reader(), nullptr);
-  return driver.run(argc, argv);
+  trieste::Driver(trieste::yaml::reader()).run(argc, argv);
 }

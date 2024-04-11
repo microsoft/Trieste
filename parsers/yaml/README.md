@@ -40,9 +40,40 @@ inline const auto wf =
   ;
 ```
 
-The language implementation exposes the following helper constructs:
+The language implementation exposes the following helpers:
 
 - `reader()` - `Reader` that parses any valid 1.2.2 YAML file and produces an AST that conforms to `yaml::wf`.
 - `writer()` - `Writer` that takes a YAML AST that conforms to `yaml::wf` and produces a YAML file.
 - `event_writer()` - `Writer` that takes a YAML AST and produces a YAML event file.
 - `to_json` - `Rewriter` that takes a YAML AST and converts it to a JSON AST that conforms to `json::wf`.
+
+## Using the `yamlc` Executable
+
+One of the targets that will be written to the `dist/parsers` directory is an executable named `yamlc`. It
+has the following usage information:
+
+```
+Usage: parsers/yamlc [OPTIONS] input [output]
+
+Positionals:
+  input TEXT REQUIRED         Path to the input file 
+  output TEXT                 Path to the output file
+
+Options:
+  -h,--help                   Print this help message and exit
+  -a,--ast TEXT               Output the AST (debugging for the reader/rewriter/writer workflows)
+  -w,--wf                     Enable well-formedness checks (slow)
+  --prettyprint               Pretty print the output (for JSON)
+  -m,--mode TEXT:{event,json,yaml}
+                              Output mode.
+```
+
+It can be used to convert YAML to one of three output formats:
+
+- `event` a YAML event file
+- `json` a JSON file (if the YAML stream has more than one document, this JSON will have multiple values at the top level)
+- `yaml` a canonical YAML file. While there is no formal definition for canonical YAML, we have tried to produce a file that would be easily parseable by the majority of YAML parsers.
+
+> **Note**
+> Our implementation is CRLF aware and compatible, in that if the input file contains CRLF line endings they
+> will be handled correctly and preserved in the output.

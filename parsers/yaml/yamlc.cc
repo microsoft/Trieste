@@ -26,7 +26,8 @@ int main(int argc, char** argv)
   app.add_flag("-w,--wf", wf_checks, "Enable well-formedness checks (slow)");
 
   bool prettyprint{false};
-  app.add_flag("--prettyprint", prettyprint, "Pretty print the output (for JSON)");
+  app.add_flag(
+    "--prettyprint", prettyprint, "Pretty print the output (for JSON)");
 
   auto modes = {"event", "json", "yaml"};
   std::string mode;
@@ -70,11 +71,17 @@ int main(int argc, char** argv)
                              .debug_enabled(!debug_path.empty())
                              .debug_path(debug_path)
                              .wf_check_enabled(wf_checks);
+  Destination dest = output_path.empty() ? DestinationDef::console()
+                                         : DestinationDef::dir(output_path.parent_path());
+  if(output_path.empty()){
+    output_path = mode;
+  }
+
   ProcessResult result;
   if (mode == "event")
   {
     result = reader >> yaml::event_writer(output_path)
-                         .dir(output_path.parent_path())
+                         .destination(dest)
                          .debug_enabled(!debug_path.empty())
                          .debug_path(debug_path)
                          .wf_check_enabled(wf_checks);
@@ -87,7 +94,7 @@ int main(int argc, char** argv)
                          .debug_path(debug_path)
                          .wf_check_enabled(wf_checks) >>
       json::writer(output_path, prettyprint)
-        .dir(output_path.parent_path())
+        .destination(dest)
         .debug_enabled(!debug_path.empty())
         .debug_path(debug_path)
         .wf_check_enabled(wf_checks);
@@ -96,7 +103,7 @@ int main(int argc, char** argv)
   else
   {
     result = reader >> yaml::writer(output_path.filename().string())
-                         .dir(output_path.parent_path())
+                         .destination(dest)
                          .debug_enabled(!debug_path.empty())
                          .debug_path(debug_path)
                          .wf_check_enabled(wf_checks);
@@ -105,7 +112,8 @@ int main(int argc, char** argv)
 
   if (!result.ok)
   {
-    std::cerr << result.error_message() << std::endl;
+    logging::Error err;
+    result.print_errors(err);
     return 1;
   }
 
