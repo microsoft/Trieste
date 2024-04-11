@@ -146,7 +146,7 @@ namespace trieste
         }
       }
       err << "Pass " << last_pass << " failed with " << errors.size()
-          << (count > 1 ? " errors!" : "error!") << std::endl;
+          << (count > 1 ? " errors!" : " error!") << std::endl;
     }
   };
 
