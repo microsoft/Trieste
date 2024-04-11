@@ -93,6 +93,14 @@ namespace trieste
         node->push_back(make_error(re_match.at(index), msg));
       }
 
+      void error(const std::string& msg, const Location& location)
+      {
+        if (!in(Group))
+          push(Group);
+
+        node->push_back(make_error(location, msg));
+      }
+
       void add(const Token& type, size_t index = 0)
       {
         if ((type != Group) && !in(Group))

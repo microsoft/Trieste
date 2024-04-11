@@ -135,13 +135,8 @@ namespace trieste
             err << child->location().view() << std::endl;
           else
           {
-            std::string loc = child->location().origin_linecol();
-            std::string leader =
-              "------------------------------------------------------";
-            std::string trailer = leader;
-            leader = leader.replace(4, loc.size(), loc);
-            err << leader << std::endl
-                << child->location().str() << trailer << std::endl;
+            err << "-- " << child->location().origin_linecol() << std::endl
+                << child->location().str() << std::endl;
           }
         }
         if (count++ > 20)
@@ -151,7 +146,7 @@ namespace trieste
         }
       }
       err << "Pass " << last_pass << " failed with " << errors.size()
-          << " errors\n";
+          << (count > 1 ? " errors!" : "error!") << std::endl;
     }
   };
 
