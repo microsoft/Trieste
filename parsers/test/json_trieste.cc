@@ -3,6 +3,5 @@
 
 int main(int argc, char** argv)
 {
-  trieste::Driver driver(trieste::json::reader(), nullptr);
-  return driver.run(argc, argv);
+  trieste::Driver(trieste::json::reader()).run(argc, argv);
 }

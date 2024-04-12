@@ -101,11 +101,17 @@ print "2" z;
 
 ## Parser
 
-Trieste requires us to construct two objects: a `Parse` object and a
-`Driver` object. The `Parse` object will be used by the parser to
-turn one or more files into a tree of nodes, where each node is matched
-with a corresponding token. We will come back to the `Driver` object later
-in this tutorial. First, we construct the `Parse` object like so:
+In order to implement the `infix` language in Trieste, we need to begin
+by implementing a `Parse` object. The AST produced by this parser will
+then be the input to a series of rewrite passes, which will culminate in
+an AST for the program. We want our parser to convert the raw byte stream
+to semantically meaningful tokens with a minimum of syntax. We will rely
+on later passes to interpret those tokens robustly. You can see an (advanced)
+example of this principle at work in the [YAML Parser](../../parsers/yaml/parse.cc),
+which encodes whitespace as whitespace tokens but does not attempt to interpret
+its meaning.
+
+We begin by constructing the `Parse` object like so:
 
 ``` c++
 Parse p(depth::file, wf_parser);
@@ -1347,11 +1353,239 @@ In(Expression) * T(Ident)[Id] >>
 This means that from this point onwards we know that every identifier
 in the tree is valid.
 
+## Well-formedness Definition
+
+At this stage we have successfully constructed an AST for an `infix` program.
+Users of our code need to know what this final form is, so we should export it
+as part of the `infix` namespace:
+
+``` c++
+  const auto wf =
+    (Top <<= Calculation)
+    | (Calculation <<= (Assign | Output)++)
+    | (Assign <<= Ident * Expression)[Ident]
+    | (Output <<= String * Expression)
+    | (Expression <<= (Add | Subtract | Multiply | Divide | Ref | Float | Int))
+    | (Ref <<= Ident)
+    | (Add <<= Expression * Expression)
+    | (Subtract <<= Expression * Expression)
+    | (Multiply <<= Expression * Expression)
+    | (Divide <<= Expression * Expression)
+    ;
+```
+
+Every `infix` AST which the `Parse` object and the above passes produce will
+conform to this. Now we need to expose a `Reader` to our users which provides
+an easy way for them to produce an AST.
+
+## `Reader`
+
+The `Reader` helper is a [class which Trieste provides](../../include/trieste/reader.h)
+to make it easy to provide parsing functionality to users. It has the following constructor:
+
+``` c++
+Reader(const std::string& language_name,
+       const std::vector<Pass>& passes,
+       const Parse& parser)
+```
+
+So, in the case of `infix` we create one like this:
+
+``` c++
+  Reader reader()
+  {
+    return {
+      "infix",
+      {expressions(), multiply_divide(), add_subtract(), trim(), check_refs()},
+      parser(),
+    };
+  }
+```
+
+The user can then use the reader object to read a source file as easily as:
+
+``` c++
+ProcessResult result = infix::reader().file("simple.infix").read();
+if (!result.ok)
+{
+  logging::Error err;
+  result.print_errors(err);
+  return 1;
+}
+
+Node ast = result.ast;
+```
+
+However, the reader object has many other useful fields which can aid in
+debugging, for example:
+
+``` c++
+reader.file(path)
+  .debug_enabled(true)
+  .debug_path("debug")
+  .wf_check_enabled(true)
+```
+
+Which will output intermediary ASTs to a debug folder for each pass
+and perform a strict well-formedness check after parse and each pass.
+You can even restart parsing from a particular pass using `start_pass`
+or stop prematurely using `end_pass`.
+
+## `Writer`
+
+The `Writer` [helper class](../../include/trieste/writer.h) provides an easy way as a language implementer
+for you to expose the ability to take an AST and write it out again. This
+is useful for things such as auto-formatters or converters. In the case of
+`infix` we will use it to implement two writers: one which outputs a
+fully-parenthesized version of the input, and another which outputs a *postfix*
+version of the input.
+
+The `Writer` class has the following constructor:
+
+``` c++
+using WriteFile = std::function<bool(std::ostream&, Node)>;
+Writer(const std::string& language_name,
+       const std::vector<Pass>& passes,
+       const wf::Wellformed& input_wf,
+       WriteFile write_file)
+```
+
+The passes here are different than they usually would be. The job of these
+passes is to prepare the AST so that it has the following structure:
+
+``` c++
+  // clang-format off
+  inline const auto wf_writer =
+    (Top <<= Directory | File)
+    | (Directory <<= Path * FileSeq)
+    | (FileSeq <<= (Directory | File)++)
+    | (File <<= Path * Contents)
+    ;
+  // clang-format on
+```
+
+Note that `Contents` here is a placeholder. The passes you provide will determine
+how to take an AST that adheres to `input_wf` and break it out into one or more files
+in a directory structure, as shown above. In the case of `infix` this will always be a
+single file, and `Contents` will be a `Calculation` node, but the system provides full
+flexibility for more complex outputs.
+
+Once the passes have completed successfully, the `Writer` calls `write_file` with an
+output stream and a node, and as language implementer you then have fully freedom to
+turn the node it provides into a file.  Here is our first example, in which
+we create a fully-parenthesized version of the input:
+
+```c++ 
+  Writer writer(const std::filesystem::path& path)
+  {
+    return {
+      "infix", {to_file(path)}, infix::wf, [](std::ostream& os, Node contents) {
+        return write_infix(os, contents);
+      }};
+  }
+
+  PassDef to_file(const std::filesystem::path& path)
+  {
+    return {
+      "to_file",
+      wf_to_file,
+      dir::bottomup | dir::once,
+      {
+        In(Top) * T(Calculation)[Calculation] >>
+          [path](Match& _) {
+            return File << (Path ^ path.string()) << _(Calculation);
+          },
+      }};
+  }
+```
+
+The `write_infix` function takes nodes and writes them out. For example,
+take a look at this snippet:
+
+``` c++
+    if (node->in({Add, Subtract, Multiply, Divide}))
+    {
+      os << "(";
+      if (write_infix(os, node->front()))
+      {
+        return true;
+      }
+      os << " " << node->location().view() << " ";
+      if (write_infix(os, node->back()))
+      {
+        return true;
+      }
+      os << ")";
+
+      return false;
+    }
+```
+
+We can create the postfix writer in a very similar way:
+
+``` c++
+  Writer postfix_writer(const std::filesystem::path& path)
+  {
+    return {
+      "postfix", {to_file(path)}, infix::wf, [](std::ostream& os, Node contents) {
+        return write_postfix(os, contents);
+      }};
+  }
+```
+
+And a snippet from `write_postfix`:
+
+``` c++
+    if (node->in({Add, Subtract, Multiply, Divide}))
+    {
+      if (write_postfix(os, node->front()))
+      {
+        return true;
+      }
+
+      os << " ";
+
+      if (write_postfix(os, node->back()))
+      {
+        return true;
+      }
+      
+      os << " " << node->location().view();
+
+      return false;
+    }
+```
+
+One created, these `Writer` objects can be used in much the same
+way as `Reader` objects:
+
+``` c++
+ProcessResult result = infix::writer().dir(".").write(ast);
+```
+
+There are also some operator overloads, so you can write an
+auto-formatter (for example) as:
+
+```c++
+ProcessResult result = infix::reader().file("simple.infix") >>
+                       infix::writer("clean.infix").dir(".");
+```
+
+## `Rewriter`
+
+In addition to the ability to export `Reader` and `Writer` helpers, Trieste
+also provides the `Rewriter` [helper class](../../include/trieste/rewriter.h)
+as a way of exporting a sequence of paths that transform your AST into other forms.
+In the YAML language implementation this functionality is used to convert YAML to JSON
+(see [`to_json.cc`](../../parsers/yaml/to_json.cc)). For `infix` we will use this
+to expose a series of passes which execute the program, computing all the expressions
+until we end up with a series of print statements stated in terms of
+literals. This will give us a chance to look at some more useful functionality which comes
+into play when performing these kinds of transformations.
+
 ### Pass 6: Maths
 
-By this point we can start collapsing the expression trees to a single
-literal value. There are a few rules that will do this for us. First,
-we lookup all identifiers and replace them with their values:
+First, we lookup all identifiers and replace them with their values:
 
 ``` c++
 T(Expression) << (T(Ref) << T(Ident)[Id])(
@@ -1477,46 +1711,61 @@ top
         └── int 10
 ```
 
-The complete driver is declared like this:
+The `Rewriter` class has the following constructor:
 
 ``` c++
-Driver& driver()
-  {
-    static Driver d(
-      "infix",
-      nullptr,
-      parser(),
-      {
-        expressions(),
-        multiply_divide(),
-        add_subtract(),
-        trim(),
-        check_refs(),
-        maths(),
-        cleanup(),
-      });
-
-    return d;
-  }
+Rewriter(
+      const std::string& name,
+      const std::vector<Pass>& passes,
+      const wf::Wellformed& input_wf);
 ```
 
-## Running the `infix` Executable
+For our rewriter we can create this in the following way:
 
-By defining a Driver, we can then define an executable which will do
-some incredibly useful things for us:
+``` c++
+Rewriter calculate()
+{
+  return Rewriter("calculate", {maths(), cleanup()}, infix::wf);
+}
+```
+
+We can then write the following code:
+
+``` c++
+ProcessResult result = infix::reader().file("simple.infix") >> infix::calculate();
+```
+
+And receive an AST which contains only output nodes:
+
+``` c++
+Node calc = result.ast->front();
+for(auto& output : *calc){
+  auto str = output->front()->location().view();
+  auto val = output->back()->location().view();
+  std::cout << str << " " << val << std::endl;
+}
+```
+
+You can see a full working example that uses all the helpers we have discussed
+in [infix.cc](infix.cc).
+
+## Running the `infix_trieste` Executable
+
+Trieste also provides a default way of creating an executable in the `Driver`
+class. The resulting program will do some incredibly useful things for us:
 
 ``` c++
 int main(int argc, char** argv)
 {
-  return infix::driver().run(argc, argv);
+  return trieste::Driver(infix::reader()).run(argc, argv);
 }
 ```
 
 Usage:
 
 ```
-infix
-Usage: ./dist/infix/infix [OPTIONS] SUBCOMMAND
+infix_trieste
+Usage: ./dist/infix/infix_trieste [OPTIONS] SUBCOMMAND
 
 Options:
   -h,--help                   Print this help message and exit
@@ -1533,7 +1782,7 @@ AST file. Its usage is:
 
 ```
 Build a path
-Usage: ./dist/infix/infix build [OPTIONS] path
+Usage: ./dist/infix/infix_trieste build [OPTIONS] path
 
 Positionals:
   path TEXT REQUIRED          Path to compile.
@@ -1551,20 +1800,18 @@ Options:
 
 for example:
 
-    ./infix build simple.infix -l Info
+    ./infix_trieste build simple.infix -l Info
 
 outputs:
 
 ```
 ---------
 Pass	Iterations	Changes	Time (us)
-expressions	2	5	210
-multiply_divide	1	0	82
-add_subtract	2	2	153
-trim	2	2	115
-check_refs	2	1	109
-maths	4	10	219
-cleanup	2	2	78
+expressions     2       5       110
+multiply_divide 1       0       50
+add_subtract    2       2       95
+trim    2       2       76
+check_refs      2       1       68
 ---------
 ```
 
@@ -1572,17 +1819,38 @@ and creates the file `simple.trieste` containing:
 
 ``` lisp
 infix
-cleanup
+check_refs
 (top
   {}
-  (calculation
-    {}
-    (output
-      (string 3:"x")
-      (int 1:5))
-    (output
-      (string 8:"1 + 10")
-      (int 2:11))))
+  (infix-calculation
+    {
+      x = infix-assign
+      y = infix-assign}
+    (infix-assign
+      (infix-ident 1:x)
+      (infix-expression
+        (infix-int 1:5)))
+    (infix-output
+      (infix-string 3:"x")
+      (infix-expression
+        (infix-ref
+          (infix-ident 1:x))))
+    (infix-assign
+      (infix-ident 1:y)
+      (infix-expression
+        (infix-subtract
+          (infix-expression
+            (infix-int 1:2))
+          (infix-expression
+            (infix-int 1:1)))))
+    (infix-output
+      (infix-string 8:"1 + 10")
+      (infix-expression
+        (infix-add
+          (infix-expression
+            (infix-int 1:1))
+          (infix-expression
+            (infix-int 2:10)))))))
 ```
 
 ### `test`
@@ -1591,12 +1859,12 @@ the well-formedness definitions. Usage:
 
 ```
 Run automated tests
-Usage: ./dist/infix/infix test [OPTIONS] [start] [end]
+Usage: ./dist/infix/infix_trieste test [OPTIONS] [start] [end]
 
 Positionals:
-  start TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
+  start TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs}
                               Start at this pass.
-  end TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
+  end TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs}
                               End at this pass.
 
 Options:
@@ -1614,7 +1882,7 @@ For each pass, it will use its input WF definition to produce
 with the pass, and check them against the output WF definition. For
 example
 
-    ./infix test -f -c 1000 -l Info
+    ./infix_trieste test -f -c 1000 -l Info
 
 outputs:
 

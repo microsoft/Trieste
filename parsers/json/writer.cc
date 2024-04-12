@@ -154,16 +154,17 @@ namespace
     ;
   // clang-format on
 
-  PassDef to_file(const std::string& name)
+  PassDef to_file(const std::filesystem::path& path)
   {
+    Node dir = Directory;
     return {
       "to_file",
       wf_to_file,
       dir::bottomup | dir::once,
       {
         In(Top) * ValueToken++[Value] >>
-          [name](Match& _) {
-            return File << (Path ^ name) << (Contents << _[Value]);
+          [path](Match& _) {
+            return File << (Path ^ path.string()) << (Contents << _[Value]);
           },
       }};
   }
@@ -173,17 +174,20 @@ namespace trieste
 {
   namespace json
   {
-    Writer
-    writer(const std::string& name, bool prettyprint, const std::string& indent)
+    Writer writer(
+      const std::filesystem::path& path,
+      bool prettyprint,
+      const std::string& indent)
     {
       return Writer(
         "json",
-        {to_file(name)},
+        {to_file(path)},
         json::wf,
         [prettyprint, indent](std::ostream& os, Node contents) {
           for (Node value : *contents)
           {
             write_value(os, {prettyprint, indent}, "", value);
+            os << std::endl;
           }
           return true;
         });

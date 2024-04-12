@@ -390,7 +390,8 @@ namespace trieste
 {
   namespace yaml
   {
-    Writer event_writer(const std::string& path, const std::string& newline)
+    Writer
+    event_writer(const std::filesystem::path& path, const std::string& newline)
     {
       return Writer(
         "yaml_event",

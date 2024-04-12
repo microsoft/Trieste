@@ -56,16 +56,6 @@ namespace trieste
       }
     }
 
-    void push_directory(const std::filesystem::path& path)
-    {
-      path_ /= path;
-    }
-
-    void pop_directory()
-    {
-      path_ = path_.parent_path();
-    }
-
     bool open(const std::filesystem::path& path)
     {
       close();
@@ -73,12 +63,15 @@ namespace trieste
       switch (mode_)
       {
         case Mode::FileSystem:
-          std::filesystem::create_directories(path_.parent_path());
+          if (!path_.parent_path().empty())
+          {
+            std::filesystem::create_directories(path_.parent_path());
+          }
           fstream_.open(path_);
           return is_open_ = fstream_.is_open();
 
         case Mode::Console:
-          std::cout << "OPEN " << path_;
+          std::cout << "OPEN " << path_ << std::endl << std::endl;
           return is_open_ = true;
 
         case Mode::Synthetic:
@@ -191,11 +184,11 @@ namespace trieste
     Writer(
       const std::string& language_name,
       const std::vector<Pass>& passes,
-      const wf::Wellformed& input_pass,
+      const wf::Wellformed& input_wf,
       WriteFile write_file)
     : language_name_(language_name),
       passes_(passes),
-      wf_(&input_pass),
+      wf_(&input_wf),
       write_file_(write_file),
       debug_enabled_(false),
       wf_check_enabled_(true),
@@ -242,26 +235,11 @@ namespace trieste
         stack.pop_back();
         if (current == Directory)
         {
-          try
-          {
-            dest->push_directory((current / Path)->location().view());
-          }
-          catch (std::exception& e)
-          {
-            error_nodes.push_back(
-              Error << (ErrorMsg ^ e.what()) << (ErrorAst << current->clone()));
-          }
-
           auto files = current / FileSeq;
-          stack.push_back(NoChange);
           for (auto& file : *files)
           {
             stack.push_back(file);
           }
-        }
-        else if (current == NoChange)
-        {
-          dest->pop_directory();
         }
         else if (current == File)
         {

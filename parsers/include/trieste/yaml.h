@@ -133,36 +133,35 @@ namespace trieste
     inline const auto wf_flow_tokens = wf_tokens - (Mapping | Sequence);
 
     // clang-format off
-  inline const auto wf =
-    (Top <<= Stream)
-    | (Stream <<= Directives * Documents)
-    | (Documents <<= Document++)
-    | (Document <<= Directives * DocumentStart * (Value >>= wf_tokens) * DocumentEnd)
-    | (Directives <<= (TagDirective | VersionDirective | UnknownDirective)++)
-    | (TagDirective <<= TagPrefix * TagHandle)[TagPrefix]
-    | (Mapping <<= MappingItem++[1])
-    | (MappingItem <<= (Key >>= wf_tokens) * (Value >>= wf_tokens))
-    | (FlowMapping <<= FlowMappingItem++)
-    | (FlowMappingItem <<= (Key >>= wf_flow_tokens) * (Value >>= wf_flow_tokens))
-    | (AnchorValue <<= Anchor * (Value >>= wf_tokens))[Anchor]
-    | (TagValue <<= TagPrefix * TagName * (Value >>= wf_tokens))
-    | (Sequence <<= wf_tokens++[1])
-    | (FlowSequence <<= wf_flow_tokens++)
-    | (SingleQuote <<= (BlockLine|EmptyLine)++[1])
-    | (DoubleQuote <<= (BlockLine|EmptyLine)++[1])
-    | (Literal <<= AbsoluteIndent * ChompIndicator * Lines)
-    | (Folded <<= AbsoluteIndent * ChompIndicator * Lines)
-    | (Lines <<= (BlockLine|EmptyLine)++)
-    | (Plain <<= (BlockLine|EmptyLine)++[1])
-    ;
+    inline const auto wf =
+      (Top <<= Stream)
+      | (Stream <<= Directives * Documents)
+      | (Documents <<= Document++)
+      | (Document <<= Directives * DocumentStart * (Value >>= wf_tokens) * DocumentEnd)
+      | (Directives <<= (TagDirective | VersionDirective | UnknownDirective)++)
+      | (TagDirective <<= TagPrefix * TagHandle)[TagPrefix]
+      | (Mapping <<= MappingItem++[1])
+      | (MappingItem <<= (Key >>= wf_tokens) * (Value >>= wf_tokens))
+      | (FlowMapping <<= FlowMappingItem++)
+      | (FlowMappingItem <<= (Key >>= wf_flow_tokens) * (Value >>= wf_flow_tokens))
+      | (AnchorValue <<= Anchor * (Value >>= wf_tokens))[Anchor]
+      | (TagValue <<= TagPrefix * TagName * (Value >>= wf_tokens))
+      | (Sequence <<= wf_tokens++[1])
+      | (FlowSequence <<= wf_flow_tokens++)
+      | (SingleQuote <<= (BlockLine|EmptyLine)++[1])
+      | (DoubleQuote <<= (BlockLine|EmptyLine)++[1])
+      | (Literal <<= AbsoluteIndent * ChompIndicator * Lines)
+      | (Folded <<= AbsoluteIndent * ChompIndicator * Lines)
+      | (Lines <<= (BlockLine|EmptyLine)++)
+      | (Plain <<= (BlockLine|EmptyLine)++[1])
+      ;
     // clang-format on
 
-    Parse parser();
     Reader reader();
-    Writer
-    event_writer(const std::string& name, const std::string& newline = "\n");
+    Writer event_writer(
+      const std::filesystem::path& path, const std::string& newline = "\n");
     Writer writer(
-      const std::string& name,
+      const std::filesystem::path& path,
       const std::string& newline = "\n",
       std::size_t indent = 2,
       bool canonical = false);
