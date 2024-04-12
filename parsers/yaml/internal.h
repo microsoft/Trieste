@@ -10,6 +10,8 @@ namespace trieste
 {
   namespace yaml
   {
+    Parse parser();
+
     enum class Chomp
     {
       Clip,

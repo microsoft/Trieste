@@ -157,7 +157,6 @@ namespace trieste
       ;
     // clang-format on
 
-    Parse parser();
     Reader reader();
     Writer event_writer(
       const std::filesystem::path& path, const std::string& newline = "\n");

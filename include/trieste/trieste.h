@@ -29,7 +29,6 @@ namespace trieste
     return result;
   }
 
-
   inline ProcessResult operator>>(Reader& reader, Rewriter&& rewriter)
   {
     ProcessResult result = reader.read();

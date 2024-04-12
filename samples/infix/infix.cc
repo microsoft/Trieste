@@ -40,14 +40,16 @@ int main(int argc, char** argv)
   if (mode == "calculate")
   {
     result = reader >> infix::calculate();
-    if(!result.ok){
+    if (!result.ok)
+    {
       logging::Error err;
       result.print_errors(err);
       return 1;
     }
 
     Node calc = result.ast->front();
-    for(auto& output : *calc){
+    for (auto& output : *calc)
+    {
       auto str = output->front()->location().view();
       auto val = output->back()->location().view();
       std::cout << str << " " << val << std::endl;

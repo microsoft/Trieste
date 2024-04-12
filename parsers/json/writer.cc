@@ -174,8 +174,10 @@ namespace trieste
 {
   namespace json
   {
-    Writer
-    writer(const std::filesystem::path& path, bool prettyprint, const std::string& indent)
+    Writer writer(
+      const std::filesystem::path& path,
+      bool prettyprint,
+      const std::string& indent)
     {
       return Writer(
         "json",

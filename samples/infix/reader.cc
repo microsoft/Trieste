@@ -1,8 +1,7 @@
 #include "internal.h"
 
-#include <charconv>
-
-namespace{
+namespace
+{
   using namespace trieste::wf::ops;
   using namespace infix;
 
@@ -63,7 +62,7 @@ namespace{
     ;
   // clang-format on
 
-PassDef expressions()
+  PassDef expressions()
   {
     return {
       "expressions",

@@ -1,5 +1,6 @@
-#include <trieste/driver.h>
 #include "infix.h"
+
+#include <trieste/driver.h>
 
 int main(int argc, char** argv)
 {

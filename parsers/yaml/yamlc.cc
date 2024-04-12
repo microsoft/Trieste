@@ -71,9 +71,11 @@ int main(int argc, char** argv)
                              .debug_enabled(!debug_path.empty())
                              .debug_path(debug_path)
                              .wf_check_enabled(wf_checks);
-  Destination dest = output_path.empty() ? DestinationDef::console()
-                                         : DestinationDef::dir(output_path.parent_path());
-  if(output_path.empty()){
+  Destination dest = output_path.empty() ?
+    DestinationDef::console() :
+    DestinationDef::dir(output_path.parent_path());
+  if (output_path.empty())
+  {
     output_path = mode;
   }
 
