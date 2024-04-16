@@ -25,6 +25,9 @@ namespace trieste
 #else
     struct DebugLocation
     {
+      // Dummy value as we got a UBSan Misaligned Use without this.
+      // I am assuming that the empty struct was trigger some kind of compiler bug. (MJP)
+      size_t dummy{0};
       DebugLocation() {}
     };
 #endif
