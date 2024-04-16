@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ast.h"
+#include "debug.h"
 #include "gen.h"
 #include "logging.h"
 #include "regex.h"
@@ -28,10 +29,15 @@ namespace trieste
     private:
       RE2 regex;
       ParseEffect effect;
+      DebugLocation dl;
 
     public:
-      RuleDef(const std::string& s, ParseEffect effect_)
-      : regex(s), effect(effect_)
+      RuleDef(Located<const std::string&> s, ParseEffect effect_)
+      : regex(s.value), effect(effect_), dl(s.location)
+      {}
+
+      RuleDef(Located<const char*> s, ParseEffect effect_)
+      : regex(s.value), effect(effect_), dl(s.location)
       {}
     };
 
@@ -473,10 +479,17 @@ namespace trieste
   };
 
   inline detail::Rule
-  operator>>(const std::string& s, detail::ParseEffect effect)
+  operator>>(detail::Located<const std::string&> s, detail::ParseEffect effect)
   {
     return std::make_shared<detail::RuleDef>(s, effect);
   }
+
+  inline detail::Rule
+  operator>>(detail::Located<const char*> s, detail::ParseEffect effect)
+  {
+    return std::make_shared<detail::RuleDef>(s, effect);
+  }
+
 
   inline std::pair<Token, GenLocationF>
   operator>>(const Token& t, GenLocationF f)
