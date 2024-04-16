@@ -184,8 +184,8 @@ namespace trieste
 
       for (auto& rule : rules_)
       {
-        const auto& starts = rule.first.get_starts();
-        const auto& parents = rule.first.get_parents();
+        const auto& starts = rule.first.value.get_starts();
+        const auto& parents = rule.first.value.get_parents();
 
         //  This is used to add a rule under a specific parent, or to the
         //  default.
@@ -296,7 +296,7 @@ namespace trieste
         for (auto& rule : specific_rules)
         {
           match.reset();
-          if (SNMALLOC_UNLIKELY(rule.first.match(it, node, match)))
+          if (SNMALLOC_UNLIKELY(rule.first.value.match(it, node, match)))
           {
             replaced = replace(match, rule.second, start, it, node);
             if (replaced != -1)
