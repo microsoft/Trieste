@@ -280,11 +280,12 @@ namespace trieste
 
     void set_location(const Location& loc)
     {
-      if (!location_.source)
-        location_ = loc;
-
-      for (auto& c : children)
-        c->set_location(loc);
+      traverse([&](Node& current) {
+        auto& current_loc = current->location_;
+        if (!current_loc.source)
+          current_loc = loc;
+        return true;
+      });
     }
 
     void extend(const Location& loc)
