@@ -493,8 +493,11 @@ namespace trieste
             return false;
           }
 
-          if (current == Error || current->get_contains_error())
+          if (current == Error)
             return false;
+
+          if (current->get_contains_error())
+            return true;
 
           auto find = shapes.find(current->type());
 
