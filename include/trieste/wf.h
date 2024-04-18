@@ -487,14 +487,19 @@ namespace trieste
         bool ok = true;
 
         node->traverse([&](auto& current) {
-          if (current == Error)
-            return false;
-
           if (!current)
           {
             ok = false;
             return false;
           }
+
+          // Do not look inside error nodes.
+          if (current == Error)
+            return false;
+
+          // Traverse down until there are no errors in subterms.
+          if (current->get_contains_error())
+            return true;
 
           auto find = shapes.find(current->type());
 
@@ -657,6 +662,7 @@ namespace trieste
             return false;
           }
 
+          // Do not look inside error nodes.
           if (current == Error)
             return false;
 
