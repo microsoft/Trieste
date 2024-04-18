@@ -956,7 +956,7 @@ namespace trieste
     std::cout << node;
   }
 
-  bool range_contains_errors(NodeIt start, NodeIt end)
+  inline bool range_contains_errors(NodeIt start, NodeIt end)
   {
     return std::any_of(start, end, [](auto& n) { return n->get_contains_error(); });
   }
