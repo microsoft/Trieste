@@ -296,7 +296,9 @@ namespace trieste
         for (auto& rule : specific_rules)
         {
           match.reset();
-          if (SNMALLOC_UNLIKELY(rule.first.value.match(it, node, match)))
+          if (
+            SNMALLOC_UNLIKELY(rule.first.value.match(it, node, match)) &&
+            SNMALLOC_UNLIKELY(!range_contains_errors(start, it)))
           {
             replaced = replace(match, rule.second, start, it, node);
             if (replaced != -1)

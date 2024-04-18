@@ -801,6 +801,11 @@ namespace trieste
       return result;
     }
 
+    bool get_contains_error()
+    {
+      return flags_.contains_error();
+    }
+
     bool get_and_reset_contains_lift()
     {
       bool result = flags_.contains_lift();
@@ -949,5 +954,10 @@ namespace trieste
   [[gnu::used]] inline void print(const Node& node)
   {
     std::cout << node;
+  }
+
+  bool range_contains_errors(NodeIt start, NodeIt end)
+  {
+    return std::any_of(start, end, [](auto& n) { return n->get_contains_error(); });
   }
 }
