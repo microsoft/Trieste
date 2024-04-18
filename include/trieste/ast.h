@@ -280,11 +280,13 @@ namespace trieste
 
     void set_location(const Location& loc)
     {
-      if (!location_.source)
-        location_ = loc;
-
-      for (auto& c : children)
-        c->set_location(loc);
+      traverse([&](Node& current) {
+        auto& current_loc = current->location_;
+        if (current_loc.source)
+          return false;
+        current_loc = loc;
+        return true;
+      });
     }
 
     void extend(const Location& loc)
@@ -724,6 +726,16 @@ namespace trieste
 
       // Cast is safe as traverse only mutates if pre and post do.
       const_cast<NodeDef*>(this)->traverse(pre, post);
+    }
+
+    /*
+     * Useful for calling from inside a debugger.
+     */
+    std::string SNMALLOC_USED_FUNCTION str()
+    {
+      std::ostringstream out;
+      str(out);
+      return out.str();
     }
 
     class NopPost
