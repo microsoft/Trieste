@@ -487,14 +487,14 @@ namespace trieste
         bool ok = true;
 
         node->traverse([&](auto& current) {
-          if (current == Error)
-            return false;
-
           if (!current)
           {
             ok = false;
             return false;
           }
+
+          if (current == Error || current->get_contains_error())
+            return false;
 
           auto find = shapes.find(current->type());
 
@@ -657,7 +657,7 @@ namespace trieste
             return false;
           }
 
-          if (current == Error)
+          if (current == Error || current->get_contains_error())
             return false;
 
           current->clear_symbols();
