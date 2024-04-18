@@ -727,6 +727,16 @@ namespace trieste
       const_cast<NodeDef*>(this)->traverse(pre, post);
     }
 
+    /*
+     * Useful for calling from inside a debugger.
+     */
+    std::string SNMALLOC_USED_FUNCTION str()
+    {
+      std::ostringstream out;
+      str(out);
+      return out.str();
+    }
+
     class NopPost
     {
     public:
