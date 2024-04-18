@@ -282,8 +282,9 @@ namespace trieste
     {
       traverse([&](Node& current) {
         auto& current_loc = current->location_;
-        if (!current_loc.source)
-          current_loc = loc;
+        if (current_loc.source)
+          return false;
+        current_loc = loc;
         return true;
       });
     }
