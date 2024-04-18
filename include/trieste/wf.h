@@ -666,10 +666,6 @@ namespace trieste
           if (current == Error)
             return false;
 
-          // Traverse down until there are no errors in subterms.
-          if (current->get_contains_error())
-            return true;
-
           current->clear_symbols();
 
           auto find = shapes.find(current->type());
