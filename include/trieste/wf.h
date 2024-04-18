@@ -493,9 +493,11 @@ namespace trieste
             return false;
           }
 
+          // Do not look inside error nodes.
           if (current == Error)
             return false;
 
+          // Traverse down until there are no errors in subterms.
           if (current->get_contains_error())
             return true;
 
@@ -660,8 +662,13 @@ namespace trieste
             return false;
           }
 
-          if (current == Error || current->get_contains_error())
+          // Do not look inside error nodes.
+          if (current == Error)
             return false;
+
+          // Traverse down until there are no errors in subterms.
+          if (current->get_contains_error())
+            return true;
 
           current->clear_symbols();
 
