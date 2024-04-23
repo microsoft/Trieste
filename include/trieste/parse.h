@@ -121,8 +121,12 @@ namespace trieste
           push(Group);
 
         while (node->parent()->type().in(skip))
+        {
+          extend();
           node = node->parent()->shared_from_this();
+        }
 
+        extend();
         auto p = node->parent();
 
         if (p == type)
@@ -187,14 +191,19 @@ namespace trieste
       {
         if (in(type))
         {
-          if (!node->empty())
-            node->extend(node->back()->location());
+          extend();
 
           node = node->parent()->shared_from_this();
           return true;
         }
 
         return false;
+      }
+
+      void extend()
+      {
+        if (!node->empty())
+          node->extend(node->back()->location());
       }
 
       Node make_error(Location loc, const std::string& msg)
