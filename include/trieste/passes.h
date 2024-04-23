@@ -257,12 +257,12 @@ namespace trieste
       auto ok = bool(ast);
 
       ok = ok && wf.build_st(ast);
-      ok = ok && (!check_well_formed || wf.check(ast));
-
+      
       if (ast)
         ast->get_errors(errors);
-
       ok = ok && errors.empty();
+      
+      ok = ok && (!check_well_formed || wf.check(ast));
 
       return ok;
     }
