@@ -1038,7 +1038,12 @@ namespace trieste
         WFLookup operator/(const Token& field)
         {
           auto i = wf->index(node->type(), field);
-          return {wf, node->at(i), i};
+          if (node->size() > i)
+            return {wf, node->at(i), i};
+
+          throw std::runtime_error(
+            "shape `" + std::string(node->type().str()) + "` has no field `" +
+            std::string(field.str()) + "`");
         }
       };
     }
