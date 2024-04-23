@@ -220,6 +220,14 @@ namespace trieste
                              << std::endl;
 
             auto ok = wf.build_st(new_ast);
+            if (ok)
+            {
+              Nodes errors;
+              new_ast->get_errors(errors);
+              if (!errors.empty())
+                // Pass added error nodes, so doesn't need to satisfy wf.
+                continue;
+            }
             ok = wf.check(new_ast) && ok;
 
             if (!ok)
