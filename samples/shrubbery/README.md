@@ -34,18 +34,20 @@ identifiers, strings and numbers, *operators* such as `+` and
 and braces. The grammar can be sketched as follows:
 
     Group ::= Term* Block? (Alt+)?
-    Term  ::= Atom | '(' Group ')' | '[' Group ']' | '{' Group '}'
-    Block ::= : Group+
-    Alt   ::= | Group+
+    Term  ::= Atom | Op | '(' Group ')' | '[' Group ']' | '{' Group '}'
+    Block ::= ':' Group+
+    Alt   ::= '|' Group+
+    Op    ::= ...
     Atom  ::= ...
 
 Most of these constructs are parsed as expected. For example,
 
     fun bump(x :: int): x + 1
 
-is parsed into the following tree (shown using S-expressions):
+is parsed into the following tree (shown using S-expressions, with
+atoms printed as is):
 
-    (Group fun bump (Paren (Group x :: int)) (Block (Group x + 1)))
+    (Group fun bump (Paren (Group x (Op ::) int)) (Block (Group x (Op +) 1)))
 
 However, shrubbery notation is also indentation sensitive,
 following the general rule that lines that start on the same
@@ -79,8 +81,8 @@ parsed tree of the program above is:
 
     (Group match n with
            (Alt
-             (Block (Group 0 => "zero"))
-             (Block (Group _ => "more"))))
+             (Block (Group 0 (Op =>) "zero"))
+             (Block (Group _ (Op =>) "more"))))
 
 The other exception to the indentation rule is that lines that
 begin with an operator (`+`, `-`, etc.) and is further indented
@@ -91,7 +93,11 @@ than the previous will continue that line:
 
 A line can be continued like this several times, but subsequent
 continuations must match the indentation level of the first
-continuation.
+continuation:
+
+    123 + 456
+      + 789
+      - abc
 
 Groups on the same line can be separated by semi-colons, with one
 exception: groups immediately under opener-closer pairs are
@@ -102,10 +108,10 @@ instead separated by commas. For example,
 
 is parsed as
 
-    (Group int swap (Paren (Group int * x) (Group int * y))
-           (Block (Group var tmp = * x)
-                  (Group * x = * y)
-                  (Group * y = tmp)))
+    (Group int swap (Paren (Group int (Op *) x) (Group int (Op *) y))
+           (Block (Group var tmp (Op =) (Op *) x)
+                  (Group (Op *) x (Op =) (Op *) y)
+                  (Group (Op *) y (Op =) tmp)))
 
 (note how the empty group after the last semi-colon is discarded)
 
@@ -131,8 +137,8 @@ merged into a sequence of blocks):
           (Block
             (Group fib n
               (Block
-                (Group val sum = fib (Paren (Group n - 1)) + fib (Paren (Group n - 2)))
-                (Group n + sum))))))
+                (Group val sum (Op =) fib (Paren (Group n (Op -) 1)) (Op +) fib (Paren (Group n (Op -) 2)))
+                (Group n (Op +) sum))))))
 
       (Group fun main (Paren)
         (Block (Group fib (Paren (Group 5))))))
@@ -192,12 +198,13 @@ virtually anywhere:
       | (Group   <<= wf_term++)
       ;
 
-The first rewriting pass ensures that commas and semi-colons
-appear in the right places and that blocks and alternatives are
-not empty (except in a few special cases). It also throws away
-empty groups caused by semi-colons. The resulting well-formedness
-specification now says where commas and semi-colons may appear and
-that alternatives and comma-separated sequences cannot be empty:
+The first rewriting pass (see `reader.cc`) ensures that commas and
+semi-colons appear in the right places and that blocks and
+alternatives are not empty (except in a few special cases). It
+also throws away empty groups caused by semi-colons. The resulting
+well-formedness specification now says where commas and
+semi-colons may appear and that alternatives and comma-separated
+sequences cannot be empty:
 
     inline const auto wf_check_parser =
         wf_parser
