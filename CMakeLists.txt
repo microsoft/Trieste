@@ -186,6 +186,7 @@ endif()
 if(TRIESTE_BUILD_SAMPLES)
   enable_testing()
   add_subdirectory(samples/infix)
+  add_subdirectory(samples/shrubbery)
 endif()
 
 # #############################################
