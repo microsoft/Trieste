@@ -12,4 +12,3 @@ add_test(NAME shrubbery COMMAND shrubbery test -f)
 
 install(TARGETS shrubbery RUNTIME DESTINATION shrubbery)
 install(DIRECTORY examples DESTINATION shrubbery)
-install(DIRECTORY output DESTINATION shrubbery)
