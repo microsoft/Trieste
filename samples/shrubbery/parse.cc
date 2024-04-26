@@ -2,20 +2,19 @@
 #include "wf.h"
 
 // Shrubbery notation constructs that are not supported:
+// - Single quotes as opener/closer pairs
 // - Line and column insensitivity with << and >>
 // - Block comments with #// //#
 // - @-notation
 // - Keywords prefixed by ~
 //
 // Other things that could be implemented:
-// - Single quotes
 // - Continuing a line with backslash
 // - Better parsing of strings
 // - Numbers other than integers
 
 namespace shrubbery
 {
-
   // An Indent is a source code location where an indentation level has been
   // established. A line at some indentation level can also be continued if the
   // next line is more indented and starts with an operator. For example, the
@@ -221,7 +220,6 @@ namespace shrubbery
           [newline](auto&) { *newline = true; }, // no-op
 
         // String literals
-        // TODO: Should be more clever and handle escaped characters..
         R"("[^"]*")" >>
           [add_term](auto& m) { add_term(m); },
 
@@ -230,7 +228,6 @@ namespace shrubbery
           [add_term](auto& m) { add_term(m); },
 
         // Integers
-        // TODO: Floating-point numbers, etc.
         "[[:digit:]]+" >>
           [add_term](auto& m) { add_term(m); },
 
