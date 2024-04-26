@@ -1,0 +1,5 @@
+fun fourth(n :: Int):
+  let m = n*n
+  let v = m*m
+  println(n +& "^4 = " +& v)
+  v

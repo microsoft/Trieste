@@ -1,0 +1,6 @@
+fun foo(x :: Int, y :: Int):
+    def z = z * y
+    z + 1
+
+fun bar():
+    42

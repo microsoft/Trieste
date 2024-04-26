@@ -1,0 +1,2 @@
+foo (x :: Int
+,y :: Bool)
