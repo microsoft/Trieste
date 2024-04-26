@@ -1,5 +1,9 @@
 # `shrubbery`
 
+**This sample assumes that you know a little bit of how Trieste
+works! See the [infix](../infix) sample to learn more of the
+basics.**
+
 This sample implements a parser for (a subset of) [shrubbery
 notation](https://plt.cs.northwestern.edu/pkg-build/doc/shrubbery/index.html).
 Shrubbery notation is not a language per se, but a set of
