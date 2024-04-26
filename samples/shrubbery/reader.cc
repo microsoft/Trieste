@@ -51,11 +51,11 @@ namespace shrubbery
         (In(Paren, Brace, Bracket, Comma) * T(Semi))[Semi] >>
           [](Match& _) { return err(_[Semi], "Semicolons cannot separate groups in parentheses/brackets/braces. Use commas."); },
 
-        // Opener-closer pairs may contain empty blocks
+        // Blocks cannot be empty, except immediately under opener-closer pairs
+        // and as the only term in a top-level group
         (--(In(Paren, Brace, Bracket, Comma, File))) * ((T(Group) << ((!T(Block))++ * (T(Block)[Block] << End)))) >>
           [](Match& _) { return err(_[Block], "Blocks may not be empty"); },
 
-        // Top-level groups may consist of *only* an empty block
         In(File) * (T(Group) << (((!T(Block)) * (!T(Block))++ * (T(Block)[Block] << End) * End))) >>
           [](Match& _) { return err(_[Block], "Blocks may not be empty"); },
 
