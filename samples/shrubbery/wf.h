@@ -48,9 +48,6 @@ namespace shrubbery
 
   // Get rid of commas and semi-colons
   inline const auto wf_no_semis_or_commas =
-    wf_alternatives;
-
-  inline const auto wf_drop_separators =
     wf_alternatives
     | (File <<= Group++)
     | (Paren <<= Group++)

@@ -97,7 +97,7 @@ namespace shrubbery
   {
     return {
       "drop separators",
-      wf_drop_separators,
+      wf_no_semis_or_commas,
       dir::topdown,
       {
         (T(Comma)[Comma]) >>
