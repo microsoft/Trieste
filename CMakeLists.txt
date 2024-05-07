@@ -99,11 +99,6 @@ endif()
 # Installation instructions
 set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR}/dist)
 
-# Clear all existing files and folders from the install directory
-install(CODE [[
-  file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX}/.)
-  ]])
-
 install(TARGETS trieste snmallocshim-static snmalloc re2 CLI11
   EXPORT ${PROJECT_NAME}_Targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
