@@ -112,209 +112,84 @@ namespace trieste
     std::chrono::microseconds duration;
   };
 
+  struct ProcessResult
+  {
+    bool ok;
+    std::string last_pass;
+    Node ast;
+    Nodes errors;
+
+    void print_errors(logging::Log& err) const
+    {
+      logging::Sep sep{"----------------"};
+      err << "Errors:";
+
+      size_t count = 0;
+
+      for (auto& error : errors)
+      {
+        err << sep << std::endl;
+        for (auto& child : *error)
+        {
+          if (child->type() == ErrorMsg)
+            err << child->location().view() << std::endl;
+          else
+          {
+            err << "-- " << child->location().origin_linecol() << std::endl
+                << child->location().str() << std::endl;
+          }
+        }
+        if (count++ > 20)
+        {
+          err << "Too many errors, stopping here" << std::endl;
+          break;
+        }
+      }
+      err << "Pass " << last_pass << " failed with " << errors.size()
+          << (count > 1 ? " errors!" : " error!") << std::endl;
+    }
+  };
+
   /**
    * @brief Process is used to run a collection of rewrite passes on an Ast.
    * It provides a collection of hooks to produce output.
    */
+  template<typename PassIterator>
   class Process
   {
+    PassRange<PassIterator> pass_range;
+
     bool check_well_formed{true};
 
     std::function<bool(Node&, std::string, size_t index, PassStatistics&)>
       pass_complete;
 
-    std::function<void(Nodes&, std::string)> error_pass;
+    std::function<Nodes(Nodes&, std::string)> error_pass;
 
   public:
-    Process() {}
+    Process(const PassRange<PassIterator>& passes) : pass_range(passes) {}
 
     /**
      * @brief After each pass the supplied function is called with the current
      * AST and details of the pass that has just completed.
      */
-    void set_pass_complete(
+    Process& set_pass_complete(
       std::function<bool(Node&, std::string, size_t, PassStatistics&)> f)
     {
       pass_complete = f;
+      return *this;
     }
 
-    /**
-     * @brief If a pass fails, then the supplied function is called with the
-     * current AST and details of the pass that has just failed.
-     */
-    void set_error_pass(std::function<void(Nodes&, std::string)> f)
+    Process& set_default_pass_complete(
+      logging::Log& summary,
+      const std::string& language_name = "",
+      std::filesystem::path output_directory = {})
     {
-      error_pass = f;
-    }
-
-    /**
-     * @brief Specified is well-formedness should be checked between passes.
-     */
-    void set_check_well_formed(bool b)
-    {
-      check_well_formed = b;
-    }
-
-    template<typename PassIterator>
-    bool validate(Node ast, PassRange<PassIterator> passes)
-    {
-      auto wf = passes.input_wf();
-      auto ok = bool(ast);
-
-      ok = ok && wf.build_st(ast);
-      ok = ok && (!check_well_formed || wf.check(ast));
-
-      Nodes errors;
-      if (ast)
-        ast->get_errors(errors);
-
-      ok = ok && errors.empty();
-      if (!ok)
-        error_pass(errors, passes.entry_pass_name());
-
-      return ok;
-    }
-
-    /**
-     * @brief Run the supplied passes on the Ast.
-     *
-     * Returns the rewritten Ast, or an empty Node if the process failed.
-     */
-    template<typename PassIterator>
-    bool build(Node& ast, PassRange<PassIterator> passes)
-    {
-      size_t index = 1;
-
-      wf::push_back(passes.input_wf());
-
-      // Check ast is well-formed before starting.
-      auto ok = validate(ast, passes);
-
-      PassStatistics stats;
-      ok = pass_complete(ast, passes.entry_pass_name(), 0, stats) && ok;
-
-      for (; ok && passes.has_next(); index++)
-      {
-        logging::Debug() << "Starting pass: \"" << passes()->name() << "\"";
-
-        auto now = std::chrono::high_resolution_clock::now();
-        auto& pass = passes();
-        wf::push_back(pass->wf());
-
-        auto [new_ast, count, changes] = pass->run(ast);
-        ast = new_ast;
-        wf::pop_front();
-
-        ++passes;
-
-        ok = validate(ast, passes);
-
-        auto then = std::chrono::high_resolution_clock::now();
-        stats = {
-          count,
-          changes,
-          std::chrono::duration_cast<std::chrono::microseconds>(then - now)};
-
-        ok = pass_complete(ast, pass->name(), index, stats) && ok;
-      }
-
-      wf::pop_front();
-
-      return ok;
-    }
-  };
-
-  inline void print_errors(Nodes& errors, logging::Log& err)
-  {
-    logging::Sep sep{"----------------"};
-    err << "Errors:";
-    for (auto& error : errors)
-    {
-      err << sep << std::endl;
-      for (auto& child : *error)
-      {
-        if (child->type() == ErrorMsg)
-          err << child->location().view();
-        else
-          err << child->location().origin_linecol() << std::endl
-              << child->location().str();
-      }
-    }
-  }
-
-  inline bool write_ast(
-    Node& ast,
-    std::filesystem::path output_directory,
-    std::string language_name,
-    std::string pass_name,
-    size_t index)
-  {
-    if (output_directory.empty())
-      return true;
-
-    // Check if output_directory exists, and if not create it.
-    if (!std::filesystem::exists(output_directory))
-    {
-      if (!std::filesystem::create_directories(output_directory))
-      {
-        logging::Error() << "Could not create output directory "
-                         << output_directory;
-        return false;
-      }
-    }
-
-    std::filesystem::path output;
-    if (index < 10)
-    {
-      output = output_directory /
-        ("0" + std::to_string(index) + "_" + pass_name + ".trieste");
-    }
-    else
-    {
-      output = output_directory /
-        (std::to_string(index) + "_" + pass_name + ".trieste");
-    }
-
-    std::ofstream f(output, std::ios::binary | std::ios::out);
-
-    if (!f)
-    {
-      logging::Error() << "Could not open " << output << " for writing.";
-      return false;
-    }
-
-    // Write the AST to the output file.
-    f << language_name << std::endl << pass_name << std::endl << ast;
-    return true;
-  }
-
-  /**
-   * @brief A default configuration for the Process class. This configuration
-   * can be used to write to a file each time a pass completes.
-   *
-   * @param check_well_formed - should check well-formedness between passes.
-   * @param language_name - the name of the language being processed.
-   * @param output_directory - the directory to write the output to.
-   */
-  inline Process default_process(
-    logging::Log& summary,
-    bool check_well_formed = false,
-    std::string language_name = "",
-    std::filesystem::path output_directory = {})
-  {
-    Process p;
-
-    p.set_check_well_formed(check_well_formed);
-
-    p.set_error_pass([](Nodes& errors, std::string name) {
-      logging::Error err;
-      print_errors(errors, err);
-      err << "Pass " << name << " failed with " << errors.size() << " errors\n";
-    });
-
-    p.set_pass_complete(
-      [output_directory, language_name, &summary](
-        Node& ast, std::string pass_name, size_t index, PassStatistics& stats) {
+      pass_complete = [output_directory, language_name, &summary](
+                        Node& ast,
+                        std::string pass_name,
+                        size_t index,
+                        PassStatistics& stats) {
         auto [count, changes, duration] = stats;
         std::string delim{"\t"};
         if (index == 0)
@@ -325,11 +200,123 @@ namespace trieste
 
         summary << pass_name << delim << count << delim << changes << delim
                 << static_cast<size_t>(duration.count()) << std::endl;
+        if (output_directory.empty())
+          return true;
 
-        return write_ast(
-          ast, output_directory, language_name, pass_name, index);
-      });
+        // Check if output_directory exists, and if not create it.
+        if (!std::filesystem::exists(output_directory))
+        {
+          if (!std::filesystem::create_directories(output_directory))
+          {
+            logging::Error()
+              << "Could not create output directory " << output_directory;
+            return false;
+          }
+        }
 
-    return p;
-  }
+        std::filesystem::path output;
+        if (index < 10)
+        {
+          output = output_directory /
+            ("0" + std::to_string(index) + "_" + pass_name + ".trieste");
+        }
+        else
+        {
+          output = output_directory /
+            (std::to_string(index) + "_" + pass_name + ".trieste");
+        }
+
+        std::ofstream f(output, std::ios::binary | std::ios::out);
+
+        if (!f)
+        {
+          logging::Error() << "Could not open " << output << " for writing.";
+          return false;
+        }
+
+        // Write the AST to the output file.
+        f << language_name << std::endl << pass_name << std::endl << ast;
+        return true;
+      };
+
+      return *this;
+    }
+
+    /**
+     * @brief Specified is well-formedness should be checked between passes.
+     */
+    Process& set_check_well_formed(bool b)
+    {
+      check_well_formed = b;
+      return *this;
+    }
+
+    bool validate(Node ast, Nodes& errors)
+    {
+      auto wf = pass_range.input_wf();
+      auto ok = bool(ast);
+
+      ok = ok && wf.build_st(ast);
+      
+      if (ast)
+        ast->get_errors(errors);
+      ok = ok && errors.empty();
+      
+      ok = ok && (!check_well_formed || wf.check(ast));
+
+      return ok;
+    }
+
+    /**
+     * @brief Run the supplied passes on the Ast.
+     *
+     * Returns the rewritten Ast, or an empty Node if the process failed.
+     */
+    ProcessResult run(Node& ast)
+    {
+      size_t index = 1;
+
+      wf::push_back(pass_range.input_wf());
+
+      Nodes errors;
+
+      // Check ast is well-formed before starting.
+      auto ok = validate(ast, errors);
+
+      PassStatistics stats;
+      std::string last_pass = pass_range.entry_pass_name();
+      ok = pass_complete(ast, pass_range.entry_pass_name(), 0, stats) && ok;
+
+      for (; ok && pass_range.has_next(); index++)
+      {
+        logging::Debug() << "Starting pass: \"" << pass_range()->name() << "\"";
+
+        auto now = std::chrono::high_resolution_clock::now();
+        auto& pass = pass_range();
+        wf::push_back(pass->wf());
+
+        auto [new_ast, count, changes] = pass->run(ast);
+        ast = new_ast;
+        wf::pop_front();
+
+        ++pass_range;
+
+        ok = validate(ast, errors);
+
+        auto then = std::chrono::high_resolution_clock::now();
+        stats = {
+          count,
+          changes,
+          std::chrono::duration_cast<std::chrono::microseconds>(then - now)};
+
+        ok = pass_complete(ast, pass->name(), index, stats) && ok;
+
+        last_pass = pass->name();
+      }
+
+      wf::pop_front();
+
+      return {ok, last_pass, ast, errors};
+    }
+  };
 } // namespace trieste

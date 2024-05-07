@@ -14,14 +14,35 @@ jobs:
         build-type: [ "Release", "Debug" ]
         standard: [ "", "-DTRIESTE_USE_CXX17=ON" ]
         compiler: [ "", "clang" ]
+        variant: [""]
         
         include:
         - platform: "ubuntu-latest"
           compiler: "clang"
-          cmake_options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15"
+          cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_BUILD_PARSER_TESTS=1"
           generator: "-G Ninja"
           dependencies: "sudo apt install ninja-build"
-    
+
+        - platform: "windows-latest"
+          variant:  "build-parser-tests"
+          build-type: "Release"
+          cmake-options: "-DTRIESTE_BUILD_PARSER_TESTS=1"
+        
+        - platform: "macos-latest"
+          variant:  "build-parser-tests"
+          build-type: "Release"
+          cmake-options: "-DTRIESTE_BUILD_PARSER_TESTS=1"
+
+        - platform: "ubuntu-latest"
+          variant: "asan"
+          build-type: "Release"
+          cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANITIZE=address -DTRIESTE_BUILD_PARSER_TESTS=1"
+
+        - platform: "ubuntu-latest"
+          variant: "ubsan"
+          build-type: "Release"
+          cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANITIZE=undefined -DTRIESTE_BUILD_PARSER_TESTS=1"
+
         exclude:
         # Mac is already using clang.
         - platform: "macos-latest"
@@ -35,6 +56,8 @@ jobs:
 
     runs-on: ${{matrix.platform}}
 
+    name: ${{matrix.platform}} ${{matrix.build-type}} ${{matrix.standard}} ${{matrix.compiler}} ${{matrix.variant}}
+
     steps:
     - uses: actions/checkout@v3
     
@@ -42,7 +65,7 @@ jobs:
       run: ${{ matrix.dependencies }}
       
     - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.build-type}} ${{matrix.generator}} ${{matrix.standard}} ${{matrix.cmake_options}}
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.build-type}} ${{matrix.generator}} ${{matrix.standard}} ${{matrix.cmake-options}}
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config ${{matrix.build-type}}

@@ -4,6 +4,8 @@ project(trieste VERSION 1.0.0 LANGUAGES CXX)
 # #############################################
 # Options
 option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
+option(TRIESTE_BUILD_PARSERS "Specifies whether to build the parsers" ON)
+option(TRIESTE_BUILD_PARSER_TESTS "Specifies whether to build the parser tests" OFF)
 option(TRIESTE_USE_CXX17 "Specifies whether to target the C++17 standard" OFF)
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
@@ -30,6 +32,9 @@ endif()
 set(SNMALLOC_USE_CXX17 ${TRIESTE_USE_CXX17})
 
 set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
+
+set(TRIESTE_SANITIZE "" CACHE STRING "Argument to pass to sanitize (disabled by default)")
+
 
 FetchContent_Declare(
   snmalloc
@@ -82,6 +87,11 @@ if(TRIESTE_USE_CXX17)
   target_compile_definitions(trieste INTERFACE cxx_std_17)
 else()
   target_compile_definitions(trieste INTERFACE cxx_std_20)
+endif()
+
+if (TRIESTE_SANITIZE)
+  target_compile_options(trieste INTERFACE -g -fsanitize=${TRIESTE_SANITIZE} -fno-omit-frame-pointer)
+  target_link_libraries(trieste INTERFACE -fsanitize=${TRIESTE_SANITIZE})
 endif()
 
 if(MSVC)
@@ -145,4 +155,10 @@ export(PACKAGE trieste)
 if(TRIESTE_BUILD_SAMPLES)
   enable_testing()
   add_subdirectory(samples/infix)
+endif()
+
+# #############################################
+# # Add parsers
+if(TRIESTE_BUILD_PARSERS)
+  add_subdirectory(parsers)
 endif()

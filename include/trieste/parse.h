@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ast.h"
+#include "debug.h"
 #include "gen.h"
 #include "logging.h"
 #include "regex.h"
@@ -28,10 +29,15 @@ namespace trieste
     private:
       RE2 regex;
       ParseEffect effect;
+      DebugLocation dl;
 
     public:
-      RuleDef(const std::string& s, ParseEffect effect_)
-      : regex(s), effect(effect_)
+      RuleDef(Located<const std::string&> s, ParseEffect effect_)
+      : regex(s.value), effect(effect_), dl(s.location)
+      {}
+
+      RuleDef(Located<const char*> s, ParseEffect effect_)
+      : regex(s.value), effect(effect_), dl(s.location)
       {}
     };
 
@@ -76,6 +82,14 @@ namespace trieste
         return node == type;
       }
 
+      bool group_in(const Token& type) const
+      {
+        if (!in(Group))
+          return false;
+
+        return node->parent() == type;
+      }
+
       bool previous(const Token& type) const
       {
         if (!in(Group))
@@ -93,6 +107,14 @@ namespace trieste
         node->push_back(make_error(re_match.at(index), msg));
       }
 
+      void error(const std::string& msg, const Location& location)
+      {
+        if (!in(Group))
+          push(Group);
+
+        node->push_back(make_error(location, msg));
+      }
+
       void add(const Token& type, size_t index = 0)
       {
         if ((type != Group) && !in(Group))
@@ -107,8 +129,12 @@ namespace trieste
           push(Group);
 
         while (node->parent()->type().in(skip))
+        {
+          extend();
           node = node->parent()->shared_from_this();
+        }
 
+        extend();
         auto p = node->parent();
 
         if (p == type)
@@ -173,14 +199,19 @@ namespace trieste
       {
         if (in(type))
         {
-          if (!node->empty())
-            node->extend(node->back()->location());
+          extend();
 
           node = node->parent()->shared_from_this();
           return true;
         }
 
         return false;
+      }
+
+      void extend()
+      {
+        if (!node->empty())
+          node->extend(node->back()->location());
       }
 
       Node make_error(Location loc, const std::string& msg)
@@ -328,6 +359,18 @@ namespace trieste
       return top;
     }
 
+    Node parse(const Source source) const
+    {
+      auto ast = parse_source(source->origin(), File, source);
+      auto top = NodeDef::create(Top);
+      top->push_back(ast);
+
+      if (postparse_)
+        postparse_(*this, {}, top);
+
+      return top;
+    }
+
     Node sub_parse(const std::filesystem::path& path) const
     {
       if (!std::filesystem::exists(path))
@@ -342,12 +385,6 @@ namespace trieste
         return parse_directory(cpath);
 
       return {};
-    }
-
-    Node sub_parse(
-      const std::string name, const Token& token, const Source& source) const
-    {
-      return parse_source(name, token, source);
     }
 
   private:
@@ -459,10 +496,17 @@ namespace trieste
   };
 
   inline detail::Rule
-  operator>>(const std::string& s, detail::ParseEffect effect)
+  operator>>(detail::Located<const std::string&> s, detail::ParseEffect effect)
   {
     return std::make_shared<detail::RuleDef>(s, effect);
   }
+
+  inline detail::Rule
+  operator>>(detail::Located<const char*> s, detail::ParseEffect effect)
+  {
+    return std::make_shared<detail::RuleDef>(s, effect);
+  }
+
 
   inline std::pair<Token, GenLocationF>
   operator>>(const Token& t, GenLocationF f)

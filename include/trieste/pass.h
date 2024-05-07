@@ -184,8 +184,8 @@ namespace trieste
 
       for (auto& rule : rules_)
       {
-        const auto& starts = rule.first.get_starts();
-        const auto& parents = rule.first.get_parents();
+        const auto& starts = rule.first.value.get_starts();
+        const auto& parents = rule.first.value.get_parents();
 
         //  This is used to add a rule under a specific parent, or to the
         //  default.
@@ -296,7 +296,9 @@ namespace trieste
         for (auto& rule : specific_rules)
         {
           match.reset();
-          if (SNMALLOC_UNLIKELY(rule.first.match(it, node, match)))
+          if (
+            SNMALLOC_UNLIKELY(rule.first.value.match(it, node, match)) &&
+            SNMALLOC_LIKELY(!range_contains_error(start, it)))
           {
             replaced = replace(match, rule.second, start, it, node);
             if (replaced != -1)
@@ -333,12 +335,11 @@ namespace trieste
     {
       size_t changes = 0;
 
-      std::vector<std::pair<Node&, NodeIt>> path;
-
       auto add = [&](Node& node) SNMALLOC_FAST_PATH_LAMBDA {
         // Don't examine Error or Lift nodes.
         if (node->type() & flag::internal)
-          return;
+          return false;
+
         if constexpr (Pre)
         {
           auto pre_f = pre_.find(node->type());
@@ -347,11 +348,11 @@ namespace trieste
         }
         if constexpr (Topdown)
           changes += match_children(node, match);
-        path.push_back({node, node->begin()});
+
+        return true;
       };
 
-      auto remove = [&]() SNMALLOC_FAST_PATH_LAMBDA {
-        Node& node = path.back().first;
+      auto remove = [&](Node& node) SNMALLOC_FAST_PATH_LAMBDA {
         if constexpr (!Topdown)
           changes += match_children(node, match);
         else
@@ -362,24 +363,9 @@ namespace trieste
           if (post_f != post_.end())
             changes += post_f->second(node);
         }
-        path.pop_back();
       };
 
-      add(root);
-      while (!path.empty())
-      {
-        auto& [node, it] = path.back();
-        if (it != node->end())
-        {
-          Node& curr = *it;
-          it++;
-          add(curr);
-        }
-        else
-        {
-          remove();
-        }
-      }
+      root->traverse(add, remove);
 
       return changes;
     }

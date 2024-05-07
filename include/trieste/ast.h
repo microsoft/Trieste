@@ -155,7 +155,69 @@ namespace trieste
     }
 
   public:
-    ~NodeDef() {}
+    /**
+     * @brief Destroy the Node Def object
+     *
+     * This destructor will transitively destroy the children of the node.
+     *
+     * For deep graphs this can be a problem leading to stack overflow if we
+     * just allow arbitrary reentrancy through ~NodeDef. This design ensures
+     * there at most two calls to the destructor on the stack.
+     *
+     * There are two cases where this destructor is called:
+     *   - Outer case: there are no other calls to the destructor on the stack
+     *   - Re-entrant case: there is one more call to the destructor on the
+     * stack
+     *
+     * This destructor uses thread local state to detect which case it is in
+     * using
+     *
+     *   thread_local std::vector<Nodes>* work_list{nullptr};
+     *
+     * On entry to the destructor if the work_list is nullptr, then we are in
+     * the Outer case. The Outer case sets up a work_list, stores a pointer to
+     * it in the thread_local and processes the work_list, which includes this
+     * nodes children.  Processing the worklist can result in calls to ~NodeDef.
+     * When the work_list is empty, the thread_local is nullified. Thus the next
+     * call to NodeDef will be considered an Outer case.
+     *
+     * The Re-entrant case is detected by the work_list being non-null.
+     * In this case, the children are moved into the work_list and the
+     * destructor returns. The children will be processed by the Outer case.
+     */
+    ~NodeDef()
+    {
+      // Contains a pointer to a vector on the stack for handling the
+      // recursive destruction of the AST.
+      // We don't use an actual vector in the TLS as the destruction
+      // of the TLS can cause problems on some platforms.
+      thread_local std::vector<Nodes>* work_list{nullptr};
+
+      if (work_list)
+      {
+        // Re-entrant case, move the children into the work_list and return.
+        work_list->push_back(std::move(children));
+        return;
+      }
+
+      // Outer case, set up the work_list, and process it.
+      std::vector<Nodes> work_list_local;
+      work_list = &work_list_local;
+
+      work_list_local.push_back(std::move(children));
+
+      while (!work_list_local.empty())
+      {
+        // clear will potentially call this destructor recursively, so we need
+        // to have finished modifying the work_list before calling it, hence
+        // moving the nodes out of the work_list into a local variable.
+        auto nodes = std::move(work_list_local.back());
+        work_list_local.pop_back();
+        nodes.clear();
+      }
+
+      work_list = nullptr;
+    }
 
     static Node create(const Token& type)
     {
@@ -218,11 +280,13 @@ namespace trieste
 
     void set_location(const Location& loc)
     {
-      if (!location_.source)
-        location_ = loc;
-
-      for (auto& c : children)
-        c->set_location(loc);
+      traverse([&](Node& current) {
+        auto& current_loc = current->location_;
+        if (current_loc.source)
+          return false;
+        current_loc = loc;
+        return true;
+      });
     }
 
     void extend(const Location& loc)
@@ -633,26 +697,97 @@ namespace trieste
         parent->find(q->shared_from_this());
     }
 
-    void str(std::ostream& out, size_t level) const
+    void str(std::ostream& out, size_t level = 0) const
     {
-      out << indent(level) << "(" << type_.str();
+      auto pre = [&](Node& node) {
+        if (level != 0)
+          out << std::endl;
 
-      if (type_ & flag::print)
-        out << " " << location_.view().size() << ":" << location_.view();
+        out << indent(level) << "(" << node->type_.str();
 
-      if (symtab_)
+        if (node->type_ & flag::print)
+          out << " " << node->location_.view().size() << ":"
+              << node->location_.view();
+
+        if (node->symtab_)
+        {
+          out << std::endl;
+          node->symtab_->str(out, level + 1);
+        }
+
+        level++;
+        return true;
+      };
+
+      auto post = [&](Node&) {
+        out << ")";
+        level--;
+      };
+
+      // Cast is safe as traverse only mutates if pre and post do.
+      const_cast<NodeDef*>(this)->traverse(pre, post);
+    }
+
+    /*
+     * Useful for calling from inside a debugger.
+     */
+    std::string SNMALLOC_USED_FUNCTION str()
+    {
+      std::ostringstream out;
+      str(out);
+      return out.str();
+    }
+
+    class NopPost
+    {
+    public:
+      void operator()(Node&) {}
+    };
+
+    /**
+     * @brief This function performs a traversal of the node structure.
+     *
+     * It takes both a pre-order and a post-order function that are called when
+     * a node is first visited, and once all its children have been visited.
+     *
+     * The pre-order action is expected to be of the form
+     *   [..](Node& node) -> bool { .. }
+     * where it returns true if the traversal should proceed to the children,
+     * and false if it should not inspect the children.
+     *
+     * The post-order action will only be called if the pre-order action
+     * returned true.
+     *
+     * The traversal is allowed to modify the structure below the current node
+     * passed to the action, but not above.
+     */
+    template<typename Pre, typename Post = NopPost>
+    SNMALLOC_FAST_PATH void traverse(Pre pre, Post post = NopPost())
+    {
+      Node root = shared_from_this();
+      if (!pre(root))
+        return;
+
+      std::vector<std::pair<Node&, NodeIt>> path;
+      path.push_back({root, root->begin()});
+      while (!path.empty())
       {
-        out << std::endl;
-        symtab_->str(out, level + 1);
+        auto& [node, it] = path.back();
+        if (it != node->end())
+        {
+          Node& curr = *it;
+          it++;
+          if (pre(curr))
+          {
+            path.push_back({curr, curr->begin()});
+          }
+        }
+        else
+        {
+          post(node);
+          path.pop_back();
+        }
       }
-
-      for (auto child : children)
-      {
-        out << std::endl;
-        child->str(out, level + 1);
-      }
-
-      out << ")";
     }
 
     /**
@@ -660,16 +795,15 @@ namespace trieste
      */
     void get_errors(Nodes& errors)
     {
-      if (!get_and_reset_contains_error())
-      {
+      traverse([&](Node& current) {
         // Only add Error nodes that do not contain further Error nodes.
-        if (type_ == Error)
-          errors.push_back(shared_from_this());
-        return;
-      }
+        if (current->get_and_reset_contains_error())
+          return true;
 
-      for (auto& child : children)
-        child->get_errors(errors);
+        if (current->type_ == Error)
+          errors.push_back(current);
+        return false;
+      });
     }
 
     bool get_and_reset_contains_error()
@@ -677,6 +811,11 @@ namespace trieste
       bool result = flags_.contains_error();
       flags_.reset_contains_error();
       return result;
+    }
+
+    bool get_contains_error()
+    {
+      return flags_.contains_error();
     }
 
     bool get_and_reset_contains_lift()
@@ -777,7 +916,7 @@ namespace trieste
   {
     if (node)
     {
-      node->str(os, 0);
+      node->str(os);
       os << std::endl;
     }
 
@@ -792,7 +931,7 @@ namespace trieste
   inline std::ostream& operator<<(std::ostream& os, const NodeRange& range)
   {
     for (auto it = range.first; it != range.second; ++it)
-      (*it)->str(os, 0);
+      (*it)->str(os);
 
     return os;
   }
@@ -827,5 +966,12 @@ namespace trieste
   [[gnu::used]] inline void print(const Node& node)
   {
     std::cout << node;
+  }
+
+  inline bool range_contains_error(NodeIt start, NodeIt end)
+  {
+    return std::any_of(start, end, [](auto& n) {
+      return n == Error || n->get_contains_error();
+    });
   }
 }

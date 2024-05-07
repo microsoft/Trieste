@@ -40,7 +40,7 @@ namespace trieste
       f.seekg(0, std::ios::beg);
 
       auto source = std::make_shared<SourceDef>();
-      source->origin_ = file.string();
+      source->origin_ = std::filesystem::relative(file).string();
       source->contents.resize(static_cast<std::size_t>(size));
       f.read(&source->contents[0], size);
 

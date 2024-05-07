@@ -13,39 +13,27 @@ namespace trieste
   class Driver
   {
   private:
-    constexpr static auto parse_only = "parse";
-
     using PassIt = std::vector<Pass>::iterator;
 
-    std::string language_name;
+    Reader reader;
     CLI::App app;
     Options* options;
-    Parse parser;
-    std::vector<Pass> passes;
-    std::vector<std::string> limits;
 
   public:
+    Driver(const Reader& reader_, Options* options_ = nullptr)
+    : reader(reader_), app(reader_.language_name()), options(options_)
+    {}
+
     Driver(
       const std::string& language_name_,
       Options* options_,
       Parse parser_,
       std::vector<Pass> passes_)
-    : language_name(language_name_),
-      app(language_name_),
-      options(options_),
-      parser(parser_),
-      passes(passes_)
-    {
-      limits.push_back(parse_only);
-
-      for (auto& pass : passes)
-        limits.push_back(pass->name());
-    }
+    : Driver({language_name_, passes_, parser_}, options_)
+    {}
 
     int run(int argc, char** argv)
     {
-      parser.executable(argv[0]);
-
       app.set_help_all_flag("--help-all", "Expand all help");
       app.require_subcommand(1);
 
@@ -66,9 +54,10 @@ namespace trieste
       bool wfcheck = true;
       build->add_flag("-w", wfcheck, "Check well-formedness.");
 
-      std::string limit = limits.back();
-      build->add_option("-p,--pass", limit, "Run up to this pass.")
-        ->transform(CLI::IsMember(limits));
+      std::vector<std::string> pass_names = reader.pass_names();
+      std::string end_pass = pass_names.back();
+      build->add_option("-p,--pass", end_pass, "Run up to this pass.")
+        ->transform(CLI::IsMember(pass_names));
 
       std::filesystem::path path;
       build->add_option("path", path, "Path to compile.")->required();
@@ -96,11 +85,11 @@ namespace trieste
 
       std::string test_start_pass;
       test->add_option("start", test_start_pass, "Start at this pass.")
-        ->transform(CLI::IsMember(limits));
+        ->transform(CLI::IsMember(pass_names));
 
       std::string test_end_pass;
       test->add_option("end", test_end_pass, "End at this pass.")
-        ->transform(CLI::IsMember(limits));
+        ->transform(CLI::IsMember(pass_names));
 
       test
         ->add_option(
@@ -132,11 +121,12 @@ namespace trieste
 
       if (*build)
       {
-        Node ast;
-        PassRange pass_range{
-          passes.begin(), passes.end(), parser.wf(), parse_only};
-        pass_range.move_end(limit);
-
+        reader.executable(argv[0])
+          .file(path)
+          .debug_enabled(!dump_passes.empty())
+          .debug_path(dump_passes)
+          .wf_check_enabled(wfcheck)
+          .end_pass(end_pass);
         if (path.extension() == ".trieste")
         {
           auto source = SourceDef::load(path);
@@ -145,42 +135,13 @@ namespace trieste
           auto pos2 = std::min(view.find_first_of('\n', pos + 1), view.size());
           auto pass = view.substr(pos + 1, pos2 - pos - 1);
 
-          if (view.compare(0, pos, language_name) == 0)
+          if (view.compare(0, pos, reader.language_name()) == 0)
           {
-            // We're resuming from a specific pass.
-            if (!pass_range.move_start(pass))
-            {
-              logging::Error() << "Unknown pass: " << pass << std::endl;
-              return -1;
-            }
-
-            // Pass range is currently pointing at pass, but the output is the
-            // dump of that, so adavnce it one, so we start processing on the
-            // next pass.
-            ++pass_range;
+            reader.start_pass(pass).offset(pos2 + 1);
           }
-
-          // Build the initial AST.
-          ast = build_ast(source, pos2 + 1);
-        }
-        else
-        {
-          // Parse the source path.
-          if (std::filesystem::exists(path))
-            ast = parser.parse(path);
-          else
-            logging::Error() << "File not found: " << path << std::endl;
         }
 
-        bool ok;
-        {
-          logging::Info summary;
-          summary << "---------" << std::endl;
-          Process process =
-            default_process(summary, wfcheck, language_name, dump_passes);
-          ok = process.build(ast, pass_range);
-          summary << "---------" << std::endl;
-        }
+        auto result = reader.read();
 
         if (output.empty())
           output = path.stem().replace_extension(".trieste");
@@ -190,19 +151,23 @@ namespace trieste
         if (f)
         {
           // Write the AST to the output file.
-          f << language_name << std::endl
-            << pass_range.last_pass()->name() << std::endl
-            << ast;
+          f << reader.language_name() << std::endl
+            << result.last_pass << std::endl
+            << result.ast;
         }
         else
         {
           logging::Error() << "Could not open " << output << " for writing."
                            << std::endl;
-          ok = false;
+          return 1;
         }
 
-        if (!ok)
-          return -1;
+        if (!result.ok)
+        {
+          logging::Error err;
+          result.print_errors(err);
+          return 1;
+        }
       }
       else if (*test)
       {
@@ -211,22 +176,23 @@ namespace trieste
 
         if (test_start_pass.empty())
         {
-          test_start_pass = limits.at(1);
-          test_end_pass = limits.back();
+          test_start_pass = pass_names.at(1);
+          test_end_pass = pass_names.back();
         }
         else if (test_end_pass.empty())
         {
           test_end_pass = test_start_pass;
         }
 
-        size_t start_pass = pass_index(test_start_pass);
-        size_t end_pass = pass_index(test_end_pass);
+        size_t start_pass_index = reader.pass_index(test_start_pass);
+        size_t end_pass_index = reader.pass_index(test_end_pass);
 
-        for (auto i = start_pass; i <= end_pass; i++)
+        for (auto i = start_pass_index; i <= end_pass_index; i++)
         {
-          auto& pass = passes.at(i - 1);
+          auto& pass = reader.passes().at(i - 1);
           auto& wf = pass->wf();
-          auto& prev = i > 1 ? passes.at(i - 2)->wf() : parser.wf();
+          auto& prev =
+            i > 1 ? reader.passes().at(i - 2)->wf() : reader.parser().wf();
 
           if (!prev || !wf)
           {
@@ -241,7 +207,8 @@ namespace trieste
           for (size_t seed = test_seed; seed < test_seed + test_seed_count;
                seed++)
           {
-            auto ast = prev.gen(parser.generators(), seed, test_max_depth);
+            auto ast =
+              prev.gen(reader.parser().generators(), seed, test_max_depth);
             logging::Trace()
               << "============" << std::endl
               << "Pass: " << pass->name() << ", seed: " << seed << std::endl
@@ -253,6 +220,14 @@ namespace trieste
                              << std::endl;
 
             auto ok = wf.build_st(new_ast);
+            if (ok)
+            {
+              Nodes errors;
+              new_ast->get_errors(errors);
+              if (!errors.empty())
+                // Pass added error nodes, so doesn't need to satisfy wf.
+                continue;
+            }
             ok = wf.check(new_ast) && ok;
 
             if (!ok)
@@ -266,7 +241,8 @@ namespace trieste
                     << "Pass: " << pass->name() << ", seed: " << seed
                     << std::endl
                     << "------------" << std::endl
-                    << prev.gen(parser.generators(), seed, test_max_depth)
+                    << prev.gen(
+                         reader.parser().generators(), seed, test_max_depth)
                     << "------------" << std::endl
                     << new_ast;
               }
@@ -274,7 +250,7 @@ namespace trieste
               err << "============" << std::endl
                   << "Failed pass: " << pass->name() << ", seed: " << seed
                   << std::endl;
-              ret = -1;
+              ret = 1;
 
               if (test_failfast)
                 return ret;
@@ -287,21 +263,6 @@ namespace trieste
       }
 
       return ret;
-    }
-
-    template<typename StringLike>
-    size_t pass_index(const StringLike& name_)
-    {
-      if (name_ == parse_only)
-        return 0;
-
-      for (size_t i = 0; i < passes.size(); i++)
-      {
-        if (passes[i]->name() == name_)
-          return i + 1;
-      }
-
-      return std::numeric_limits<size_t>::max();
     }
   };
 }

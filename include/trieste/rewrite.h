@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ast.h"
+#include "debug.h"
 #include "token.h"
 #include "regex.h"
 
@@ -881,13 +882,8 @@ namespace trieste
       }
     };
 
-    class Pattern;
-
     template<typename T>
     using Effect = std::function<T(Match&)>;
-
-    template<typename T>
-    using PatternEffect = std::pair<Pattern, Effect<T>>;
 
     class Pattern
     {
@@ -999,6 +995,9 @@ namespace trieste
       }
     };
 
+    template<typename T>
+    using PatternEffect = std::pair<Located<Pattern>, Effect<T>>;
+
     struct RangeContents
     {
       NodeRange range;
@@ -1022,7 +1021,7 @@ namespace trieste
   }
 
   template<typename F>
-  inline auto operator>>(detail::Pattern pattern, F effect)
+  inline auto operator>>(detail::Located<detail::Pattern> pattern, F effect)
     -> detail::PatternEffect<decltype(effect(std::declval<Match&>()))>
   {
     return {pattern, effect};
