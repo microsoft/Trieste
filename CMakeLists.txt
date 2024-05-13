@@ -105,11 +105,6 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   target_compile_options(trieste INTERFACE -Wmismatched-tags -fstandalone-debug)
 endif()
 
-# Clear all existing files and folders from the install directory
-install(CODE [[
-  file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX}/.)
-  ]])
-
 # #############################################
 # Installation instructions
 set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR}/dist)
