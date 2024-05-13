@@ -35,6 +35,17 @@ set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
 
 set(TRIESTE_SANITIZE "" CACHE STRING "Argument to pass to sanitize (disabled by default)")
 
+# Used to provide
+#  FetchContent_MakeAvailable_ExcludeFromAll
+FetchContent_Declare(
+    cmake_utils
+    GIT_REPOSITORY https://github.com/mjp41/cmake_utils
+    GIT_TAG 2bf98b5773ea7282197c823e205547d8c2e323c0
+    GIT_SHALLOW FALSE
+)
+
+FetchContent_MakeAvailable(cmake_utils)
+
 
 FetchContent_Declare(
   snmalloc
@@ -43,7 +54,7 @@ FetchContent_Declare(
   GIT_SHALLOW TRUE
 )
 
-FetchContent_MakeAvailable(snmalloc)
+FetchContent_MakeAvailable_ExcludeFromAll(snmalloc)
 
 FetchContent_Declare(
   re2
@@ -52,7 +63,7 @@ FetchContent_Declare(
   GIT_SHALLOW TRUE
 )
 
-FetchContent_MakeAvailable(re2)
+FetchContent_MakeAvailable_ExcludeFromAll(re2)
 
 FetchContent_Declare(
   cli11
@@ -61,7 +72,7 @@ FetchContent_Declare(
   GIT_SHALLOW TRUE
 )
 
-FetchContent_MakeAvailable(cli11)
+FetchContent_MakeAvailable_ExcludeFromAll(cli11)
 
 # #############################################
 # Create target and set properties
