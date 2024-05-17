@@ -10,7 +10,8 @@
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/dist",
                 "CMAKE_CXX_COMPILER": "clang++",
-                "TRIESTE_BUILD_SAMPLES": "ON"
+                "TRIESTE_BUILD_SAMPLES": "ON",
+                "TRIESTE_CLEAN_INSTALL": "ON"
             }
         },
         {
@@ -20,7 +21,8 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/dist",
-                "TRIESTE_BUILD_SAMPLES": "ON"
+                "TRIESTE_BUILD_SAMPLES": "ON",
+                "TRIESTE_CLEAN_INSTALL": "ON"
             }
         },
         {
@@ -32,7 +34,8 @@
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/dist",
                 "CMAKE_CXX_COMPILER": "clang++",
-                "TRIESTE_BUILD_SAMPLES": "ON"
+                "TRIESTE_BUILD_SAMPLES": "ON",
+                "TRIESTE_CLEAN_INSTALL": "ON"
             }
         },
         {
@@ -42,7 +45,8 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/dist",
-                "TRIESTE_BUILD_SAMPLES": "ON"
+                "TRIESTE_BUILD_SAMPLES": "ON",
+                "TRIESTE_CLEAN_INSTALL": "ON"
             }
         }
     ]

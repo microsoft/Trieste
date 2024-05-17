@@ -7,6 +7,7 @@ option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
 option(TRIESTE_BUILD_PARSERS "Specifies whether to build the parsers" ON)
 option(TRIESTE_BUILD_PARSER_TESTS "Specifies whether to build the parser tests" OFF)
 option(TRIESTE_USE_CXX17 "Specifies whether to target the C++17 standard" OFF)
+option(TRIESTE_CLEAN_INSTALL "Specifies whether to delete all files (recursively) from the install prefix before install" OFF)
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
@@ -103,6 +104,14 @@ endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   target_compile_options(trieste INTERFACE -Wmismatched-tags -fstandalone-debug)
+endif()
+
+if(TRIESTE_CLEAN_INSTALL)
+  message("${CMAKE_INSTALL_PREFIX} will be recursively cleaned before install")
+  # Clear all existing files and folders from the install directory
+  install(CODE [[
+    file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX}/.)
+    ]])
 endif()
 
 # #############################################
