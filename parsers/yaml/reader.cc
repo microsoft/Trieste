@@ -2440,15 +2440,15 @@ namespace
         In(Plain) * (T(Line)[Line] << Any) >>
           [](Match& _) {
             Node line = _(Line);
-            if (line->front()->type() == Whitespace)
+            if (line->front() == Whitespace)
             {
               line->erase(line->begin(), line->begin() + 1);
             }
-            if (line->back()->type() == Whitespace)
+            if (!line->empty() && line->back() == Whitespace)
             {
               line->pop_back();
             }
-            if (line->back() == Comment)
+            if (!line->empty() && line->back() == Comment)
             {
               return err(line, "comment in multiline plain scalar");
             }
