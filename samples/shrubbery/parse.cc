@@ -3,10 +3,17 @@
 
 // Shrubbery notation constructs that are not supported:
 // - Single quotes as opener/closer pairs
+//   - Keep a stack of opener pairs to check if a quote opens or closes a pair
 // - Line and column insensitivity with << and >>
+//   - Separate mode which ignores indentation?
+//   - Maybe a global switch ignoring the helper functions
 // - Block comments with #// //#
+//   - Separate mode eating everything
 // - @-notation
+//   - Remember when we have seen an @ and switch modes under braces (maybe
+//     needs a stack or level to remember when we leave the final version)
 // - Keywords prefixed by ~
+//   - I think this is just another token
 //
 // Other things that could be implemented:
 // - Continuing a line with backslash
