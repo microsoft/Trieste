@@ -828,11 +828,13 @@ namespace trieste
         yaml = yaml->front();
       }
 
+      wf::new_context();
       wf::push_back(yaml::wf);
       std::ostringstream os;
       WriteOptions options = {newline, indent, canonical, false};
       write_stream(os, options, yaml);
       wf::pop_front();
+      wf::end_context();
       return os.str();
     }
   }

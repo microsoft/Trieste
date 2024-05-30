@@ -223,6 +223,7 @@ namespace trieste
       }
 
       Destination dest = destination_;
+      wf::new_context();
       wf::push_back(*wf_);
       wf::push_back(wf_writer);
 
@@ -263,6 +264,7 @@ namespace trieste
 
       wf::pop_front();
       wf::pop_front();
+      wf::end_context();
 
       if (!error_nodes.empty())
       {
@@ -333,6 +335,16 @@ namespace trieste
     Destination destination() const
     {
       return destination_;
+    }
+
+    const wf::Wellformed& input_wf() const
+    {
+      return *wf_;
+    }
+
+    const std::vector<Pass>& passes() const
+    {
+      return passes_;
     }
   };
 }

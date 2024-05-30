@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "fuzzer.h"
 #include "trieste.h"
 
 #include <CLI/CLI.hpp>
@@ -184,82 +185,14 @@ namespace trieste
           test_end_pass = test_start_pass;
         }
 
-        size_t start_pass_index = reader.pass_index(test_start_pass);
-        size_t end_pass_index = reader.pass_index(test_end_pass);
-
-        for (auto i = start_pass_index; i <= end_pass_index; i++)
-        {
-          auto& pass = reader.passes().at(i - 1);
-          auto& wf = pass->wf();
-          auto& prev =
-            i > 1 ? reader.passes().at(i - 2)->wf() : reader.parser().wf();
-
-          if (!prev || !wf)
-          {
-            logging::Info() << "Skipping pass: " << pass->name() << std::endl;
-            continue;
-          }
-
-          logging::Info() << "Testing pass: " << pass->name() << std::endl;
-          wf::push_back(prev);
-          wf::push_back(wf);
-
-          for (size_t seed = test_seed; seed < test_seed + test_seed_count;
-               seed++)
-          {
-            auto ast =
-              prev.gen(reader.parser().generators(), seed, test_max_depth);
-            logging::Trace()
-              << "============" << std::endl
-              << "Pass: " << pass->name() << ", seed: " << seed << std::endl
-              << "------------" << std::endl
-              << ast << "------------" << std::endl;
-
-            auto [new_ast, count, changes] = pass->run(ast);
-            logging::Trace() << new_ast << "------------" << std::endl
-                             << std::endl;
-
-            auto ok = wf.build_st(new_ast);
-            if (ok)
-            {
-              Nodes errors;
-              new_ast->get_errors(errors);
-              if (!errors.empty())
-                // Pass added error nodes, so doesn't need to satisfy wf.
-                continue;
-            }
-            ok = wf.check(new_ast) && ok;
-
-            if (!ok)
-            {
-              logging::Error err;
-              if (!logging::Trace::active())
-              {
-                // We haven't printed what failed with Trace earlier, so do it
-                // now. Regenerate the start Ast for the error message.
-                err << "============" << std::endl
-                    << "Pass: " << pass->name() << ", seed: " << seed
-                    << std::endl
-                    << "------------" << std::endl
-                    << prev.gen(
-                         reader.parser().generators(), seed, test_max_depth)
-                    << "------------" << std::endl
-                    << new_ast;
-              }
-
-              err << "============" << std::endl
-                  << "Failed pass: " << pass->name() << ", seed: " << seed
-                  << std::endl;
-              ret = 1;
-
-              if (test_failfast)
-                return ret;
-            }
-          }
-
-          wf::pop_front();
-          wf::pop_front();
-        }
+        return Fuzzer(reader)
+          .max_depth(test_max_depth)
+          .failfast(test_failfast)
+          .seed_count(test_seed_count)
+          .start_index(reader.pass_index(test_start_pass))
+          .end_index(reader.pass_index(test_end_pass))
+          .start_seed(test_seed)
+          .test();
       }
 
       return ret;

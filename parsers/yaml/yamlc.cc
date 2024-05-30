@@ -29,6 +29,10 @@ int main(int argc, char** argv)
   app.add_flag(
     "--prettyprint", prettyprint, "Pretty print the output (for JSON)");
 
+  bool sort_keys{false};
+  app.add_flag(
+    "--sort-keys", sort_keys, "Sort object keys in the output (for JSON)");
+
   auto modes = {"event", "json", "yaml"};
   std::string mode;
   app.add_option("-m,--mode", mode, "Output mode.")
@@ -69,7 +73,7 @@ int main(int argc, char** argv)
   trieste::Reader reader = yaml::reader()
                              .file(input_path)
                              .debug_enabled(!debug_path.empty())
-                             .debug_path(debug_path)
+                             .debug_path(debug_path / "inyaml")
                              .wf_check_enabled(wf_checks);
   Destination dest = output_path.empty() ?
     DestinationDef::console() :
@@ -85,7 +89,7 @@ int main(int argc, char** argv)
     result = reader >> yaml::event_writer(output_path)
                          .destination(dest)
                          .debug_enabled(!debug_path.empty())
-                         .debug_path(debug_path)
+                         .debug_path(debug_path / "event")
                          .wf_check_enabled(wf_checks);
     ;
   }
@@ -93,9 +97,9 @@ int main(int argc, char** argv)
   {
     result = reader >> yaml::to_json()
                          .debug_enabled(!debug_path.empty())
-                         .debug_path(debug_path)
+                         .debug_path(debug_path / "json")
                          .wf_check_enabled(wf_checks) >>
-      json::writer(output_path, prettyprint)
+      json::writer(output_path, prettyprint, sort_keys)
         .destination(dest)
         .debug_enabled(!debug_path.empty())
         .debug_path(debug_path)
@@ -107,7 +111,7 @@ int main(int argc, char** argv)
     result = reader >> yaml::writer(output_path.filename().string())
                          .destination(dest)
                          .debug_enabled(!debug_path.empty())
-                         .debug_path(debug_path)
+                         .debug_path(debug_path / "outyaml")
                          .wf_check_enabled(wf_checks);
     ;
   }

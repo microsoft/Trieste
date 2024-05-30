@@ -85,7 +85,7 @@ target_link_libraries(trieste
 )
 
 if(TRIESTE_USE_CXX17)
-  target_compile_definitions(trieste INTERFACE cxx_std_17)
+  target_compile_definitions(trieste INTERFACE cxx_std_17 TRIESTE_USE_CXX17)
 else()
   target_compile_definitions(trieste INTERFACE cxx_std_20)
 endif()

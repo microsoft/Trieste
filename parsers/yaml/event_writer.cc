@@ -652,7 +652,7 @@ namespace trieste
       else
       {
         auto last = node->back()->location().view();
-        if (last.empty())
+        if (last.empty() && node->size() > 1)
         {
           os << " ";
         }

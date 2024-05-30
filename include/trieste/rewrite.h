@@ -4,8 +4,8 @@
 
 #include "ast.h"
 #include "debug.h"
-#include "token.h"
 #include "regex.h"
+#include "token.h"
 
 #include <array>
 #include <cassert>
@@ -74,9 +74,9 @@ namespace trieste
         if (valid)
         {
           auto it = map.find(token);
-          if ((it != map.end()) && *it->second.first)
+          if ((it != map.end()) && it->second.front())
           {
-            return *it->second.first;
+            return it->second.front();
           }
         }
         if (i == 0)
@@ -1119,11 +1119,9 @@ namespace trieste
 
   inline Node operator<<(Node node, detail::RangeContents range_contents)
   {
-    for (auto it = range_contents.range.first;
-         it != range_contents.range.second;
-         ++it)
+    for (Node n : range_contents.range)
     {
-      node->push_back({(*it)->begin(), (*it)->end()});
+      node->push_back({n->begin(), n->end()});
     }
 
     return node;
@@ -1131,7 +1129,7 @@ namespace trieste
 
   inline Node operator<<(Node node, detail::RangeOr range_or)
   {
-    if (range_or.range.first != range_or.range.second)
+    if (!range_or.range.empty())
       node->push_back(range_or.range);
     else
       node->push_back(range_or.node);
@@ -1171,10 +1169,10 @@ namespace trieste
   inline Nodes clone(NodeRange range)
   {
     Nodes nodes;
-    nodes.reserve(std::distance(range.first, range.second));
+    nodes.reserve(range.size());
 
-    for (auto it = range.first; it != range.second; ++it)
-      nodes.push_back((*it)->clone());
+    for (Node n : range)
+      nodes.push_back(n->clone());
 
     return nodes;
   }

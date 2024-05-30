@@ -257,11 +257,11 @@ namespace trieste
       auto ok = bool(ast);
 
       ok = ok && wf.build_st(ast);
-      
+
       if (ast)
         ast->get_errors(errors);
       ok = ok && errors.empty();
-      
+
       ok = ok && (!check_well_formed || wf.check(ast));
 
       return ok;
@@ -276,6 +276,7 @@ namespace trieste
     {
       size_t index = 1;
 
+      wf::new_context();
       wf::push_back(pass_range.input_wf());
 
       Nodes errors;
@@ -315,6 +316,7 @@ namespace trieste
       }
 
       wf::pop_front();
+      wf::end_context();
 
       return {ok, last_pass, ast, errors};
     }
