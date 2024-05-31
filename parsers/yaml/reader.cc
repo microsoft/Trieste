@@ -1881,6 +1881,15 @@ namespace
         In(Line) *
             (T(Comment, "#[^ \t].*: .*")[Comment] * In(MappingIndent)++) >>
           [](Match& _) -> Node {
+          Location loc = _(Comment)->location();
+          auto col = loc.linecol().second;
+          loc.pos -= col;
+          loc.len = col;
+          if (loc.view().find_first_not_of(" \t") == std::string::npos)
+          {
+            return nullptr;
+          }
+
           return err(_(Comment), "Comment that looks like a mapping key");
         },
 
@@ -2148,6 +2157,10 @@ namespace
           [](Match&) -> Node { return nullptr; },
 
         In(SequenceGroup, MappingGroup) * T(WhitespaceLine, EmptyLine) >>
+          [](Match&) -> Node { return nullptr; },
+
+        In(SequenceGroup, MappingGroup) *
+            (T(Indent) << ((T(Line) << (T(Whitespace) * End))++ * End)) >>
           [](Match&) -> Node { return nullptr; },
 
         In(Documents) *
