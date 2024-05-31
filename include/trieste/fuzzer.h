@@ -75,12 +75,12 @@ namespace trieste
       return *this;
     }
 
-    size_t seed_count() const
+    uint32_t seed_count() const
     {
       return seed_count_;
     }
 
-    Fuzzer& seed_count(size_t seed_count)
+    Fuzzer& seed_count(uint32_t seed_count)
     {
       seed_count_ = seed_count;
       return *this;
