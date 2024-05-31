@@ -434,7 +434,7 @@ namespace
         result[i] = err(result[i], "Scalar contains '...'");
       }
 
-      if (s.rfind("...") == s.size() - 3)
+      if (s.size() >= 3 && s.rfind("...") == s.size() - 3)
       {
         result[i] = err(result[i], "Scalar contains '...'");
       }
@@ -2558,6 +2558,11 @@ namespace
         T(Indent)
             << (T(WhitespaceLine)++ * T(MappingIndent, SequenceIndent)[Indent] *
                 End) >>
+          [](Match& _) { return _(Indent); },
+
+        T(Indent)
+            << ((T(Line) << (T(Comment) * End))++ *
+                T(MappingIndent, SequenceIndent)[Indent] * End) >>
           [](Match& _) { return _(Indent); },
 
         In(DocumentGroup) * (T(Indent) << (T(Line)[Line] * End)) >>
