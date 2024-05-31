@@ -1074,6 +1074,22 @@ namespace trieste
             std::string(field.str()) + "`");
         }
       };
+
+    inline void new_context()
+    {
+      wf_current.push_back({});
+    }
+
+    inline void end_context()
+    {
+      if (wf_current.size() == 1)
+      {
+        logging::Error() << "Cannot end the base WF context" << std::endl;
+        return;
+      }
+
+      wf_current.pop_back();
+    }
     }
 
     inline const Wellformed empty;
@@ -1087,23 +1103,20 @@ namespace trieste
     {
       detail::wf_current.back().pop_front();
     }
-
-    inline void new_context()
-    {
-      detail::wf_current.push_back({});
-    }
-
-    inline void end_context()
-    {
-      if (detail::wf_current.size() == 1)
-      {
-        logging::Error() << "Cannot end the base WF context" << std::endl;
-        return;
-      }
-
-      detail::wf_current.pop_back();
-    }
   }
+
+  struct WFContext
+  {
+    WFContext()
+    {
+      wf::detail::new_context();
+    }
+
+    ~WFContext()
+    {
+      wf::detail::end_context();
+    }
+  };
 
   inline wf::detail::WFLookup operator/(const Node& node, const Token& field)
   {

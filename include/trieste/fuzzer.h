@@ -126,7 +126,7 @@ namespace trieste
 
     int test()
     {
-      wf::new_context();
+      WFContext context;
       int ret = 0;
       for (size_t i = start_index_; i <= end_index_; i++)
       {
@@ -197,8 +197,6 @@ namespace trieste
         wf::pop_front();
         wf::pop_front();
       }
-
-      wf::end_context();
 
       return ret;
     }

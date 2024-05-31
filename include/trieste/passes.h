@@ -276,7 +276,7 @@ namespace trieste
     {
       size_t index = 1;
 
-      wf::new_context();
+      WFContext context;
       wf::push_back(pass_range.input_wf());
 
       Nodes errors;
@@ -316,7 +316,6 @@ namespace trieste
       }
 
       wf::pop_front();
-      wf::end_context();
 
       return {ok, last_pass, ast, errors};
     }

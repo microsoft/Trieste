@@ -223,7 +223,7 @@ namespace trieste
       }
 
       Destination dest = destination_;
-      wf::new_context();
+      WFContext context;
       wf::push_back(*wf_);
       wf::push_back(wf_writer);
 
@@ -264,7 +264,6 @@ namespace trieste
 
       wf::pop_front();
       wf::pop_front();
-      wf::end_context();
 
       if (!error_nodes.empty())
       {
