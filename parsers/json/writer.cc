@@ -230,11 +230,9 @@ namespace trieste
     std::string to_string(
       Node json, bool prettyprint, bool sort_keys, const std::string& indent)
     {
-      WFContext context;
-      wf::push_back(json::wf);
+      WFContext context(json::wf);
       std::ostringstream os;
       write_value(os, {prettyprint, sort_keys, indent}, "", json);
-      wf::pop_front();
       return os.str();
     }
   }

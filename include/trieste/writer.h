@@ -223,9 +223,7 @@ namespace trieste
       }
 
       Destination dest = destination_;
-      WFContext context;
-      wf::push_back(*wf_);
-      wf::push_back(wf_writer);
+      WFContext context({wf_, &wf_writer});
 
       Nodes error_nodes;
       std::vector<Node> stack;
@@ -261,9 +259,6 @@ namespace trieste
           stack.insert(stack.end(), current->begin(), current->end());
         }
       }
-
-      wf::pop_front();
-      wf::pop_front();
 
       if (!error_nodes.empty())
       {

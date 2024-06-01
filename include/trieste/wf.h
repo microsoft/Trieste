@@ -1075,21 +1075,21 @@ namespace trieste
         }
       };
 
-    inline void new_context()
-    {
-      wf_current.push_back({});
-    }
-
-    inline void end_context()
-    {
-      if (wf_current.size() == 1)
+      inline void new_context()
       {
-        logging::Error() << "Cannot end the base WF context" << std::endl;
-        return;
+        wf_current.push_back({});
       }
 
-      wf_current.pop_back();
-    }
+      inline void end_context()
+      {
+        if (wf_current.size() == 1)
+        {
+          logging::Error() << "Cannot end the base WF context" << std::endl;
+          return;
+        }
+
+        wf_current.pop_back();
+      }
     }
 
     inline const Wellformed empty;
@@ -1112,9 +1112,32 @@ namespace trieste
       wf::detail::new_context();
     }
 
+    WFContext(const wf::Wellformed& wf) : WFContext()
+    {
+      push_back(wf);
+    }
+
+    WFContext(std::initializer_list<const wf::Wellformed*> wfs) : WFContext()
+    {
+      for (auto& wf : wfs)
+      {
+        push_back(*wf);
+      }
+    }
+
     ~WFContext()
     {
       wf::detail::end_context();
+    }
+
+    void push_back(const wf::Wellformed& wf)
+    {
+      wf::push_back(wf);
+    }
+
+    void pop_front()
+    {
+      wf::pop_front();
     }
   };
 

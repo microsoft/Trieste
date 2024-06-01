@@ -20,13 +20,6 @@ target_link_libraries(yaml
     trieste::json
 )
 
-add_executable(yamlc yamlc.cc)
-
-target_link_libraries(yamlc
-  PRIVATE
-    yaml
-)
-
 if(MSVC)
   target_compile_options(yaml PUBLIC "/Zc:__cplusplus")
   target_compile_definitions(yaml PUBLIC "_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING")
@@ -58,4 +51,13 @@ install(TARGETS yaml
 
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include/trieste/yaml.h DESTINATION include/trieste)
 
-install(TARGETS yamlc RUNTIME DESTINATION parsers)
+if( TRIESTE_BUILD_PARSER_TOOLS )
+  add_executable(yamlc yamlc.cc)
+
+  target_link_libraries(yamlc
+    PRIVATE
+      yaml
+  )
+
+  install(TARGETS yamlc RUNTIME DESTINATION parsers)
+endif()

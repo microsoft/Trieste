@@ -141,8 +141,8 @@ namespace trieste
         }
 
         logging::Info() << "Testing pass: " << pass->name() << std::endl;
-        wf::push_back(prev);
-        wf::push_back(wf);
+        context.push_back(prev);
+        context.push_back(wf);
 
         for (size_t seed = start_seed_; seed < start_seed_ + seed_count_;
              seed++)
@@ -194,8 +194,8 @@ namespace trieste
           }
         }
 
-        wf::pop_front();
-        wf::pop_front();
+        context.pop_front();
+        context.pop_front();
       }
 
       return ret;
