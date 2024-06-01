@@ -4,7 +4,11 @@ reader.cc
 writer.cc
 )
 
-add_library(json STATIC ${SOURCES})
+if( BUILD_SHARED_LIBS )
+  add_library(json SHARED ${SOURCES})
+else()
+  add_library(json STATIC ${SOURCES})
+endif()
 
 add_library(trieste::json ALIAS json)
 

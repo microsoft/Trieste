@@ -6,7 +6,11 @@ reader.cc
 to_json.cc
 )
 
-add_library(yaml STATIC ${SOURCES})
+if( BUILD_SHARED_LIBS )
+  add_library(yaml SHARED ${SOURCES})
+else()
+  add_library(yaml STATIC ${SOURCES})
+endif()
 
 add_library(trieste::yaml ALIAS yaml)
 
