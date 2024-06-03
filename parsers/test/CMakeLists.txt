@@ -36,10 +36,10 @@ target_link_libraries(yaml_test
 
 set(YAML_TEST_SUITE_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../yaml-test-suite)
 
-add_test(NAME yaml_fuzzer_reader COMMAND yaml_fuzzer reader -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
-add_test(NAME yaml_fuzzer_writer COMMAND yaml_fuzzer writer -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
-add_test(NAME yaml_fuzzer_event_writer COMMAND yaml_fuzzer event_writer -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
-add_test(NAME yaml_fuzzer_to_json COMMAND yaml_fuzzer to_json -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
+add_test(NAME yaml_fuzz_reader COMMAND yaml_fuzzer reader -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
+add_test(NAME yaml_fuzz_writer COMMAND yaml_fuzzer writer -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
+add_test(NAME yaml_fuzz_event_writer COMMAND yaml_fuzzer event_writer -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
+add_test(NAME yaml_fuzz_to_json COMMAND yaml_fuzzer to_json -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
 add_test(NAME yaml_test COMMAND yaml_test -wf ${YAML_TEST_SUITE_ROOT} WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_test>)
 add_test(NAME yaml_test_crlf COMMAND yaml_test --crlf -wf ${YAML_TEST_SUITE_ROOT} WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_test>)
 

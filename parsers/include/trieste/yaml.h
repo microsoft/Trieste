@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "trieste/token.h"
 #include "trieste/trieste.h"
 
 namespace trieste
