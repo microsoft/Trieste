@@ -570,8 +570,11 @@ int main(int argc, char* argv[])
   {
     if (std::filesystem::is_directory(path))
     {
-      for (auto& file_or_dir : std::filesystem::directory_iterator(path))
+      const std::filesystem::path dir_path = path;
+      auto dir_iter = std::filesystem::directory_iterator{dir_path};
+      for(auto it = std::filesystem::begin(dir_iter); it != std::filesystem::end(dir_iter); ++it)
       {
+        const std::filesystem::path file_or_dir = it->path();
         if (std::filesystem::is_directory(file_or_dir))
         {
           TestCase::load(test_cases, file_or_dir, crlf);
@@ -579,7 +582,7 @@ int main(int argc, char* argv[])
         else
         {
           trieste::logging::Error()
-            << "Not a directory: " << file_or_dir.path();
+            << "Not a directory: " << file_or_dir;
           return 1;
         }
       }

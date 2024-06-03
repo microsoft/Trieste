@@ -141,6 +141,7 @@ namespace trieste
       Anchors anchors = std::make_shared<std::set<std::string_view>>();
       std::shared_ptr<std::size_t> flow_level =
         std::make_shared<std::size_t>(0);
+      std::shared_ptr<size_t> block_indent = std::make_shared<size_t>(0);
 
       Parse p(depth::file, wf_parse);
       p("start", {R"(^)" >> [](auto& m) {
@@ -485,8 +486,40 @@ namespace trieste
           // ([0-9]|[+-])? : Either a digit, or a plus or minus sign (optional)
           // ([0-9]|[+-])? : Either a digit, or a plus or minus sign (optional)
           // (#)? : A hash sign (error)
+          R"(([>|\|])([0-9]|[+-])?([0-9]|[+-])?(#)?(\r?\n)( +))" >>
+            [block_indent](detail::Make& m) {
+              auto block_match = m.match(1).view();
+              if (block_match[0] == '|')
+              {
+                m.add(Literal);
+              }
+              else
+              {
+                m.add(Folded);
+              }
+
+              handle_indent_chomp(m, 2);
+              handle_indent_chomp(m, 3);
+
+              if (m.match(4).len > 0)
+              {
+                m.error(
+                  "Comment without whitespace after block scalar indicator", 4);
+              }
+
+              m.add(NewLine, 5);
+              *block_indent = m.match(6).len;
+              m.add(Whitespace, 6);
+              m.mode("block");
+            },
+
+          // Block scalar
+          // [>|\|] : A greater than sign or a pipe
+          // ([0-9]|[+-])? : Either a digit, or a plus or minus sign (optional)
+          // ([0-9]|[+-])? : Either a digit, or a plus or minus sign (optional)
+          // (#)? : A hash sign (error)
           R"(([>|\|])([0-9]|[+-])?([0-9]|[+-])?(#)?)" >>
-            [](detail::Make& m) {
+            [block_indent](detail::Make& m) {
               auto block_match = m.match(1).view();
               if (block_match[0] == '|')
               {
@@ -608,15 +641,23 @@ namespace trieste
 
           R"((\?)\s+)" >> [](auto& m) { m.add(Key, 1); },
 
-          R"((\{))" >>
+          R"((:)?(\{))" >>
             [flow_level](auto& m) {
+              if (m.match(1).len > 0)
+              {
+                m.add(Colon, 1);
+              }
               m.push(FlowMapping);
               m.add(FlowMappingStart);
               *flow_level += 1;
             },
 
-          R"((\[))" >>
+          R"((:)?(\[))" >>
             [flow_level](auto& m) {
+              if (m.match(1).len > 0)
+              {
+                m.add(Colon, 1);
+              }
               m.push(FlowSequence);
               m.add(FlowSequenceStart);
               *flow_level += 1;
@@ -760,6 +801,30 @@ namespace trieste
             [](auto& m) { m.extend(Value); },
 
           "." >> [](auto& m) { m.error("Invalid character in flow mode"); },
+        });
+
+      p("block",
+        {
+          R"(([^\r\n]*)((?:\r?\n)+)( *))" >>
+            [block_indent](auto& m) {
+              m.add(Value, 1);
+              m.add(NewLine, 2);
+              if (m.match(3).len > 0)
+              {
+                m.add(Whitespace, 3);
+              }
+              size_t indent = m.match(3).len;
+              if (indent < *block_indent)
+              {
+                m.mode("document");
+              }
+            },
+
+          R"([^\r\n]+)" >>
+            [block_indent](auto& m) {
+              m.add(Value);
+              m.mode("document");
+            },
         });
 
       p.done([anchors](detail::Make& m) {

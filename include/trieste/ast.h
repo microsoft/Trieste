@@ -10,6 +10,10 @@
 #include <sstream>
 #include <vector>
 
+#ifndef TRIESTE_USE_CXX17
+#  include <span>
+#endif
+
 namespace trieste
 {
   struct indent
@@ -29,11 +33,77 @@ namespace trieste
 
   using Nodes = std::vector<Node>;
   using NodeIt = Nodes::iterator;
-  using NodeRange = std::pair<NodeIt, NodeIt>;
   using NodeSet = std::set<Node, std::owner_less<>>;
 
   template<typename T>
   using NodeMap = std::map<Node, T, std::owner_less<>>;
+
+#ifdef TRIESTE_USE_CXX17
+  class NodeRange
+  {
+  public:
+    NodeRange() {}
+    NodeRange(NodeIt first_, NodeIt second_) : first(first_), second(second_) {}
+    NodeRange(NodeRange&& other) : first(other.first), second(other.second) {}
+    NodeRange(const NodeRange& other) : first(other.first), second(other.second)
+    {}
+
+    NodeRange& operator=(NodeRange&& other)
+    {
+      first = other.first;
+      second = other.second;
+      return *this;
+    }
+
+    NodeRange& operator=(const NodeRange& other)
+    {
+      first = other.first;
+      second = other.second;
+      return *this;
+    }
+
+    bool empty() const
+    {
+      return first == second;
+    }
+
+    std::size_t size() const
+    {
+      return std::distance(first, second);
+    }
+
+    NodeIt begin() const
+    {
+      return first;
+    }
+
+    NodeIt end() const
+    {
+      return second;
+    }
+
+    Node front() const
+    {
+      return *first;
+    }
+
+    Node back() const
+    {
+      return *(second - 1);
+    }
+
+    Node operator[](std::size_t index) const
+    {
+      return *(first + index);
+    }
+
+  private:
+    NodeIt first;
+    NodeIt second;
+  };
+#else
+  using NodeRange = std::span<Node>;
+#endif
 
   class SymtabDef
   {
@@ -231,11 +301,11 @@ namespace trieste
 
     static Node create(const Token& type, NodeRange range)
     {
-      if (range.first == range.second)
+      if (range.empty())
         return create(type);
 
-      return std::shared_ptr<NodeDef>(new NodeDef(
-        type, (*range.first)->location_ * (*(range.second - 1))->location_));
+      return std::shared_ptr<NodeDef>(
+        new NodeDef(type, range.front()->location_ * range.back()->location_));
     }
 
     const Token& type() const
@@ -334,6 +404,18 @@ namespace trieste
       return children.crend();
     }
 
+    auto find_first(Token token, NodeIt begin)
+    {
+      assert((*begin)->parent() == this);   
+      return std::find_if(
+        begin, children.end(), [token](auto& n) { return n->type() == token; });
+    }
+
+    auto contains(Token token)
+    {
+      return find_first(token, children.begin()) != children.end();
+    }
+
     auto find(Node node)
     {
       return std::find(children.begin(), children.end(), node);
@@ -391,8 +473,8 @@ namespace trieste
 
     void push_back(NodeRange range)
     {
-      for (auto it = range.first; it != range.second; ++it)
-        push_back(*it);
+      for (Node& n : range)
+        push_back(n);
     }
 
     void push_back_ephemeral(Node node)
@@ -406,8 +488,8 @@ namespace trieste
 
     void push_back_ephemeral(NodeRange range)
     {
-      for (auto it = range.first; it != range.second; ++it)
-        push_back_ephemeral(*it);
+      for (Node& n : range)
+        push_back_ephemeral(n);
     }
 
     Node pop_back()
@@ -601,7 +683,7 @@ namespace trieste
       return parent(Top)->fresh(prefix);
     }
 
-    Node clone()
+    Node clone() const
     {
       // This doesn't preserve the symbol table.
       auto node = create(type_, location_);
@@ -930,8 +1012,8 @@ namespace trieste
 
   inline std::ostream& operator<<(std::ostream& os, const NodeRange& range)
   {
-    for (auto it = range.first; it != range.second; ++it)
-      (*it)->str(os);
+    for (const Node& n : range)
+      n->str(os);
 
     return os;
   }

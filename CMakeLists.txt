@@ -6,6 +6,7 @@ project(trieste VERSION 1.0.0 LANGUAGES CXX)
 option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
 option(TRIESTE_BUILD_PARSERS "Specifies whether to build the parsers" ON)
 option(TRIESTE_BUILD_PARSER_TESTS "Specifies whether to build the parser tests" OFF)
+option(TRIESTE_BUILD_PARSER_TOOLS "Specifies whether to build parser tools" OFF)
 option(TRIESTE_USE_CXX17 "Specifies whether to target the C++17 standard" OFF)
 option(TRIESTE_CLEAN_INSTALL "Specifies whether to delete all files (recursively) from the install prefix before install" OFF)
 
@@ -85,7 +86,7 @@ target_link_libraries(trieste
 )
 
 if(TRIESTE_USE_CXX17)
-  target_compile_definitions(trieste INTERFACE cxx_std_17)
+  target_compile_definitions(trieste INTERFACE cxx_std_17 TRIESTE_USE_CXX17)
 else()
   target_compile_definitions(trieste INTERFACE cxx_std_20)
 endif()

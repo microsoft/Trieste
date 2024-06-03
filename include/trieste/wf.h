@@ -32,6 +32,7 @@ namespace trieste
       GenNodeLocationF gloc;
       Rand rand;
       size_t target_depth;
+      size_t ceiling_depth;
       double alpha;
 
       /* The generator chooses which token to emit next. It makes this choice
@@ -53,11 +54,13 @@ namespace trieste
         GenNodeLocationF gloc_,
         Seed seed_,
         size_t target_depth_,
-        double alpha_ = 1)
+        double alpha_ = 1,
+        size_t ceiling_multiplier_ = 2)
       : token_terminal_distance(token_terminal_distance_),
         gloc(gloc_),
         rand(seed_),
         target_depth(target_depth_),
+        ceiling_depth(ceiling_multiplier_ * target_depth),
         alpha(alpha_)
       {}
 
@@ -103,6 +106,30 @@ namespace trieste
               throw std::runtime_error(err.str());
             }
           });
+
+        if (depth >= ceiling_depth)
+        {
+          // if we have reached this point P(c | d, p) as high entropy.
+          // In order to encourage termination, we will start to manually choose
+          // the child with the highest likelihood of terminating.
+          auto max = std::max_element(offsets.begin(), offsets.end());
+          return tokens[std::distance(offsets.begin(), max)];
+        }
+
+        if (depth >= 2 * ceiling_depth)
+        {
+          logging::Warn()
+            << "Token generation is not reaching a terminal after depth "
+            << depth;
+          logging::Warn()
+            << "This can indicate an issue with the WF definition (for "
+               "example, a cycle), or that the target depth is too shallow.";
+          logging::Trace() << "P(d | c, p):";
+          for (size_t i = 0; i < tokens.size(); i++)
+          {
+            logging::Trace() << "  " << tokens[i].str() << ": " << offsets[i];
+          }
+        }
 
         // compute the cumulative distribution of P(d | c, p)
         std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
@@ -1005,7 +1032,8 @@ namespace trieste
 
     namespace detail
     {
-      inline thread_local std::deque<const Wellformed*> wf_current;
+      using WFDeque = std::deque<const Wellformed*>;
+      inline thread_local std::vector<WFDeque> wf_current = {{}};
 
       struct WFLookup
       {
@@ -1046,24 +1074,76 @@ namespace trieste
             std::string(field.str()) + "`");
         }
       };
+
+      inline void new_context()
+      {
+        wf_current.push_back({});
+      }
+
+      inline void end_context()
+      {
+        if (wf_current.size() == 1)
+        {
+          logging::Error() << "Cannot end the base WF context" << std::endl;
+          return;
+        }
+
+        wf_current.pop_back();
+      }
     }
 
     inline const Wellformed empty;
 
     inline void push_back(const Wellformed& wf)
     {
-      detail::wf_current.push_back(&wf);
+      detail::wf_current.back().push_back(&wf);
     }
 
     inline void pop_front()
     {
-      detail::wf_current.pop_front();
+      detail::wf_current.back().pop_front();
     }
   }
 
+  struct WFContext
+  {
+    WFContext()
+    {
+      wf::detail::new_context();
+    }
+
+    WFContext(const wf::Wellformed& wf) : WFContext()
+    {
+      push_back(wf);
+    }
+
+    WFContext(std::initializer_list<const wf::Wellformed*> wfs) : WFContext()
+    {
+      for (auto& wf : wfs)
+      {
+        push_back(*wf);
+      }
+    }
+
+    ~WFContext()
+    {
+      wf::detail::end_context();
+    }
+
+    void push_back(const wf::Wellformed& wf)
+    {
+      wf::push_back(wf);
+    }
+
+    void pop_front()
+    {
+      wf::pop_front();
+    }
+  };
+
   inline wf::detail::WFLookup operator/(const Node& node, const Token& field)
   {
-    for (auto wf : wf::detail::wf_current)
+    for (auto wf : wf::detail::wf_current.back())
     {
       if (!wf)
         continue;

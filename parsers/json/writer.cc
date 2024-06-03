@@ -9,6 +9,7 @@ namespace
   struct WriteSettings
   {
     bool prettyprint;
+    bool sort_keys;
     const std::string& indent;
   };
 
@@ -36,36 +37,64 @@ namespace
     {
       os << std::endl;
     }
-    for (std::size_t i = 0; i < object->size(); ++i)
+
+    std::vector<Node> members;
+    if (settings.sort_keys)
     {
-      Node member = object->at(i);
+      std::vector<Location> keys;
+      std::transform(
+        object->begin(),
+        object->end(),
+        std::back_inserter(keys),
+        [](Node member) { return (member / Key)->location(); });
+      std::sort(keys.begin(), keys.end());
+      for (const Location& key : keys)
+      {
+        Nodes defs = object->lookdown(key);
+        members.insert(members.end(), defs.begin(), defs.end());
+      }
+    }
+    else
+    {
+      members.insert(members.end(), object->begin(), object->end());
+    }
+
+    for (std::size_t i = 0; i < members.size(); ++i)
+    {
+      Node member = members[i];
       assert(member == Member);
+
       if (settings.prettyprint)
       {
         os << new_indent;
       }
 
-      write_value(os, settings, new_indent, member / String);
+      write_value(os, settings, new_indent, member / Key);
       os << ":";
+
       if (settings.prettyprint)
       {
         os << " ";
       }
+
       write_value(os, settings, new_indent, member / Value);
 
       if (i < object->size() - 1)
       {
         os << ",";
       }
+
       if (settings.prettyprint)
       {
         os << std::endl;
       }
     }
+
     if (settings.prettyprint)
     {
       os << indent;
     }
+
     os << "}";
   }
 
@@ -123,6 +152,10 @@ namespace
     {
       os << value->location().view();
     }
+    else if (value == Key)
+    {
+      os << '"' << value->location().view() << '"';
+    }
     else if (value == Object)
     {
       write_object(os, settings, indent, value);
@@ -177,29 +210,29 @@ namespace trieste
     Writer writer(
       const std::filesystem::path& path,
       bool prettyprint,
+      bool sort_keys,
       const std::string& indent)
     {
       return Writer(
         "json",
         {to_file(path)},
         json::wf,
-        [prettyprint, indent](std::ostream& os, Node contents) {
-          for (Node value : *contents)
+        [prettyprint, sort_keys, indent](std::ostream& os, Node contents) {
+          for (const Node& value : *contents)
           {
-            write_value(os, {prettyprint, indent}, "", value);
+            write_value(os, {prettyprint, sort_keys, indent}, "", value);
             os << std::endl;
           }
           return true;
         });
     }
 
-    std::string
-    to_string(Node json, bool prettyprint, const std::string& indent)
+    std::string to_string(
+      Node json, bool prettyprint, bool sort_keys, const std::string& indent)
     {
-      wf::push_back(json::wf);
+      WFContext context(json::wf);
       std::ostringstream os;
-      write_value(os, {prettyprint, indent}, "", json);
-      wf::pop_front();
+      write_value(os, {prettyprint, sort_keys, indent}, "", json);
       return os.str();
     }
   }

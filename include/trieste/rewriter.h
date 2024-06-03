@@ -79,5 +79,20 @@ namespace trieste
     {
       return debug_path_;
     }
+
+    const wf::Wellformed& input_wf() const
+    {
+      return *wf_;
+    }
+
+    const wf::Wellformed& output_wf() const
+    {
+      return passes_.back()->wf();
+    }
+
+    const std::vector<Pass>& passes() const
+    {
+      return passes_;
+    }
   };
 }

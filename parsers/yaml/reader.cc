@@ -12,24 +12,47 @@ namespace
   using namespace trieste;
   using namespace trieste::yaml;
 
+  const auto SequenceItem = TokenDef("yaml-sequenceitem");
+  const auto Indent = TokenDef("yaml-indent");
+  const auto SequenceIndent = TokenDef("yaml-sequenceindent");
+  const auto MappingIndent = TokenDef("yaml-mappingindent");
+  const auto ManualIndent = TokenDef("yaml-manualindent");
+  const auto Line = TokenDef("yaml-line");
+  const auto NonSpecificTag = TokenDef("yaml-nonspecifictag", flag::print);
+  const auto Placeholder = TokenDef("yaml-placeholder");
+  const auto FlowMappingItems = TokenDef("yaml-flowmappingitems");
+  const auto FlowSequenceItems = TokenDef("yaml-flowsequenceitems");
+  const auto FlowSequenceItem = TokenDef("yaml-flowsequenceitem");
+  const auto BlockIndent = TokenDef("yaml-blockindent");
+  const auto BlockStart = TokenDef("yaml-blockstart");
+  const auto ComplexKey = TokenDef("yaml-complexkey");
+  const auto ComplexValue = TokenDef("yaml-complexvalue");
+  const auto FlowKeyValue = TokenDef("yaml-flowkeyvalue", flag::print);
+  const auto Flow = TokenDef("yaml-flow");
+  const auto Extra = TokenDef("yaml-extra");
+  const auto FlowEmpty = TokenDef("yaml-flowempty", flag::print);
+
+  // groups
+  const auto StreamGroup = TokenDef("yaml-streamgroup");
+  const auto DocumentGroup = TokenDef("yaml-documentgroup");
+  const auto TagGroup = TokenDef("yaml-taggroup");
+  const auto FlowGroup = TokenDef("yaml-flowgroup");
+  const auto TagDirectiveGroup = TokenDef("yaml-tagdirectivegroup");
+  const auto SequenceGroup = TokenDef("yaml-sequencegroup");
+  const auto MappingGroup = TokenDef("yaml-mappinggroup");
+  const auto KeyGroup = TokenDef("yaml-keygroup");
+  const auto ValueGroup = TokenDef("yaml-valuegroup");
+  const auto BlockGroup = TokenDef("yaml-blockgroup");
+
+  // utility tokens
+  const auto Lhs = TokenDef("yaml-lhs");
+  const auto Rhs = TokenDef("yaml-rhs");
+  const auto Head = TokenDef("yaml-head");
+  const auto Tail = TokenDef("yaml-tail");
+
   bool is_space(char c)
   {
     return c == ' ' || c == '\t';
-  }
-
-  bool is_in(NodeDef* node, Token parent)
-  {
-    if (node == Top)
-    {
-      return false;
-    }
-
-    if (node == parent)
-    {
-      return true;
-    }
-
-    return is_in(node->parent(), parent);
   }
 
   struct ValuePattern
@@ -147,6 +170,7 @@ namespace
     {
       return std::nullopt;
     }
+
     if (node->type() != Line)
     {
       return measure_indent(node->front());
@@ -190,7 +214,7 @@ namespace
       return false;
     }
 
-    for (auto& child : *node)
+    for (const Node& child : *node)
     {
       if (!all_empty(child))
       {
@@ -221,9 +245,9 @@ namespace
   {
     std::size_t max_empty_size = 0;
     std::size_t indent = std::string::npos;
-    for (auto it = lines.first; it != lines.second; ++it)
+    for (const Node& n : lines)
     {
-      auto view = (*it)->location().view();
+      auto view = n->location().view();
       std::size_t pos = view.find_first_not_of(" \n");
       if (pos == std::string::npos)
       {
@@ -410,7 +434,7 @@ namespace
         result[i] = err(result[i], "Scalar contains '...'");
       }
 
-      if (s.rfind("...") == s.size() - 3)
+      if (s.size() >= 3 && s.rfind("...") == s.size() - 3)
       {
         result[i] = err(result[i], "Scalar contains '...'");
       }
@@ -419,9 +443,9 @@ namespace
     return result;
   }
 
-  std::string contains_invalid_elements(Nodes lines)
+  std::string contains_invalid_elements(const Nodes& lines)
   {
-    for (Node line : lines)
+    for (const Node& line : lines)
     {
       if (line->location().len == 0)
       {
@@ -478,16 +502,16 @@ namespace
 
   std::pair<Node, Node> handle_indent_chomp(NodeRange nodes)
   {
-    if (nodes.first == nodes.second)
+    if (nodes.empty())
     {
       return {nullptr, nullptr};
     }
 
-    Node indent = nodes.first[0];
+    Node indent = nodes.front();
     Node chomp = nullptr;
-    if (std::distance(nodes.first, nodes.second) > 1)
+    if (nodes.size() > 1)
     {
-      chomp = nodes.first[1];
+      chomp = nodes[1];
     }
 
     if (indent != IndentIndicator)
@@ -510,7 +534,7 @@ namespace
       return false;
     }
 
-    for (auto& child : *node)
+    for (const Node& child : *node)
     {
       if (!all_comments(child))
       {
@@ -528,10 +552,8 @@ namespace
       return err(range, "Empty line has too many spaces");
     }
 
-    Nodes lines(range.first, range.second);
-
-    Nodes::iterator end = lines.end();
-    for (auto it = lines.begin(); it != lines.end(); ++it)
+    auto end = range.end();
+    for (auto it = range.begin(); it != range.end(); ++it)
     {
       Node n = *it;
       auto view = n->location().view();
@@ -550,7 +572,7 @@ namespace
       {
         if (view.size() >= indent)
         {
-          end = lines.end();
+          end = range.end();
           continue;
         }
 
@@ -562,10 +584,7 @@ namespace
       }
     }
 
-    if (end != lines.end())
-    {
-      lines.erase(end, lines.end());
-    }
+    Nodes lines(range.begin(), end);
 
     return Seq << (AbsoluteIndent ^ std::to_string(indent)) << chomp_indicator
                << (Lines << lines);
@@ -580,7 +599,7 @@ namespace
     }
 
     Node flat = NodeDef::create(Group);
-    for (auto& group : *n)
+    for (Node& group : *n)
     {
       flat->insert(flat->end(), group->begin(), group->end());
     }
@@ -609,7 +628,7 @@ namespace
   invalid_tokens(Node n, const std::map<Token, std::string>& token_messages)
   {
     std::size_t changes = 0;
-    for (auto child : *n)
+    for (Node& child : *n)
     {
       if (token_messages.count(child->type()) > 0)
       {
@@ -1006,6 +1025,29 @@ namespace
       wf_values,
       dir::bottomup | dir::once,
       {
+        In(FlowGroup) *
+            (FlowToken[Lhs] * T(Comment)++ * T(Value, R"(:.*)")[Rhs]) >>
+          [patterns](Match& _) {
+            Location loc = _(Rhs)->location();
+            Location colon = loc;
+            colon.len = 1;
+            loc.pos += 1;
+            loc.len -= 1;
+
+            auto view = loc.view();
+            Node value = Value ^ loc;
+            for (auto& pattern : patterns)
+            {
+              if (RE2::FullMatch(view, pattern->regex))
+              {
+                value = (pattern->type ^ loc);
+                break;
+              }
+            }
+
+            return Seq << _(Lhs) << (Colon ^ colon) << value;
+          },
+
         In(DocumentGroup) *
             (Start * ~T(Whitespace) * T(Comment) * T(NewLine)) >>
           [](Match&) -> Node { return nullptr; },
@@ -1022,7 +1064,7 @@ namespace
             Node dirs = _(Directives);
             dirs << _(Head) << _[Tail];
             bool version = false;
-            for (auto dir : *dirs)
+            for (Node& dir : *dirs)
             {
               if (dir->type() == VersionDirective)
               {
@@ -1061,16 +1103,10 @@ namespace
                        << _(Value);
           },
 
-        In(TagGroup) * T(VerbatimTag)[VerbatimTag]([](auto& n) {
-          auto view = n.first[0]->location().view();
-          return view.find_first_of("{}") != std::string::npos;
-        }) >>
+        In(TagGroup) * T(VerbatimTag, R"(.*[{}].*)")[VerbatimTag] >>
           [](Match& _) { return err(_(VerbatimTag), "Invalid tag"); },
 
-        In(TagGroup) * T(ShorthandTag)[ShorthandTag]([](auto& n) {
-          auto view = n.first[0]->location().view();
-          return view.find_first_of("{}[],") != std::string::npos;
-        }) >>
+        In(TagGroup) * T(ShorthandTag, R"(.*[{}\[\],].*)")[ShorthandTag] >>
           [](Match& _) { return err(_(ShorthandTag), "Invalid tag"); },
 
         In(Stream) * (T(StreamGroup) << (T(Document)++[Documents] * End)) >>
@@ -1090,6 +1126,26 @@ namespace
         In(Tag) * (T(TagGroup) << (T(TagPrefix)[TagPrefix] * End)) >>
           [](Match& _) { return Seq << _[TagPrefix] << (NonSpecificTag ^ ""); },
 
+        T(NewLine, R"(\r?\n(?:\r?\n)+)")[NewLine] >>
+          [](Match& _) {
+            Location loc = _(NewLine)->location();
+            auto view = loc.view();
+            size_t start = 0;
+            size_t end = view.find('\n', start) + 1;
+            Node seq =
+              Seq << (NewLine ^ Location(loc.source, loc.pos + start, end));
+            start = end;
+            while (start < loc.len)
+            {
+              end = view.find('\n', start) + 1;
+              seq
+                << (NewLine ^
+                    Location(loc.source, loc.pos + start, end - start));
+              start = end;
+            }
+            return seq;
+          },
+
         // errors
 
         In(StreamGroup) * (DirectiveToken[Value] * End) >>
@@ -1100,7 +1156,7 @@ namespace
         In(DocumentGroup) *
             (T(MaybeDirective)[MaybeDirective] * ~T(NewLine) *
              End)([](auto& n) {
-              Node dir = n.first[0];
+              Node dir = n.front();
               Node doc = dir->parent()->parent()->shared_from_this();
               Node stream = doc->parent()->shared_from_this();
               return stream->find(doc) < stream->end() - 1;
@@ -1167,27 +1223,9 @@ namespace
           [](Match& _) { return Seq << *_[FlowGroup]; },
 
         In(FlowSequence) *
-            (T(Value)[Value] * T(Comma, FlowSequenceEnd))([](auto& n) {
-              Location loc = n.first[0]->location();
-              return loc.view() == "-";
-            }) >>
+            (T(Value, R"(\-)")[Value] * T(Comma, FlowSequenceEnd)) >>
           [](Match& _) {
             return err(_(Value), "Plain dashes in flow sequence");
-          },
-
-        In(FlowMapping, FlowSequence) *
-            (FlowToken[Lhs] * T(Comment)++ * T(Value)[Rhs])([](auto& n) {
-              Node rhs = *(n.second - 1);
-              Location loc = rhs->location();
-              return loc.view().front() == ':';
-            }) >>
-          [](Match& _) {
-            Location loc = _(Rhs)->location();
-            Location colon = loc;
-            colon.len = 1;
-            loc.pos += 1;
-            loc.len -= 1;
-            return Seq << _(Lhs) << (Colon ^ colon) << (Value ^ loc);
           },
 
         In(FlowMapping, FlowSequence) * (T(Whitespace, NewLine)) >>
@@ -1363,11 +1401,8 @@ namespace
         // errors
         In(DocumentGroup) *
             (T(DocumentStart) * T(Placeholder) * AnchorTag++ * FlowToken *
-             T(Colon)[Colon])([](auto& n) {
-              Node docstart = n.first[0];
-              Node colon = *(n.second - 1);
-              return same_line(docstart, colon);
-            }) >>
+             T(Colon)[Colon])(
+              [](auto& n) { return same_line(n.front(), n.back()); }) >>
           [](Match& _) {
             return err(_(Colon), "Invalid mapping on document start line");
           },
@@ -1375,8 +1410,8 @@ namespace
         In(DocumentGroup) *
             (T(Colon) * T(NewLine) * T(Anchor)[Anchor] * T(NewLine) *
              T(Hyphen))([](auto& n) {
-              auto anchor = n.first[2]->location().linecol().second;
-              auto sequence = n.first[4]->location().linecol().second;
+              auto anchor = n[2]->location().linecol().second;
+              auto sequence = n[4]->location().linecol().second;
               return anchor == 0 && sequence == 0;
             }) >>
           [](Match& _) {
@@ -1488,8 +1523,7 @@ namespace
 
         In(DocumentGroup) *
             (LineToken[Head] * LineToken++[Tail] * End)([](auto& n) {
-              Node head = n.first[0];
-              return head->parent()->parent() == Document;
+              return n.front()->parent()->parent() == Document;
             }) >>
           [](Match& _) { return Line << _(Head) << _[Tail]; },
 
@@ -1659,7 +1693,7 @@ namespace
 
         In(DocumentGroup) *
             ((T(SequenceIndent, MappingIndent)[Indent]
-              << (T(Line) * T(BlockStart))) *
+              << (T(Line) * ~T(Whitespace) * T(BlockStart))) *
              T(WhitespaceLine, EmptyLine)[Line]) >>
           [](Match& _) { return Seq << _(Indent) << (BlockIndent << _(Line)); },
 
@@ -1727,18 +1761,18 @@ namespace
         In(BlockStart) * (~T(Whitespace) * T(Comment)) >>
           [](Match&) -> Node { return nullptr; },
 
-        In(DocumentGroup, Indent, MappingIndent, SequenceIndent) *
+        In(DocumentGroup, Indent, MappingIndent, SequenceIndent, BlockIndent) *
             (IndentToken[Indent] * T(EmptyLine, WhitespaceLine)[Line]) >>
           [](Match& _) { return _(Indent)->type() << *_[Indent] << _(Line); },
 
-        In(DocumentGroup, Indent, MappingIndent, SequenceIndent) *
+        In(DocumentGroup, Indent, MappingIndent, SequenceIndent, BlockIndent) *
             (IndentToken[Lhs] * IndentToken[Rhs])(
-              [](auto& n) { return less_indented(n.first[0], n.first[1]); }) >>
+              [](auto& n) { return less_indented(n.front(), n.back()); }) >>
           [](Match& _) { return _(Lhs)->type() << *_[Lhs] << _(Rhs); },
 
-        In(DocumentGroup, Indent, MappingIndent, SequenceIndent) *
+        In(DocumentGroup, Indent, MappingIndent, SequenceIndent, BlockIndent) *
             (IndentToken[Lhs] * IndentToken[Rhs])(
-              [](auto& n) { return same_indent(n.first[0], n.first[1]); }) >>
+              [](auto& n) { return same_indent(n.front(), n.back()); }) >>
           [](Match& _) {
             if (_(Lhs)->type() == _(Rhs)->type())
             {
@@ -1754,12 +1788,32 @@ namespace
           [](Match& _) { return _(Indent); },
 
         In(SequenceIndent) *
-            ((T(Line)[Line]
-              << (~T(Whitespace) * T(Hyphen) * AnchorTag++ *
-                  (T(Literal, Folded, Value)))) *
+            ((T(Line)[Line] << (~T(Whitespace) * T(Hyphen) * T(Value))) *
              (T(MappingIndent, SequenceIndent))[Indent]) >>
           [](Match& _) {
             return Seq << _(Line) << (BlockIndent << *_[Indent]);
+          },
+
+        In(BlockIndent) * T(Indent, MappingIndent, SequenceIndent)[Indent] >>
+          [](Match& _) { return BlockIndent << *_[Indent]; },
+
+        In(BlockIndent) *
+            (T(Line)[Line] << (T(Whitespace)[Whitespace] * Any[Value] * Any)) >>
+          [](Match& _) {
+            Location start = _(Value)->location();
+            Location end = _(Line)->back()->location();
+            Location loc = start;
+            loc.len = end.pos + end.len - start.pos;
+            return Line << _(Whitespace) << (Value ^ loc);
+          },
+
+        In(SequenceIndent) *
+            ((T(Line)[Line] << (~T(Whitespace) * T(Hyphen))) *
+             T(BlockStart)[BlockStart] *
+             (T(MappingIndent, SequenceIndent, Indent))[Indent]) >>
+          [](Match& _) {
+            return Seq << _(Line) << _(BlockStart)
+                       << (BlockIndent << *_[Indent]);
           },
 
         In(MappingIndent) *
@@ -1811,7 +1865,7 @@ namespace
           },
 
         In(SequenceIndent) * T(Indent, BlockIndent)[Indent]([](auto& n) {
-          Node indent = n.first[0];
+          Node indent = n.front();
           Node parent = indent->parent()->shared_from_this();
           return same_indent(parent, indent);
         }) >>
@@ -1824,17 +1878,18 @@ namespace
           return err(_(Indent), "Wrong indentation");
         },
 
-        In(Line) * T(Comment)[Comment]([](auto& n) {
-          Node comment = n.first[0];
-          if (!is_in(comment->parent(), MappingIndent))
+        In(Line) *
+            (T(Comment, "#[^ \t].*: .*")[Comment] * In(MappingIndent)++) >>
+          [](Match& _) -> Node {
+          Location loc = _(Comment)->location();
+          auto col = loc.linecol().second;
+          loc.pos -= col;
+          loc.len = col;
+          if (loc.view().find_first_not_of(" \t") == std::string::npos)
           {
-            return false;
+            return nullptr;
           }
 
-          auto view = comment->location().view();
-          return view.find(": ") != std::string::npos;
-        }) >>
-          [](Match& _) -> Node {
           return err(_(Comment), "Comment that looks like a mapping key");
         },
 
@@ -1960,11 +2015,7 @@ namespace
           },
 
         In(MappingGroup) *
-            (T(Line) << (T(Whitespace)[Whitespace]))([](auto& n) {
-              Node ws = n.first[0]->front();
-              auto view = ws->location().view();
-              return view.find('\t') != std::string::npos;
-            }) >>
+            (T(Line) << (T(Whitespace, R"(.*\t.*)")[Whitespace])) >>
           [](Match& _) {
             return err(_(Whitespace), "Tab character in indentation");
           },
@@ -2004,14 +2055,13 @@ namespace
                  ~T(Whitespace) * T(Colon) * AnchorTag++[Rhs] *
                  ValueToken[Head] * Any++[Tail])) >>
           [](Match& _) {
-            NodeRange tail = _[Tail];
-            if (tail.first != tail.second)
+            if (!_[Tail].empty())
             {
-              for (auto it = tail.first; it != tail.second; ++it)
+              for (const Node& n : _[Tail])
               {
-                if (!all_comments(*it))
+                if (!all_comments(n))
                 {
-                  return err(*it, "Trailing content on mapping item");
+                  return err(n, "Trailing content on mapping item");
                 }
               }
             }
@@ -2109,6 +2159,10 @@ namespace
         In(SequenceGroup, MappingGroup) * T(WhitespaceLine, EmptyLine) >>
           [](Match&) -> Node { return nullptr; },
 
+        In(SequenceGroup, MappingGroup) *
+            (T(Indent) << ((T(Line) << (T(Whitespace) * End))++ * End)) >>
+          [](Match&) -> Node { return nullptr; },
+
         In(Documents) *
             (T(Document) << (T(Directives) << End) *
                (T(DocumentGroup) << End)) >>
@@ -2132,7 +2186,7 @@ namespace
         In(SequenceItem) *
             (T(ValueGroup) << (T(FlowMapping, FlowSequence))[Flow])(
               [](auto& n) {
-                Node group = n.first[0];
+                Node group = n.front();
                 Node item = group->parent()->shared_from_this();
                 Node flow = group->front();
                 std::size_t item_indent = item->location().linecol().second;
@@ -2145,8 +2199,8 @@ namespace
             (T(KeyGroup) *
              (T(ValueGroup) << (T(FlowMapping, FlowSequence)))[Flow])(
               [](auto& n) {
-                Node key = n.first[0];
-                Node value = n.first[1];
+                Node key = n.front();
+                Node value = n.back();
                 Node flow = value->front();
                 std::size_t item_indent = min_indent(key);
                 std::size_t flow_indent = min_indent(flow);
@@ -2156,7 +2210,7 @@ namespace
 
         In(MappingItem) *
             (T(KeyGroup) << (T(FlowMapping, FlowSequence))[Flow])([](auto& n) {
-              Node key = n.first[0];
+              Node key = n.front();
               Node flow = key->front();
               std::size_t line0 = flow->front()->location().linecol().first;
               std::size_t line1 = flow->back()->location().linecol().first;
@@ -2168,11 +2222,11 @@ namespace
 
         In(MappingItem) *
             (T(KeyGroup) * (T(ValueGroup) << AnchorTag++[Anchor]))([](auto& n) {
-              Node key = n.first[0];
-              Node value = n.first[1];
+              Node key = n.front();
+              Node value = n.back();
               std::size_t key_indent = min_indent(key);
               std::size_t anchortag_indent = std::string::npos;
-              for (auto child : *value)
+              for (const Node& child : *value)
               {
                 if (child == Anchor || child == Tag)
                 {
@@ -2248,8 +2302,7 @@ namespace
           },
 
         In(Document) * (T(DocumentGroup)[Group] << T(Indent))([](auto& n) {
-          Node g = n.first[0];
-          return all_comments(g->front());
+          return all_comments(n.front()->front());
         }) >>
           [](Match& _) {
             Node g = _(Group);
@@ -2283,7 +2336,7 @@ namespace
           },
 
         In(MappingIndent, SequenceIndent) * T(Indent)[Indent]([](auto& n) {
-          return all_comments(n.first[0]);
+          return all_comments(n.front());
         }) >>
           [](Match&) -> Node { return nullptr; },
 
@@ -2473,15 +2526,7 @@ namespace
         In(Plain) * T(WhitespaceLine)[WhitespaceLine] >>
           [](Match& _) { return EmptyLine ^ _(WhitespaceLine); },
 
-        In(BlockGroup) * T(BlockLine)[BlockLine]([](auto& n) {
-          Location loc = n.first[0]->location();
-          if (loc.len == 0)
-          {
-            return false;
-          }
-
-          return loc.view().find('\n') != std::string::npos;
-        }) >>
+        In(BlockGroup) * T(BlockLine, R"(.*\n.*)")[BlockLine] >>
           [](Match& _) {
             Nodes lines;
             Location loc = _(BlockLine)->location();
@@ -2507,15 +2552,7 @@ namespace
             return Seq << lines;
           },
 
-        In(Plain) * T(BlockLine)[BlockLine]([](auto& n) {
-          auto loc = n.first[0]->location();
-          if (loc.len == 0)
-          {
-            return false;
-          }
-          char c = loc.view().back();
-          return c == ' ' || c == '\t';
-        }) >>
+        In(Plain) * T(BlockLine, R"(.*[ \t])")[BlockLine] >>
           [](Match& _) {
             Location loc = _(BlockLine)->location();
             auto view = loc.view();
@@ -2534,6 +2571,11 @@ namespace
         T(Indent)
             << (T(WhitespaceLine)++ * T(MappingIndent, SequenceIndent)[Indent] *
                 End) >>
+          [](Match& _) { return _(Indent); },
+
+        T(Indent)
+            << ((T(Line) << (T(Comment) * End))++ *
+                T(MappingIndent, SequenceIndent)[Indent] * End) >>
           [](Match& _) { return _(Indent); },
 
         In(DocumentGroup) * (T(Indent) << (T(Line)[Line] * End)) >>
@@ -2567,15 +2609,7 @@ namespace
             return err(_(IndentIndicator), "Invalid indent indicator");
           },
 
-        In(BlockGroup) * T(BlockLine)[BlockLine]([](auto& n) {
-          Location loc = n.first[0]->location();
-          if (loc.len == 0)
-          {
-            return false;
-          }
-
-          return loc.view()[0] == '\t';
-        }) >>
+        In(BlockGroup) * T(BlockLine, "\t.*")[BlockLine] >>
           [](Match& _) {
             return err(_(BlockLine), "Tab being used as indentation");
           },
@@ -2687,12 +2721,8 @@ namespace
           },
 
         In(TagValue) *
-            (T(TagPrefix)[TagPrefix] * T(TagName)[TagName] *
-             T(Null))([](auto& n) {
-              auto pre = n.first[0]->location().view();
-              auto tag = n.first[1]->location().view();
-              return pre == "!!" && tag == "str";
-            }) >>
+            (T(TagPrefix, "!!")[TagPrefix] * T(TagName, "str")[TagName] *
+             T(Null)) >>
           [](Match& _) {
             return Seq << _(TagPrefix) << _(TagName) << (Empty ^ "");
           },
@@ -2830,8 +2860,7 @@ namespace
           [](Match& _) { return _(FlowSequenceItem)->front(); },
 
         In(TagValue) * T(TagPrefix)[TagPrefix]([](auto& n) {
-          Node pre = n.first[0];
-          return pre->lookup().empty();
+          return n.front()->lookup().empty();
         }) >>
           [](Match& _) { return err(_(TagPrefix), "Invalid tag prefix"); },
       }};
@@ -2932,15 +2961,11 @@ namespace
       dir::bottomup,
       {
         In(SingleQuote, DoubleQuote) *
-            (T(BlockLine)[Lhs] * T(BlockLine)[Rhs])([](auto& n) {
-              return n.first[0]->location().len == 0 &&
-                n.first[1]->location().len == 0;
-            }) >>
-          [](Match& _) { return _(Lhs); },
+            (T(BlockLine, "")[Lhs] * T(BlockLine, "")[Rhs]) >>
+          [](Match&) { return BlockLine ^ " "; },
 
         In(SingleQuote, DoubleQuote) *
-            (T(EmptyLine)[Lhs] * T(BlockLine)[Rhs])(
-              [](auto& n) { return n.first[1]->location().len == 0; }) >>
+            (T(EmptyLine)[Lhs] * T(BlockLine, "")[Rhs]) >>
           [](Match& _) { return _(Lhs); },
 
         In(AnchorValue) * T(AnchorValue)[AnchorValue] >>
@@ -2948,17 +2973,7 @@ namespace
             return err(_(AnchorValue), "One value cannot have two anchors");
           },
 
-        In(AnchorValue) * T(Anchor)[Anchor]([](auto& n) {
-          Location loc = n.first[0]->location();
-          if (loc.len == 0)
-          {
-            return false;
-          }
-
-          auto view = loc.view();
-          return view.front() == '&' || view.back() == ' ' ||
-            view.back() == '\t';
-        }) >>
+        In(AnchorValue) * T(Anchor, R"(&.*|.*[ \t])")[Anchor] >>
           [](Match& _) {
             Location loc = _(Anchor)->location();
             auto view = loc.view();
@@ -2969,10 +2984,7 @@ namespace
             return Anchor ^ loc;
           },
 
-        T(Alias)[Alias]([](auto& n) {
-          Node anchor = n.first[0];
-          return anchor->location().view().front() == '*';
-        }) >>
+        T(Alias, R"(\*.*)")[Alias] >>
           [](Match& _) {
             Location loc = _(Alias)->location();
             loc.pos += 1;
@@ -3002,7 +3014,7 @@ namespace
 
         In(Mapping) *
             (T(MappingItem) * T(MappingItem)[MappingItem])(
-              [](auto& n) { return same_line(n.first[0], n.first[1]); }) >>
+              [](auto& n) { return same_line(n.front(), n.back()); }) >>
           [](Match& _) {
             return err(
               _(MappingItem),

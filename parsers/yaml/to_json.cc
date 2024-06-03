@@ -7,6 +7,8 @@ namespace
   using namespace trieste::yaml;
   using namespace wf::ops;
 
+  const auto KeyValue = TokenDef("yaml-keyvalue");
+
   const auto ValueToken =
     T(Mapping,
       Sequence,
@@ -78,7 +80,7 @@ namespace
     | (FlowSequence <<= json::Value++)
     | (FlowMapping <<= json::Member++)
     | (Mapping <<= json::Member++)
-    | (json::Member <<= json::Value * json::Value)
+    | (json::Member <<= json::Key * json::Value)
     | (json::Value <<= wf_value_tokens)
     ;
   // clang-format on
@@ -127,14 +129,14 @@ namespace
       {
         T(Alias)[Alias] >>
           [](Match& _) {
-            Node value = _(Alias)->lookup().back();
-            if (value == nullptr)
+            Nodes defs = _(Alias)->lookup();
+            if (defs.empty())
             {
-              return err(_[Alias], "Invalid alias");
+              return err(_(Alias), "Invalid alias");
             }
             else
             {
-              return value->clone();
+              return defs.back()->clone();
             }
           },
 
@@ -156,7 +158,13 @@ namespace
         T(TagValue)[TagValue] >> [](Match& _) -> Node {
           std::string handle = "";
           Node prefix_node = _(TagValue) / TagPrefix;
-          Node handle_node = prefix_node->lookup()[0];
+          Nodes defs = prefix_node->lookup();
+          if (defs.empty())
+          {
+            return err(prefix_node, "Invalid tag");
+          }
+
+          Node handle_node = defs.front();
           if (handle_node != nullptr)
           {
             handle = handle_node->back()->location().view();
@@ -178,6 +186,11 @@ namespace
 
           return value;
         },
+
+        // errors
+
+        T(AnchorValue)[AnchorValue] >>
+          [](Match& _) { return err(_(AnchorValue), "Invalid anchor"); },
       }};
   }
 
@@ -192,9 +205,25 @@ namespace
           [](Match& _) {
             Node key = _(MappingItem) / Key;
             Node value = _(MappingItem) / Value;
-            return json::Member << (json::Value << key)
-                                << (json::Value << value);
+            return json::Member << (json::Key << key) << (json::Value << value);
           },
+
+        T(json::Key) << T(Value)[Key] >>
+          [](Match& _) {
+            Location loc = _(Key)->location();
+            auto view = loc.view();
+            if (view.front() == '"' && view.back() == '"')
+            {
+              loc.pos += 1;
+              loc.len -= 2;
+            }
+            return json::Key ^ loc;
+          },
+
+        T(json::Key) << T(Int, Float, Hex, True, False, Null)[Key] >>
+          [](Match& _) { return json::Key ^ _(Key)->location(); },
+
+        T(json::Key) << T(Empty) >> [](Match&) { return json::Key ^ ""; },
 
         In(Sequence, FlowSequence) * ValueToken[Value] >>
           [](Match& _) { return json::Value << _(Value); },
@@ -208,6 +237,11 @@ namespace
             << (T(Directives) *
                 (T(Documents) << (T(json::Value)++[Stream] * End))) >>
           [](Match& _) { return Seq << _[Stream]; },
+
+        // errors
+
+        T(json::Key) << T(FlowMapping, FlowSequence, Mapping, Sequence)[Key] >>
+          [](Match& _) { return err(_(Key), "Complex keys not supported"); },
       }};
   }
 

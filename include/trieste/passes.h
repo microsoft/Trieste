@@ -257,11 +257,11 @@ namespace trieste
       auto ok = bool(ast);
 
       ok = ok && wf.build_st(ast);
-      
+
       if (ast)
         ast->get_errors(errors);
       ok = ok && errors.empty();
-      
+
       ok = ok && (!check_well_formed || wf.check(ast));
 
       return ok;
@@ -276,7 +276,7 @@ namespace trieste
     {
       size_t index = 1;
 
-      wf::push_back(pass_range.input_wf());
+      WFContext context(pass_range.input_wf());
 
       Nodes errors;
 
@@ -293,11 +293,11 @@ namespace trieste
 
         auto now = std::chrono::high_resolution_clock::now();
         auto& pass = pass_range();
-        wf::push_back(pass->wf());
+        context.push_back(pass->wf());
 
         auto [new_ast, count, changes] = pass->run(ast);
         ast = new_ast;
-        wf::pop_front();
+        context.pop_front();
 
         ++pass_range;
 
@@ -313,8 +313,6 @@ namespace trieste
 
         last_pass = pass->name();
       }
-
-      wf::pop_front();
 
       return {ok, last_pass, ast, errors};
     }

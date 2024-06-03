@@ -48,7 +48,7 @@ int main(int argc, char** argv)
     }
 
     Node calc = result.ast->front();
-    for (auto& output : *calc)
+    for (const Node& output : *calc)
     {
       auto str = output->front()->location().view();
       auto val = output->back()->location().view();

@@ -27,6 +27,29 @@ namespace trieste
       const std::string_view& find,
       const std::string_view& replace);
 
+    inline const auto Whitespace = TokenDef("yaml-whitespace", flag::print);
+    inline const auto Hyphen = TokenDef("yaml-hyphen");
+    inline const auto Colon = TokenDef("yaml-colon");
+    inline const auto Comma = TokenDef("yaml-comma");
+    inline const auto NewLine = TokenDef("yaml-newline");
+    inline const auto Comment = TokenDef("yaml-comment", flag::print);
+    inline const auto VerbatimTag = TokenDef("yaml-verbatimtag", flag::print);
+    inline const auto ShorthandTag = TokenDef("yaml-shorthandtag", flag::print);
+    inline const auto Tag = TokenDef("yaml-tag");
+    inline const auto IndentIndicator =
+      TokenDef("yaml-indentation-indicator", flag::print);
+    inline const auto FlowSequenceStart =
+      TokenDef("yaml-flowseqstart", flag::print);
+    inline const auto FlowSequenceEnd =
+      TokenDef("yaml-flowseqend", flag::print);
+    inline const auto FlowMappingStart =
+      TokenDef("yaml-flowmapstart", flag::print);
+    inline const auto FlowMappingEnd = TokenDef("yaml-flowmapend", flag::print);
+    inline const auto MaybeDirective =
+      TokenDef("yaml-maybedirective", flag::print);
+    inline const auto Block = TokenDef("yaml-block");
+    inline auto WhitespaceLine = TokenDef("yaml-whitespace-line", flag::print);
+
     inline const auto wf_parse_tokens = Stream | Document | Hyphen | NewLine |
       Whitespace | Value | Int | Float | Hex | True | False | Null | Colon |
       TagDirective | Anchor | Alias | SingleQuote | DoubleQuote |

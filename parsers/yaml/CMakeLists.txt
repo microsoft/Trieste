@@ -6,7 +6,11 @@ reader.cc
 to_json.cc
 )
 
-add_library(yaml STATIC ${SOURCES})
+if( BUILD_SHARED_LIBS )
+  add_library(yaml SHARED ${SOURCES})
+else()
+  add_library(yaml STATIC ${SOURCES})
+endif()
 
 add_library(trieste::yaml ALIAS yaml)
 
@@ -14,13 +18,6 @@ target_link_libraries(yaml
   PUBLIC
     trieste::trieste
     trieste::json
-)
-
-add_executable(yamlc yamlc.cc)
-
-target_link_libraries(yamlc
-  PRIVATE
-    yaml
 )
 
 if(MSVC)
@@ -54,4 +51,13 @@ install(TARGETS yaml
 
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include/trieste/yaml.h DESTINATION include/trieste)
 
-install(TARGETS yamlc RUNTIME DESTINATION parsers)
+if( TRIESTE_BUILD_PARSER_TOOLS )
+  add_executable(yamlc yamlc.cc)
+
+  target_link_libraries(yamlc
+    PRIVATE
+      yaml
+  )
+
+  install(TARGETS yamlc RUNTIME DESTINATION parsers)
+endif()
