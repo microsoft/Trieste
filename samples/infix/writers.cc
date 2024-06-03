@@ -306,7 +306,7 @@ namespace
 
     if (node == Calculation)
     {
-      for (auto& step : *node)
+      for (const Node& step : *node)
       {
         if (write_infix(os, step))
         {
@@ -397,7 +397,7 @@ namespace
 
     if (node == Calculation)
     {
-      for (auto& step : *node)
+      for (const Node& step : *node)
       {
         if (write_postfix(os, step))
         {

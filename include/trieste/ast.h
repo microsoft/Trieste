@@ -473,7 +473,7 @@ namespace trieste
 
     void push_back(NodeRange range)
     {
-      for (Node n : range)
+      for (Node& n : range)
         push_back(n);
     }
 
@@ -488,7 +488,7 @@ namespace trieste
 
     void push_back_ephemeral(NodeRange range)
     {
-      for (Node n : range)
+      for (Node& n : range)
         push_back_ephemeral(n);
     }
 
@@ -683,7 +683,7 @@ namespace trieste
       return parent(Top)->fresh(prefix);
     }
 
-    Node clone()
+    Node clone() const
     {
       // This doesn't preserve the symbol table.
       auto node = create(type_, location_);
@@ -1012,7 +1012,7 @@ namespace trieste
 
   inline std::ostream& operator<<(std::ostream& os, const NodeRange& range)
   {
-    for (Node n : range)
+    for (const Node& n : range)
       n->str(os);
 
     return os;

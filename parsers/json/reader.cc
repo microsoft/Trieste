@@ -15,7 +15,7 @@ namespace
       if (n->type() == Error)
         return false;
 
-      for (auto child : *n)
+      for (Node& child : *n)
       {
         if (token_messages.count(child->type()) > 0)
         {

@@ -214,7 +214,7 @@ namespace
       return false;
     }
 
-    for (auto& child : *node)
+    for (const Node& child : *node)
     {
       if (!all_empty(child))
       {
@@ -245,7 +245,7 @@ namespace
   {
     std::size_t max_empty_size = 0;
     std::size_t indent = std::string::npos;
-    for (Node n : lines)
+    for (const Node& n : lines)
     {
       auto view = n->location().view();
       std::size_t pos = view.find_first_not_of(" \n");
@@ -443,9 +443,9 @@ namespace
     return result;
   }
 
-  std::string contains_invalid_elements(Nodes lines)
+  std::string contains_invalid_elements(const Nodes& lines)
   {
-    for (Node line : lines)
+    for (const Node& line : lines)
     {
       if (line->location().len == 0)
       {
@@ -534,7 +534,7 @@ namespace
       return false;
     }
 
-    for (auto& child : *node)
+    for (const Node& child : *node)
     {
       if (!all_comments(child))
       {
@@ -599,7 +599,7 @@ namespace
     }
 
     Node flat = NodeDef::create(Group);
-    for (auto& group : *n)
+    for (Node& group : *n)
     {
       flat->insert(flat->end(), group->begin(), group->end());
     }
@@ -628,7 +628,7 @@ namespace
   invalid_tokens(Node n, const std::map<Token, std::string>& token_messages)
   {
     std::size_t changes = 0;
-    for (auto child : *n)
+    for (Node& child : *n)
     {
       if (token_messages.count(child->type()) > 0)
       {
@@ -1064,7 +1064,7 @@ namespace
             Node dirs = _(Directives);
             dirs << _(Head) << _[Tail];
             bool version = false;
-            for (auto dir : *dirs)
+            for (Node& dir : *dirs)
             {
               if (dir->type() == VersionDirective)
               {
@@ -2057,7 +2057,7 @@ namespace
           [](Match& _) {
             if (!_[Tail].empty())
             {
-              for (Node n : _[Tail])
+              for (const Node& n : _[Tail])
               {
                 if (!all_comments(n))
                 {
@@ -2226,7 +2226,7 @@ namespace
               Node value = n.back();
               std::size_t key_indent = min_indent(key);
               std::size_t anchortag_indent = std::string::npos;
-              for (auto child : *value)
+              for (const Node& child : *value)
               {
                 if (child == Anchor || child == Tag)
                 {

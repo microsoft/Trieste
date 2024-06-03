@@ -218,7 +218,7 @@ namespace trieste
         {to_file(path)},
         json::wf,
         [prettyprint, sort_keys, indent](std::ostream& os, Node contents) {
-          for (Node value : *contents)
+          for (const Node& value : *contents)
           {
             write_value(os, {prettyprint, sort_keys, indent}, "", value);
             os << std::endl;

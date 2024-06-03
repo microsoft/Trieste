@@ -99,7 +99,7 @@ namespace
     Node node = handle_tag_anchor(os, maybe_node);
 
     os << newline;
-    for (auto child : *node)
+    for (const Node& child : *node)
     {
       if (write_event(os, newline, child))
       {
@@ -126,7 +126,7 @@ namespace
     Node node = handle_tag_anchor(os, maybe_node);
 
     os << newline;
-    for (auto child : *node)
+    for (const Node& child : *node)
     {
       if (write_event(os, newline, child))
       {
@@ -323,7 +323,7 @@ namespace
     if (node_type == Stream)
     {
       os << "+STR" << newline;
-      for (Node child : *node->back())
+      for (const Node& child : *node->back())
       {
         if (write_event(os, newline, child))
         {
@@ -453,7 +453,7 @@ namespace trieste
       }
 
       std::vector<std::string_view> lines;
-      for (auto line_node : *lines_node)
+      for (const Node& line_node : *lines_node)
       {
         auto view = line_node->location().view();
         auto maybe_comment = view.find('#');

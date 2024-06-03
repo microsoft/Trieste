@@ -1119,7 +1119,7 @@ namespace trieste
 
   inline Node operator<<(Node node, detail::RangeContents range_contents)
   {
-    for (Node n : range_contents.range)
+    for (Node& n : range_contents.range)
     {
       node->push_back({n->begin(), n->end()});
     }
@@ -1171,7 +1171,7 @@ namespace trieste
     Nodes nodes;
     nodes.reserve(range.size());
 
-    for (Node n : range)
+    for (const Node& n : range)
       nodes.push_back(n->clone());
 
     return nodes;
