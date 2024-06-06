@@ -9,6 +9,7 @@ option(TRIESTE_BUILD_PARSER_TESTS "Specifies whether to build the parser tests" 
 option(TRIESTE_BUILD_PARSER_TOOLS "Specifies whether to build parser tools" OFF)
 option(TRIESTE_USE_CXX17 "Specifies whether to target the C++17 standard" OFF)
 option(TRIESTE_CLEAN_INSTALL "Specifies whether to delete all files (recursively) from the install prefix before install" OFF)
+option(TRIESTE_USE_SNMALLOC "Specifies that new/delete should be overridden with snmalloc" ON)
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
@@ -26,11 +27,6 @@ endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SNMALLOC_BUILD_TESTING OFF CACHE INTERNAL "Turn off snmalloc tests")
-if (MSVC)
-  # Overriding malloc and free statically not supported on Windows.
-else()
-  set(SNMALLOC_STATIC_LIBRARY_PREFIX "")
-endif()
 set(SNMALLOC_USE_CXX17 ${TRIESTE_USE_CXX17})
 
 set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
@@ -38,10 +34,12 @@ set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
 set(TRIESTE_SANITIZE "" CACHE STRING "Argument to pass to sanitize (disabled by default)")
 
 
+# TODO THIS SHOULD BE POINTED AT A PROPER SNMALLOC COMMIT BEFORE MERGE.
+# REQUIRED FOR CHECKING CHANGES BETWEEN SNMALLOC AND TRIESTE.
 FetchContent_Declare(
   snmalloc
-  GIT_REPOSITORY https://github.com/microsoft/snmalloc
-  GIT_TAG main
+  GIT_REPOSITORY https://github.com/mjp41/snmalloc
+  GIT_TAG newdelete
   GIT_SHALLOW TRUE
 )
 
@@ -80,10 +78,17 @@ target_include_directories(trieste
 
 target_link_libraries(trieste
   INTERFACE
-  snmallocshim-static
   re2::re2
   CLI11::CLI11
 )
+
+if(TRIESTE_USE_SNMALLOC)
+  if(TRIESTE_SANITIZE)
+    message(WARNING "Sanitizers are not supported with snmalloc, disabling snmalloc.")
+  else()
+    target_link_libraries(trieste INTERFACE snmalloc-new-override)
+  endif()
+endif()
 
 if(TRIESTE_USE_CXX17)
   target_compile_definitions(trieste INTERFACE cxx_std_17 TRIESTE_USE_CXX17)
@@ -119,7 +124,12 @@ endif()
 # Installation instructions
 set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR}/dist)
 
-install(TARGETS trieste snmallocshim-static snmalloc re2 CLI11
+set(INSTALL_DEPS snmalloc re2 CLI11)
+if (TRIESTE_USE_SNMALLOC)
+  list(APPEND INSTALL_DEPS snmalloc-new-override)
+endif()
+
+install(TARGETS trieste ${INSTALL_DEPS}
   EXPORT ${PROJECT_NAME}_Targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
