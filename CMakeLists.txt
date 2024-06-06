@@ -80,6 +80,7 @@ target_link_libraries(trieste
   INTERFACE
   re2::re2
   CLI11::CLI11
+  snmalloc
 )
 
 if(TRIESTE_USE_SNMALLOC)
