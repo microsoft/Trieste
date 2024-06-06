@@ -34,12 +34,10 @@ set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
 set(TRIESTE_SANITIZE "" CACHE STRING "Argument to pass to sanitize (disabled by default)")
 
 
-# TODO THIS SHOULD BE POINTED AT A PROPER SNMALLOC COMMIT BEFORE MERGE.
-# REQUIRED FOR CHECKING CHANGES BETWEEN SNMALLOC AND TRIESTE.
 FetchContent_Declare(
   snmalloc
-  GIT_REPOSITORY https://github.com/mjp41/snmalloc
-  GIT_TAG newdelete
+  GIT_REPOSITORY https://github.com/microsoft/snmalloc
+  GIT_TAG 2dba088d243e24d4ff09a016ef33a8a06f298980
   GIT_SHALLOW TRUE
 )
 
