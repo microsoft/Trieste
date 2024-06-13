@@ -215,7 +215,7 @@ namespace
     });
 
     return structure;
-  };
+  }
 }
 
 namespace trieste
