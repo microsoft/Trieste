@@ -58,7 +58,6 @@ namespace trieste
       Folded | IndentIndicator | ChompIndicator | Key | FlowMapping |
       FlowMappingStart | FlowMappingEnd | FlowSequence | FlowSequenceStart |
       FlowSequenceEnd | Comma | Comment | MaybeDirective;
-    ;
 
     // clang-format off
   inline const auto wf_parse =
