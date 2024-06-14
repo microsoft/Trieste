@@ -29,19 +29,24 @@ namespace trieste
     std::vector<size_t> lines;
 
   public:
-    static Source load(const std::filesystem::path& file)
+    static Source
+    load_bytes(const std::filesystem::path& file, std::size_t size)
     {
       std::ifstream f(file, std::ios::binary | std::ios::in | std::ios::ate);
 
       if (!f)
         return {};
 
-      auto size = f.tellg();
-      f.seekg(0, std::ios::beg);
+      size_t file_size = static_cast<size_t>(std::filesystem::file_size(file));
+      if (size == 0 || size > file_size)
+      {
+        size = file_size;
+      }
 
+      f.seekg(0, std::ios::beg);
       auto source = std::make_shared<SourceDef>();
       source->origin_ = std::filesystem::relative(file).string();
-      source->contents.resize(static_cast<std::size_t>(size));
+      source->contents.resize(size);
       f.read(&source->contents[0], size);
 
       if (!f)
@@ -49,6 +54,11 @@ namespace trieste
 
       source->find_lines();
       return source;
+    }
+
+    static Source load(const std::filesystem::path& file)
+    {
+      return load_bytes(file, 0);
     }
 
     static Source synthetic(const std::string& contents)
