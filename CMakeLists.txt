@@ -37,7 +37,7 @@ set(TRIESTE_SANITIZE "" CACHE STRING "Argument to pass to sanitize (disabled by 
 FetchContent_Declare(
   snmalloc
   GIT_REPOSITORY https://github.com/microsoft/snmalloc
-  GIT_TAG 2dba088d243e24d4ff09a016ef33a8a06f298980
+  GIT_TAG 835ab5186325736ff5aa8ef53728970d1d74c3bc
   GIT_SHALLOW TRUE
 )
 
