@@ -414,13 +414,19 @@ namespace trieste
           {
             Node node = frontier.back();
             frontier.pop_back();
-            if (node == Invalid)
+
+            if (node == Invalid || node == Error)
             {
               invalid++;
+              continue;
+            }
+
+            if (node->empty())
+            {
+              valid++;
             }
             else
             {
-              valid++;
               for (auto& child : *node)
               {
                 frontier.push_back(child);
