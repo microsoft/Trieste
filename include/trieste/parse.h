@@ -9,9 +9,9 @@
 #include "regex.h"
 #include "wf.h"
 
-#include <random>
 #include <filesystem>
 #include <functional>
+#include <random>
 
 namespace trieste
 {
@@ -393,8 +393,55 @@ namespace trieste
       if (prefile_ && !prefile_(*this, filename))
         return {};
 
-      auto source = SourceDef::load(filename);
-      auto ast = parse_source(filename.stem().string(), File, source);
+      Node ast;
+      if (std::filesystem::exists(filename))
+      {
+        const size_t preview_size = 4096;
+        const size_t large_file_size = 16 * preview_size;
+
+        size_t filesize =
+          static_cast<size_t>(std::filesystem::file_size(filename));
+        if (filesize > large_file_size)
+        {
+          // for larger files, we first check that they are valid
+          // be examining the first preview_size bytes
+          auto preview = SourceDef::load_bytes(filename, preview_size);
+          ast = parse_source(filename.stem().string(), File, preview);
+          size_t valid = 0;
+          size_t invalid = 0;
+          std::vector<Node> frontier{ast};
+          while (!frontier.empty())
+          {
+            Node node = frontier.back();
+            frontier.pop_back();
+            if (node == Invalid)
+            {
+              invalid++;
+            }
+            else
+            {
+              valid++;
+              for (auto& child : *node)
+              {
+                frontier.push_back(child);
+              }
+            }
+          }
+
+          if (invalid * 4 > invalid + valid)
+          {
+            std::cerr << "High incidence of invalid nodes from parser: "
+                      << invalid << " of " << valid + invalid
+                      << " tokens in first " << preview_size << " bytes"
+                      << std::endl;
+            throw std::runtime_error(
+              "Invalid input file: " + filename.string());
+          }
+        }
+
+        auto source = SourceDef::load(filename);
+        ast = parse_source(filename.stem().string(), File, source);
+      }
 
       if (postfile_ && ast)
         postfile_(*this, filename, ast);
@@ -506,7 +553,6 @@ namespace trieste
   {
     return std::make_shared<detail::RuleDef>(s, effect);
   }
-
 
   inline std::pair<Token, GenLocationF>
   operator>>(const Token& t, GenLocationF f)
