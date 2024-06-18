@@ -91,6 +91,7 @@ namespace trieste
         {
           m.error("Mismatched braces or brackets");
         }
+        stack->clear();
       });
 
       return p;
