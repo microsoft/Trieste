@@ -947,6 +947,7 @@ namespace trieste
         return {std::make_shared<Not>(pattern), FastPattern::match_pred()};
       }
 
+      /** match RHS in the context of LHS */
       Pattern operator*(Pattern rhs) const
       {
         auto result = pattern->clone();
@@ -979,6 +980,7 @@ namespace trieste
             FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
       }
 
+      /** within LHS, match RHS */
       Pattern operator<<(Pattern rhs) const
       {
         return {std::make_shared<Children>(pattern, rhs.pattern), fast_pattern};
@@ -1034,6 +1036,7 @@ namespace trieste
   inline const auto End = detail::Pattern(
     std::make_shared<detail::Last>(), detail::FastPattern::match_pred());
 
+  /** matches the token */
   inline detail::Pattern T(const Token& type)
   {
     std::vector<Token> types = {type};
@@ -1042,6 +1045,7 @@ namespace trieste
       detail::FastPattern::match_token({type}));
   }
 
+  /** matches any of the tokens given */
   template<typename... Ts>
   inline detail::Pattern
   T(const Token& type1, const Token& type2, const Ts&... types)

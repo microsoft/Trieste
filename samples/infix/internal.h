@@ -10,7 +10,10 @@ namespace infix
 
   inline const auto wf_literal = Int | Float;
   inline const auto wf_parse_tokens = wf_literal | String | Paren | Print |
-    Ident | Add | Subtract | Divide | Multiply;
+    Ident | Add | Subtract | Divide |
+    Multiply
+    // --- tuples extension ---
+    | Tuple;
 
   // clang-format off
   inline const auto wf_parser =
@@ -40,5 +43,5 @@ namespace infix
     return Error << (ErrorMsg ^ msg) << (ErrorAst << node);
   }
 
-  Parse parser();
+  Parse parser(bool use_parser_tuples);
 }

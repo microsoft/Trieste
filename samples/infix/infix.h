@@ -1,10 +1,18 @@
 #pragma once
 
+#include "trieste/token.h"
+
 #include <trieste/trieste.h>
 
 namespace infix
 {
   using namespace trieste;
+
+  struct Config
+  {
+    bool use_parser_tuples;
+    bool enable_tuples;
+  };
 
   inline const auto Int = TokenDef("infix-int", flag::print);
   inline const auto Float = TokenDef("infix-float", flag::print);
@@ -16,14 +24,23 @@ namespace infix
   inline const auto Expression = TokenDef("infix-expression");
   inline const auto Assign =
     TokenDef("infix-assign", flag::lookup | flag::shadowing);
+  inline const auto FnDef =
+    TokenDef("infix-fndef", flag::lookup | flag::shadowing | flag::symtab);
   inline const auto Output = TokenDef("infix-output");
   inline const auto Ref = TokenDef("infix-ref");
 
+  inline const auto FnArguments = TokenDef("infix-fnarguments", flag::lookup);
+  inline const auto FnBody = TokenDef("infix-fnbody");
+
+  inline const auto Tuple = TokenDef("infix-tuple");
+  inline const auto TupleIdx = TokenDef("infix-tupleidx");
+  inline const auto TupleAppend = TokenDef("infix-tupleappend");
   inline const auto Add = TokenDef("infix-add");
   inline const auto Subtract = TokenDef("infix-subtract");
   inline const auto Multiply = TokenDef("infix-multiply");
   inline const auto Divide = TokenDef("infix-divide");
   inline const auto Literal = TokenDef("infix-literal");
+  inline const auto FnCall = TokenDef("infix-fncall");
 
   inline const auto Id = TokenDef("infix-id");
   inline const auto Op = TokenDef("infix-op");
@@ -42,10 +59,24 @@ namespace infix
     | (Subtract <<= Expression * Expression)
     | (Multiply <<= Expression * Expression)
     | (Divide <<= Expression * Expression)
+    // --- tuples extension ---
+    | (Expression <<= (Tuple | TupleIdx | TupleAppend | Add | Subtract | Multiply | Divide | Ref | Float | Int))
+    | (Tuple <<= Expression++)
+    | (TupleIdx <<= Expression * Expression)
+    | (TupleAppend <<= Expression * Expression)
+    // --- functions extension ---
+    | (Calculation <<= (Assign | Output | FnDef)++)
+    | (FnDef <<= Ident * FnArguments * FnBody)
+    | (FnArguments <<= Ident++)
+    | (FnBody <<= (Assign | Output)++)
+    | (Expression <<= (FnCall | Tuple | TupleIdx | TupleAppend | Add | Subtract | Multiply | Divide | Ref | Float | Int))
+    | (FnCall <<= Expression * Expression)
+    // --- patterns extension ---
+    // TODO: I don't feel like predicting this far ahead right now. With 2 versions laid out I think I have the idea.
     ;
   // clang-format off
 
-  Reader reader();
+  Reader reader(const Config& config);
   Writer writer(const std::filesystem::path& path = "infix");
   Writer postfix_writer(const std::filesystem::path& path = "postfix");
   Rewriter calculate();

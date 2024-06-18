@@ -1,3 +1,4 @@
+#include "infix.h"
 #include "internal.h"
 
 namespace
@@ -11,8 +12,13 @@ namespace
   // A <<= B indicates that B is a child of A
   // ++ indicates that there are zero or more instances of the token
 
+  inline const auto TupleCandidate = TokenDef("infix-tuple-candidate");
+
   inline const auto wf_expressions_tokens =
-    (wf_parse_tokens - (String | Paren | Print)) | Expression;
+    (wf_parse_tokens - (String | Paren | Print)) |
+    Expression
+    // --- tuples extension ---
+    | TupleCandidate;
 
   // clang-format off
   inline const auto wf_pass_expressions =
@@ -24,6 +30,8 @@ namespace
     | (Output <<= String * Expression)
     // [1] here indicates that there should be at least one token
     | (Expression <<= wf_expressions_tokens++[1])
+    // --- tuples extension ---
+    | (TupleCandidate <<= Expression)
     ;
   // clang-format on
 
@@ -43,11 +51,22 @@ namespace
     ;
   // clang-format on
 
-  inline const auto wf_operands_tokens = wf_expressions_tokens - Expression;
+  inline const auto wf_tupled_tokens =
+    (wf_expressions_tokens - TupleCandidate) | Tuple;
+
+  // clang-format off
+  inline const auto wf_pass_tuple_literals =
+    wf_pass_add_subtract
+    | (Expression <<= wf_tupled_tokens++[1])
+    | (Tuple <<= Expression++)
+    ;
+  // clang-format on
+
+  inline const auto wf_operands_tokens = wf_tupled_tokens - Expression;
 
   // clang-format off
   inline const auto wf_pass_trim =
-    wf_pass_add_subtract
+    wf_pass_tuple_literals
     | (Expression <<= wf_operands_tokens)
     ;
   //clang-format on
@@ -62,7 +81,7 @@ namespace
     ;
   // clang-format on
 
-  PassDef expressions()
+  PassDef expressions(const Config& config)
   {
     return {
       "expressions",
@@ -95,6 +114,17 @@ namespace
         In(Calculation) *
             (T(Group) << (T(Print) * T(String)[Lhs] * Any++[Rhs])) >>
           [](Match& _) { return Output << _(Lhs) << (Expression << _[Rhs]); },
+
+        (In(Expression) *
+         (T(Paren)[Paren] << T(Group)[Group]))([config](auto&) {
+          return !config.use_parser_tuples && config.enable_tuples;
+        }) >>
+          [](Match& _) {
+            return Expression << TupleCandidate << Expression << *_[Group];
+          },
+
+        In(Expression) * (T(Paren)[Paren] << T(Group) << End) >>
+          [](Match& _) { return Expression << (TupleCandidate ^ _(Paren)); },
 
         // This node unwraps Groups that are inside Parens, making them
         // Expression nodes.
@@ -176,6 +206,33 @@ namespace
       }};
   }
 
+  PassDef tuple_literals()
+  {
+    return {
+      "tuple_literals",
+      wf_pass_tuple_literals,
+      dir::topdown,
+      {
+        In(Expression) * In(TupleCandidate) * In(Expression) *
+            (ExpressionArg[Lhs] * (T(Tuple) << End) * ExpressionArg[Rhs]) >>
+          [](Match& _) {
+            return Expression << Tuple << (Expression << _(Lhs))
+                              << (Expression << _(Rhs));
+          },
+        In(Expression) * In(TupleCandidate) * In(Expression) *
+            (T(Tuple)[Lhs] << --End) * (T(Tuple) << End) * ExpressionArg[Rhs] >>
+          [](Match& _) { return _(Lhs) << _(Rhs); },
+        In(Expression) * T(TupleCandidate) << (T(Tuple)[Tuple] * End) >>
+          [](Match& _) { return _(Tuple); },
+        In(Expression) * (T(TupleCandidate)[TupleCandidate] << End) >>
+          [](Match& _) { return (Tuple ^ _(TupleCandidate)); },
+        In(Expression) * T(TupleCandidate)[TupleCandidate] >>
+          [](Match& _) {
+            return err(_(TupleCandidate), "Malformed tuple literal");
+          },
+      }};
+  }
+
   PassDef trim()
   {
     return {
@@ -224,12 +281,19 @@ namespace
 
 namespace infix
 {
-  Reader reader()
+  Reader reader(const Config& config)
   {
     return {
       "infix",
-      {expressions(), multiply_divide(), add_subtract(), trim(), check_refs()},
-      parser(),
+      {
+        expressions(config),
+        multiply_divide(),
+        add_subtract(),
+        tuple_literals(),
+        trim(),
+        check_refs(),
+      },
+      parser(config.use_parser_tuples),
     };
   }
 }

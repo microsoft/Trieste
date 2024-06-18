@@ -28,7 +28,9 @@ int main(int argc, char** argv)
     return app.exit(e);
   }
 
-  auto reader = infix::reader().file(input_path);
+  // TODO: config
+  infix::Config config;
+  auto reader = infix::reader(config).file(input_path);
   Destination dest =
     output_path.empty() ? DestinationDef::console() : DestinationDef::dir(".");
   if (output_path.empty())

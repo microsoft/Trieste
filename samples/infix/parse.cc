@@ -1,10 +1,11 @@
+#include "infix.h"
 #include "internal.h"
 
 namespace infix
 {
-  const std::initializer_list<Token> terminators = {Equals};
+  const std::initializer_list<Token> terminators = {Equals, Tuple};
 
-  Parse parser()
+  Parse parser(bool use_parser_tuples)
   {
     Parse p(depth::file, wf_parser);
     auto indent = std::make_shared<std::vector<size_t>>();
@@ -16,6 +17,22 @@ namespace infix
 
         // Equals.
         "=" >> [](auto& m) { m.seq(Equals); },
+
+        // Tuple literals, commas.
+        "," >>
+          [use_parser_tuples](auto& m) {
+            if (use_parser_tuples)
+            {
+              m.seq(Tuple);
+            }
+            else
+            {
+              m.add(Tuple);
+            }
+          },
+
+        // Tuple indexing.
+        "." >> [](auto& m) { m.add(TupleIdx); },
 
         // Terminator.
         ";[\n]*" >> [](auto& m) { m.term(terminators); },
