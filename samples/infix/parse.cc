@@ -18,16 +18,16 @@ namespace infix
         // Equals.
         "=" >> [](auto& m) { m.seq(Equals); },
 
-        // Tuple literals, commas.
+        // Commas: might be tuple literals, function calls.
         "," >>
           [use_parser_tuples](auto& m) {
             if (use_parser_tuples)
             {
-              m.seq(Tuple);
+              m.seq(Comma);
             }
             else
             {
-              m.add(Tuple);
+              m.add(Comma);
             }
           },
 

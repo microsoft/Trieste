@@ -1082,6 +1082,7 @@ namespace trieste
     return {node};
   }
 
+  /** get the contents of the node range */
   inline detail::RangeContents operator*(NodeRange range)
   {
     return {range};
@@ -1097,6 +1098,7 @@ namespace trieste
     return lhs ? lhs : rhs;
   }
 
+  /** LHS, but with RHS appended */
   inline Node operator<<(Node node1, Node node2)
   {
     node1->push_back(node2);

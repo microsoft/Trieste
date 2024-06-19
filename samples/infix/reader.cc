@@ -1,5 +1,6 @@
 #include "infix.h"
 #include "internal.h"
+#include "trieste/rewrite.h"
 
 namespace
 {
@@ -30,8 +31,6 @@ namespace
     | (Output <<= String * Expression)
     // [1] here indicates that there should be at least one token
     | (Expression <<= wf_expressions_tokens++[1])
-    // --- tuples extension ---
-    | (TupleCandidate <<= Expression)
     ;
   // clang-format on
 
@@ -52,7 +51,7 @@ namespace
   // clang-format on
 
   inline const auto wf_tupled_tokens =
-    (wf_expressions_tokens - TupleCandidate) | Tuple;
+    (wf_expressions_tokens - TupleCandidate - Comma) | Tuple;
 
   // clang-format off
   inline const auto wf_pass_tuple_literals =
@@ -115,20 +114,39 @@ namespace
             (T(Group) << (T(Print) * T(String)[Lhs] * Any++[Rhs])) >>
           [](Match& _) { return Output << _(Lhs) << (Expression << _[Rhs]); },
 
+        // --- tuples only:
+        // (...), a group with parens, might be a tuple.
+        // It depends on how many commas there are in it.
+        // We need this if tuples require parens, and we are not handling tuples
+        // in the parser.
         (In(Expression) *
-         (T(Paren)[Paren] << T(Group)[Group]))([config](auto&) {
-          return !config.use_parser_tuples && config.enable_tuples;
+         (T(Paren)[Paren] << T(Group)[Group]))([config](auto&&) {
+          return !config.use_parser_tuples &&
+            config.tuples_require_parens; // restrict when this rule applies
         }) >>
           [](Match& _) {
-            return Expression << TupleCandidate << Expression << *_[Group];
+            return Expression << (TupleCandidate ^ _(Paren)) << *_[Group];
           },
 
-        In(Expression) * (T(Paren)[Paren] << T(Group) << End) >>
-          [](Match& _) { return Expression << (TupleCandidate ^ _(Paren)); },
+        // --- tuples only, parser tuples version:
+        In(Expression) * (T(ParserTuple)[ParserTuple] << T(Group)++[Group]) >>
+          [](Match& _) {
+            Node parser_tuple = ParserTuple;
+            for (const auto& child : _[Group])
+            {
+              parser_tuple->push_back(
+                Expression << std::span(child->begin(), child->end()));
+            }
+            return Expression << parser_tuple;
+          },
 
         // This node unwraps Groups that are inside Parens, making them
         // Expression nodes.
         In(Expression) * (T(Paren) << T(Group)[Group]) >>
+          // notice that *_[Group] has 2 parts:
+          // - _[Group] which gets the captured Group as a range of nodes
+          //   (length 1)
+          // - * which gets the children of that group
           [](Match& _) { return Expression << *_[Group]; },
 
         // errors
@@ -162,8 +180,6 @@ namespace
       }};
   }
 
-  inline const auto ExpressionArg = T(Expression, Ident) / Number;
-
   PassDef multiply_divide()
   {
     return {
@@ -176,8 +192,8 @@ namespace
         // replace it with a single <expr> node that has the triplet as
         // its children.
         In(Expression) *
-            (ExpressionArg[Lhs] * (T(Multiply, Divide))[Op] *
-             ExpressionArg[Rhs]) >>
+            (T(Expression)[Lhs] * (T(Multiply, Divide))[Op] *
+             T(Expression)[Rhs]) >>
           [](Match& _) {
             return Expression
               << (_(Op) << (Expression << _(Lhs)) << (Expression << _[Rhs]));
@@ -195,8 +211,8 @@ namespace
       dir::topdown,
       {
         In(Expression) *
-            (ExpressionArg[Lhs] * (T(Add, Subtract))[Op] *
-             ExpressionArg[Rhs]) >>
+            (T(Expression)[Lhs] * (T(Add, Subtract))[Op] *
+             T(Expression)[Rhs]) >>
           [](Match& _) {
             return Expression
               << (_(Op) << (Expression << _(Lhs)) << (Expression << _[Rhs]));
@@ -206,30 +222,77 @@ namespace
       }};
   }
 
-  PassDef tuple_literals()
+  PassDef tuple_literals(const Config& config)
   {
+    const auto enable_if_no_parens = [config](auto&&) {
+      return config.enable_tuples && !config.tuples_require_parens &&
+        !config.use_parser_tuples;
+    };
     return {
       "tuple_literals",
       wf_pass_tuple_literals,
       dir::topdown,
       {
-        In(Expression) * In(TupleCandidate) * In(Expression) *
-            (ExpressionArg[Lhs] * (T(Tuple) << End) * ExpressionArg[Rhs]) >>
-          [](Match& _) {
-            return Expression << Tuple << (Expression << _(Lhs))
-                              << (Expression << _(Rhs));
-          },
-        In(Expression) * In(TupleCandidate) * In(Expression) *
-            (T(Tuple)[Lhs] << --End) * (T(Tuple) << End) * ExpressionArg[Rhs] >>
+        // --- if parens are required to tuple parsing, there will be
+        // --- TupleCandidate tokens and these rules will run.
+        // --- if not, see next section
+        // --- the initial 2-element tuple case
+        In(Expression) * T(TupleCandidate) * T(Expression)[Lhs] *
+            (T(Comma) << End) * T(Expression)[Rhs] >>
+          [](Match& _) { return Tuple << _(Lhs) << _(Rhs); },
+        // tuple append case, where lhs is a tuple we partially built, and rhs
+        // is an extra expression with a comma in between
+        In(Expression) * T(TupleCandidate) * T(Tuple)[Lhs] * T(Comma) *
+            T(Expression)[Rhs] >>
           [](Match& _) { return _(Lhs) << _(Rhs); },
-        In(Expression) * T(TupleCandidate) << (T(Tuple)[Tuple] * End) >>
-          [](Match& _) { return _(Tuple); },
-        In(Expression) * (T(TupleCandidate)[TupleCandidate] << End) >>
-          [](Match& _) { return (Tuple ^ _(TupleCandidate)); },
+        // the one-element tuple, where a candidate for tuple ends in a comma,
+        // e.g. (42,)
+        In(Expression) * T(TupleCandidate) * T(Expression)[Expression] *
+            T(Comma) * End >>
+          [](Match& _) { return Tuple << _(Expression); },
+        // the not-a-tuple case. All things surrounded with parens might be
+        // tuples, and are marked with TupleCandidate. When it's just e.g. (x),
+        // it's definitely not a tuple so stop considering it.
+        T(Expression)
+            << (T(TupleCandidate) * T(Expression)[Expression] * End) >>
+          [](Match& _) { return _(Expression); },
+        // empty tuple, special case for ()
+        T(Expression) << (T(TupleCandidate)[TupleCandidate] << End) >>
+          [](Match& _) { return Expression << (Tuple ^ _(TupleCandidate)); },
+        // anything that doesn't make sense here
         In(Expression) * T(TupleCandidate)[TupleCandidate] >>
           [](Match& _) {
             return err(_(TupleCandidate), "Malformed tuple literal");
           },
+
+        // --- if parens are not required for tupling, then our rules treat the
+        // --- comma as a regular min-precedence operator instead.
+        // --- notice these rules don't use TupleCandidate, and just look for
+        // --- raw Comma instances 2 expressions comma-separated makes a tuple
+        In(Expression) *
+            (T(Expression)[Lhs] * T(Comma) *
+             T(Expression)[Rhs])(enable_if_no_parens) >>
+          [](Match& _) { return (Tuple << _(Lhs) << _(Rhs)); },
+        // a tuple, a comma, and an expression makes a longer tuple
+        In(Expression) *
+            (T(Tuple)[Lhs] * T(Comma) *
+             T(Expression)[Rhs])(enable_if_no_parens) >>
+          [](Match& _) { return _(Lhs) << _(Rhs); },
+        // the one-element tuple uses , as a postfix operator
+        In(Expression) *
+            (T(Expression)[Expression] * T(Comma) * End)(enable_if_no_parens) >>
+          [](Match& _) { return Tuple << _(Expression); },
+        // malformed tuple, didn't match rules above
+        In(Expression) * T(Comma)[Comma](enable_if_no_parens) >>
+          [](Match& _) { return err(_(Comma), "Malformed tuple literal"); },
+
+        // --- if the parser is trying to read tuples directly, extract them
+        T(Expression) * T(ParserTuple) << T(Expression)++[Expression] >>
+          [](Match& _) { return Expression << Tuple << _[Expression]; },
+
+        // --- catch-all error, any stray commas left over
+        In(Expression) * T(Comma)[Comma] >>
+          [](Match& _) { return err(_(Comma), "Invalid use of comma"); },
       }};
   }
 
@@ -289,7 +352,7 @@ namespace infix
         expressions(config),
         multiply_divide(),
         add_subtract(),
-        tuple_literals(),
+        tuple_literals(config),
         trim(),
         check_refs(),
       },

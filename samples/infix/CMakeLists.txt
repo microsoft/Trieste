@@ -7,6 +7,17 @@ add_executable(infix_trieste
 target_link_libraries(infix_trieste
   trieste::trieste
 )
+
+add_executable(infix_test
+  reader.cc
+  parse.cc
+  writers.cc
+  infix_test.cc
+)
+
+target_link_libraries(infix_test
+  trieste::trieste
+)
  
 add_test(NAME infix COMMAND infix_trieste test -f)
 add_test(NAME invalid_input COMMAND infix ./infix)

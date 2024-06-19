@@ -1,19 +1,26 @@
 #pragma once
 
 #include "infix.h"
+#include "trieste/token.h"
 
 namespace infix
 {
   inline const auto Paren = TokenDef("infix-paren");
   inline const auto Equals = TokenDef("infix-equals");
   inline const auto Print = TokenDef("infix-print");
+  inline const auto Comma = TokenDef("infix-comma");
+  inline const auto ParserTuple = TokenDef("infix-parser-tuple");
 
   inline const auto wf_literal = Int | Float;
+  // clang-format off
   inline const auto wf_parse_tokens = wf_literal | String | Paren | Print |
     Ident | Add | Subtract | Divide |
     Multiply
     // --- tuples extension ---
-    | Tuple;
+    | Comma
+    | ParserTuple // only relevant is use_parser_tuples is active. the parser tried to parse a tuple.
+    ;
+  // clang-format on
 
   // clang-format off
   inline const auto wf_parser =
@@ -22,6 +29,7 @@ namespace infix
     | (Paren <<= Group++)
     | (Equals <<= Group++)
     | (Group <<= wf_parse_tokens++)
+    | (ParserTuple <<= Group++)
     ;
   // clang-format on
 

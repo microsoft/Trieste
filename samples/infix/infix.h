@@ -12,6 +12,15 @@ namespace infix
   {
     bool use_parser_tuples;
     bool enable_tuples;
+    bool tuples_require_parens;
+
+    inline void sanity() const
+    {
+      assert(tuples_require_parens ? enable_tuples : true);
+      assert(use_parser_tuples ? enable_tuples && tuples_require_parens : true);
+    }
+
+    // TODO: generic way of adding to CLI parsing?
   };
 
   inline const auto Int = TokenDef("infix-int", flag::print);
