@@ -1,4 +1,6 @@
+#include "infix.h"
 #include "internal.h"
+#include "trieste/pass.h"
 
 namespace
 {
@@ -10,17 +12,19 @@ namespace
     infix::wf 
     | (Assign <<= Ident * Literal) 
     | (Output <<= String * Literal) 
-    | (Literal <<= wf_literal)
+    | (Literal <<= Int | Float)
+    // tuples extension
+    | (Literal <<= Int | Float | Tuple)
+    | (Tuple <<= Literal++)
     ;
   // clang-format on
 
   // clang-format off
   inline const auto wf_pass_cleanup =
-    wf_pass_maths 
+    wf_pass_maths
+    // ensure that there are no assignments, only
+    // outputs here  
     | (Calculation <<= Output++) 
-    // note the use of >>= here. This allows us to have a choice
-    // as a field by giving it a temporary name.
-    | (Output <<= String * (Expression >>= wf_literal))
     ;
   // clang-format on  
 
@@ -53,7 +57,7 @@ namespace
     return std::stod(text);
   }
 
-  inline const auto MathsOp = T(Add) / T(Subtract) / T(Multiply) / T(Divide);
+  inline const auto MathsOp = T(Add, Subtract, Multiply, Divide);
 
   PassDef maths()
   {
@@ -146,8 +150,32 @@ namespace
             return assign->back()->clone();
           },
 
-        T(Expression) << (T(Int) / T(Float))[Rhs] >>
+        T(Expression) << Number[Rhs] >>
           [](Match& _) { return Literal << _(Rhs); },
+
+        // --- tuples extension
+
+        // a tuple of only literals is a literal; strip the expression prefix
+        T(Expression) << T(Tuple) << (T(Literal)++[Literal] * End) >>
+          [](Match& _) { return Literal << Tuple << _[Literal]; },
+
+        // two tuple literals appended is a bigger tuple literal
+        T(TupleAppend) << ((T(Literal) << T(Tuple)[Lhs]) * (T(Literal) << T(Tuple)[Rhs])) >>
+          [](Match& _) { return Literal << *_[Lhs] << *_[Rhs]; },
+
+        // given a literal tuple and a literal idx, pick out the relevant tuple part or leave an error
+        T(TupleIdx) << ((T(Literal) << T(Tuple)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+          [](Match& _) {
+            Node lhs = _(Lhs);
+            Node rhs = _(Rhs);
+            int rhs_val = get_int(rhs);
+
+            if(rhs_val < 0 || size_t(rhs_val) > lhs->size()) {
+              return err(rhs, "Tuple index out of range");
+            }
+            
+            return lhs->at(rhs_val)->front(); // first child, to avoid Literal << Literal << ...
+          },
 
         // errors
 

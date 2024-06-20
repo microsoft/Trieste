@@ -1,7 +1,9 @@
 #pragma once
 
+#include "CLI/App.hpp"
 #include "trieste/token.h"
 
+#include <CLI/CLI.hpp>
 #include <trieste/trieste.h>
 
 namespace infix
@@ -10,17 +12,34 @@ namespace infix
 
   struct Config
   {
-    bool use_parser_tuples;
-    bool enable_tuples;
-    bool tuples_require_parens;
+    bool use_parser_tuples = false;
+    bool enable_tuples = false;
+    bool tuples_require_parens = false;
 
     inline void sanity() const
     {
-      assert(tuples_require_parens ? enable_tuples : true);
-      assert(use_parser_tuples ? enable_tuples && tuples_require_parens : true);
+      if (tuples_require_parens)
+      {
+        assert(enable_tuples);
+      }
+      if (use_parser_tuples)
+      {
+        assert(enable_tuples && tuples_require_parens);
+      }
     }
 
-    // TODO: generic way of adding to CLI parsing?
+    inline void install_cli(CLI::App* app)
+    {
+      app->add_flag("--enable-tuples", enable_tuples, "Enable tuple parsing");
+      app->add_flag(
+        "--use-parser-tuples",
+        use_parser_tuples,
+        "Capture tuples in the parser");
+      app->add_flag(
+        "--tuples-require-parens",
+        tuples_require_parens,
+        "Tuples must be enclosed in parens");
+    }
   };
 
   inline const auto Int = TokenDef("infix-int", flag::print);
@@ -73,13 +92,13 @@ namespace infix
     | (Tuple <<= Expression++)
     | (TupleIdx <<= Expression * Expression)
     | (TupleAppend <<= Expression * Expression)
-    // --- functions extension ---
-    | (Calculation <<= (Assign | Output | FnDef)++)
-    | (FnDef <<= Ident * FnArguments * FnBody)
-    | (FnArguments <<= Ident++)
-    | (FnBody <<= (Assign | Output)++)
-    | (Expression <<= (FnCall | Tuple | TupleIdx | TupleAppend | Add | Subtract | Multiply | Divide | Ref | Float | Int))
-    | (FnCall <<= Expression * Expression)
+    // --- functions extension --- (TODO)
+    // | (Calculation <<= (Assign | Output | FnDef)++)
+    // | (FnDef <<= Ident * FnArguments * FnBody)
+    // | (FnArguments <<= Ident++)
+    // | (FnBody <<= (Assign | Output)++)
+    // | (Expression <<= (FnCall | Tuple | TupleIdx | TupleAppend | Add | Subtract | Multiply | Divide | Ref | Float | Int))
+    // | (FnCall <<= Expression * Expression)
     // --- patterns extension ---
     // TODO: I don't feel like predicting this far ahead right now. With 2 versions laid out I think I have the idea.
     ;

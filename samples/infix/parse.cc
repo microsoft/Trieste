@@ -32,7 +32,7 @@ namespace infix
           },
 
         // Tuple indexing.
-        "." >> [](auto& m) { m.add(TupleIdx); },
+        "\\." >> [](auto& m) { m.add(TupleIdx); },
 
         // Terminator.
         ";[\n]*" >> [](auto& m) { m.term(terminators); },

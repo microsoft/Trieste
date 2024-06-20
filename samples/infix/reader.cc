@@ -15,11 +15,14 @@ namespace
 
   inline const auto TupleCandidate = TokenDef("infix-tuple-candidate");
 
+  // clang-format off
   inline const auto wf_expressions_tokens =
-    (wf_parse_tokens - (String | Paren | Print)) |
-    Expression
+    (wf_parse_tokens - (String | Paren | Print))
+    | Expression
     // --- tuples extension ---
-    | TupleCandidate;
+    | TupleCandidate
+    ;
+  // clang-format on
 
   // clang-format off
   inline const auto wf_pass_expressions =
@@ -149,6 +152,22 @@ namespace
           // - * which gets the children of that group
           [](Match& _) { return Expression << *_[Group]; },
 
+        // In case of int and float literals, they are trivially expressions on
+        // their own so we mark them as such without any further parsing
+        // !! but only if they're not the only thing in an expression node !!
+        // Otherwise, we create infinitely nested expressions by re-applying the
+        // rule. This pair of rules requires _something_ to be on the left or
+        // right of the literal, ensuring it's not alone.
+        In(Expression) * Any[Lhs] * T(Int, Float)[Rhs] >>
+          // Left case: Seq here splices multiple elements rather than one, so
+          // we keep Lhs unchanged and in the right place
+          [](Match& _) { return Seq << _(Lhs) << (Expression << _(Rhs)); },
+        // Right case: --End is a negative lookahead, ensuring that there is
+        // something to the right of the selected literal that isn't the end of
+        // the containing node
+        In(Expression) * T(Int, Float)[Expression] * (--End) >>
+          [](Match& _) { return Expression << _(Expression); },
+
         // errors
 
         // because rules are matched in order, this catches any
@@ -194,10 +213,7 @@ namespace
         In(Expression) *
             (T(Expression)[Lhs] * (T(Multiply, Divide))[Op] *
              T(Expression)[Rhs]) >>
-          [](Match& _) {
-            return Expression
-              << (_(Op) << (Expression << _(Lhs)) << (Expression << _[Rhs]));
-          },
+          [](Match& _) { return Expression << (_(Op) << _(Lhs) << (_(Rhs))); },
         (T(Multiply, Divide))[Op] << End >>
           [](Match& _) { return err(_(Op), "No arguments"); },
       }};
@@ -213,10 +229,7 @@ namespace
         In(Expression) *
             (T(Expression)[Lhs] * (T(Add, Subtract))[Op] *
              T(Expression)[Rhs]) >>
-          [](Match& _) {
-            return Expression
-              << (_(Op) << (Expression << _(Lhs)) << (Expression << _[Rhs]));
-          },
+          [](Match& _) { return Expression << (_(Op) << _(Lhs) << _(Rhs)); },
         (T(Add, Subtract))[Op] << End >>
           [](Match& _) { return err(_(Op), "No arguments"); },
       }};
@@ -236,7 +249,8 @@ namespace
         // --- if parens are required to tuple parsing, there will be
         // --- TupleCandidate tokens and these rules will run.
         // --- if not, see next section
-        // --- the initial 2-element tuple case
+
+        // the initial 2-element tuple case
         In(Expression) * T(TupleCandidate) * T(Expression)[Lhs] *
             (T(Comma) << End) * T(Expression)[Rhs] >>
           [](Match& _) { return Tuple << _(Lhs) << _(Rhs); },
@@ -268,7 +282,9 @@ namespace
         // --- if parens are not required for tupling, then our rules treat the
         // --- comma as a regular min-precedence operator instead.
         // --- notice these rules don't use TupleCandidate, and just look for
-        // --- raw Comma instances 2 expressions comma-separated makes a tuple
+        // --- raw Comma instances
+
+        // 2 expressions comma-separated makes a tuple
         In(Expression) *
             (T(Expression)[Lhs] * T(Comma) *
              T(Expression)[Rhs])(enable_if_no_parens) >>

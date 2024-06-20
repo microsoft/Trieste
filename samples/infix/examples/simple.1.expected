@@ -1,0 +1,11 @@
+//! --enable-tuples calculate
+(top
+  {}
+  (infix-calculation
+    {}
+    (infix-output
+      (infix-string 1:x)
+      (infix-int 1:5))
+    (infix-output
+      (infix-string 6:1 + 10)
+      (infix-int 2:11))))

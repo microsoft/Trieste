@@ -11,14 +11,12 @@ namespace infix
   inline const auto Comma = TokenDef("infix-comma");
   inline const auto ParserTuple = TokenDef("infix-parser-tuple");
 
-  inline const auto wf_literal = Int | Float;
   // clang-format off
-  inline const auto wf_parse_tokens = wf_literal | String | Paren | Print |
-    Ident | Add | Subtract | Divide |
-    Multiply
+  inline const auto wf_parse_tokens =
+    Int | Float | String | Paren | Print | Ident | Add | Subtract | Divide | Multiply
     // --- tuples extension ---
     | Comma
-    | ParserTuple // only relevant is use_parser_tuples is active. the parser tried to parse a tuple.
+    | ParserTuple // only relevant if use_parser_tuples is active. the parser tried to parse a tuple.
     ;
   // clang-format on
 
