@@ -1,0 +1,31 @@
+//! --enable-tuples --tuples-require-parens parse_only
+//! --enable-tuples --tuples-require-parens --use-parser-tuples parse_only
+//! --enable-tuples parse_only
+(top
+  {}
+  (infix-calculation
+    {}
+    (infix-output
+      (infix-string 9:"arity 0")
+      (infix-expression
+        (infix-tuple)))
+    (infix-output
+      (infix-string 9:"arity 1")
+      (infix-expression
+        (infix-tuple !!)))
+    (infix-output
+      (infix-string 12:"arity 1 op")
+      (infix-expression
+        (infix-tuple !!)))
+    (infix-output
+      (infix-string 9:"arity 2")
+      (infix-expression
+        (infix-tuple !!)))
+    (infix-output
+      (infix-string 18:"arity 2 trailing")
+      (infix-expression
+        (infix-tuple !!)))
+    (infix-output
+      (infix-string 9:"arity 3")
+      (infix-expression
+        (infix-tuple !!)))))

@@ -141,7 +141,7 @@ namespace
           },
 
         T(Expression) << (T(Ref) << T(Ident)[Id])(
-          [](auto& n) { return can_replace(n); }) >>
+          [](NodeRange& n) { return can_replace(n); }) >>
           [](Match& _) {
             auto defs = _(Id)->lookup();
             auto assign = defs.front();
@@ -180,7 +180,7 @@ namespace
         // errors
 
         T(Expression) << (T(Ref) << T(Ident)[Id])(
-          [](auto& n) { return !exists(n); }) >>
+          [](NodeRange& n) { return !exists(n); }) >>
           [](Match&) {
             // NB this case shouldn't happen at all
             // during this pass and as such is not
@@ -228,7 +228,7 @@ namespace
       {
         In(Calculation) * T(Assign) >> [](Match&) -> Node { return {}; },
 
-        T(Literal) << Any[Rhs] >> [](Match& _) { return _(Rhs); },
+        // T(Literal) << Any[Rhs] >> [](Match& _) { return _(Rhs); },
       
         T(String, R"("[^"]*")")[String] >> [](Match& _) {
           Location loc = _(String)->location();

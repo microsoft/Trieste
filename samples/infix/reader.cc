@@ -251,18 +251,31 @@ namespace
         // --- if not, see next section
 
         // the initial 2-element tuple case
-        In(Expression) * T(TupleCandidate) * T(Expression)[Lhs] *
-            (T(Comma) << End) * T(Expression)[Rhs] >>
-          [](Match& _) { return Tuple << _(Lhs) << _(Rhs); },
+        In(Expression) * T(TupleCandidate)[TupleCandidate] *
+            T(Expression)[Lhs] * T(Comma) * T(Expression)[Rhs] >>
+          [](Match& _) {
+            return Seq << _(TupleCandidate) << (Tuple << _(Lhs) << _(Rhs));
+          },
         // tuple append case, where lhs is a tuple we partially built, and rhs
         // is an extra expression with a comma in between
-        In(Expression) * T(TupleCandidate) * T(Tuple)[Lhs] * T(Comma) *
-            T(Expression)[Rhs] >>
-          [](Match& _) { return _(Lhs) << _(Rhs); },
+        In(Expression) * T(TupleCandidate)[TupleCandidate] * T(Tuple)[Lhs] *
+            T(Comma) * T(Expression)[Rhs] >>
+          [](Match& _) {
+            return Seq << _(TupleCandidate) << (_(Lhs) << _(Rhs));
+          },
+        // same as above, but if the tuple is on the other side
+        In(Expression) * T(TupleCandidate)[TupleCandidate] *
+            T(Expression)[Lhs] * T(Comma) * T(Tuple)[Rhs] >>
+          [](Match& _) {
+            Node lhs = _(Lhs);
+            Node rhs = _(Rhs);
+            rhs->push_front(lhs);
+            return Seq << _(TupleCandidate) << rhs;
+          },
         // the one-element tuple, where a candidate for tuple ends in a comma,
         // e.g. (42,)
-        In(Expression) * T(TupleCandidate) * T(Expression)[Expression] *
-            T(Comma) * End >>
+        In(Expression) * T(TupleCandidate)[TupleCandidate] *
+            T(Expression)[Expression] * T(Comma) * End >>
           [](Match& _) { return Tuple << _(Expression); },
         // the not-a-tuple case. All things surrounded with parens might be
         // tuples, and are marked with TupleCandidate. When it's just e.g. (x),
@@ -270,10 +283,24 @@ namespace
         T(Expression)
             << (T(TupleCandidate) * T(Expression)[Expression] * End) >>
           [](Match& _) { return _(Expression); },
+        // If a TupleCandidate has been reduced to just a tuple, then we're
+        // done.
+        T(Expression) << (T(TupleCandidate) * T(Tuple)[Tuple] * End) >>
+          [](Match& _) { return Expression << _(Tuple); },
+        // Comma as suffix is allowed, just means the same tuple as without the
+        // comma
+        T(Expression)
+            << (T(TupleCandidate) * T(Tuple)[Tuple] * T(Comma) * End) >>
+          [](Match& _) { return Expression << _(Tuple); },
+        // Just a comma means an empty tuple
+        T(Expression) << (T(TupleCandidate) * T(Comma)[Comma] * End) >>
+          [](Match& _) { return Expression << (Tuple ^ _(Comma)); },
         // empty tuple, special case for ()
-        T(Expression) << (T(TupleCandidate)[TupleCandidate] << End) >>
+        T(Expression) << (T(TupleCandidate)[TupleCandidate] * End) >>
           [](Match& _) { return Expression << (Tuple ^ _(TupleCandidate)); },
-        // anything that doesn't make sense here
+
+        // TODO: ??!? why does commenting out the error case make the steps
+        // above pass? anything that doesn't make sense here
         In(Expression) * T(TupleCandidate)[TupleCandidate] >>
           [](Match& _) {
             return err(_(TupleCandidate), "Malformed tuple literal");
@@ -303,12 +330,12 @@ namespace
           [](Match& _) { return err(_(Comma), "Malformed tuple literal"); },
 
         // --- if the parser is trying to read tuples directly, extract them
-        T(Expression) * T(ParserTuple) << T(Expression)++[Expression] >>
-          [](Match& _) { return Expression << Tuple << _[Expression]; },
+        T(Expression) * (T(ParserTuple) << T(Expression)++[Expression]) >>
+          [](Match& _) { return Expression << (Tuple << _[Expression]); },
 
         // --- catch-all error, any stray commas left over
-        In(Expression) * T(Comma)[Comma] >>
-          [](Match& _) { return err(_(Comma), "Invalid use of comma"); },
+        // In(Expression) * T(Comma)[Comma] >>
+        //   [](Match& _) { return err(_(Comma), "Invalid use of comma"); },
       }};
   }
 
@@ -332,8 +359,6 @@ namespace
           },
       }};
   }
-
-  inline const auto Arg = T(Int) / T(Float) / T(Ident) / T(Expression);
 
   PassDef check_refs()
   {

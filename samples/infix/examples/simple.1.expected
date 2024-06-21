@@ -1,11 +1,16 @@
+//! calculate
 //! --enable-tuples calculate
+//! --enable-tuples --tuples-require-parens calculate
+//! --enable-tuples --tuples-require-parens --use-parser-tuples calculate
 (top
   {}
   (infix-calculation
     {}
     (infix-output
       (infix-string 1:x)
-      (infix-int 1:5))
+      (infix-literal
+        (infix-int 1:5)))
     (infix-output
       (infix-string 6:1 + 10)
-      (infix-int 2:11))))
+      (infix-literal
+        (infix-int 2:11)))))

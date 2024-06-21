@@ -2,10 +2,63 @@
 #include "trieste/fuzzer.h"
 
 #include <CLI/CLI.hpp>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+
+namespace
+{
+  std::vector<std::string> split_lines(const std::string& str)
+  {
+    std::vector<std::string> lines;
+
+    std::istringstream in(str);
+    std::string line;
+    while (std::getline(in, line))
+    {
+      lines.push_back(line);
+    }
+
+    return lines;
+  }
+
+  void diffy_print(
+    const std::string& expected, const std::string& actual, std::ostream& out)
+  {
+    auto expected_lines = split_lines(expected);
+    auto actual_lines = split_lines(actual);
+
+    std::size_t pos = 0;
+    for (const auto& actual_line : actual_lines)
+    {
+      if (pos < expected_lines.size())
+      {
+        auto expected_line = expected_lines[pos];
+        if (actual_line == expected_line)
+        {
+          out << "  " << actual_line << std::endl;
+        }
+        else
+        {
+          out << "! " << actual_line << std::endl;
+        }
+      }
+      else if (pos - expected_lines.size() > 3)
+      {
+        out << "..." << std::endl;
+        break;
+      }
+      else
+      {
+        out << "+ " << actual_line << std::endl;
+      }
+
+      ++pos;
+    }
+  }
+}
 
 int main(int argc, char** argv)
 {
@@ -23,6 +76,7 @@ int main(int argc, char** argv)
   uint32_t fuzzer_seed_count = 100;
   bool fuzzer_fail_fast = false;
 
+  // fuzz mode, fuzz test a given configuration
   auto fuzz = app.add_subcommand("fuzz");
   fuzz_config.install_cli(fuzz);
   fuzz->add_option("--start-seed", fuzzer_start_seed, "Seed to start RNG");
@@ -105,10 +159,11 @@ int main(int argc, char** argv)
           {
             std::cout << "Testing file " << entry.path() << ", expected "
                       << expected_file.filename() << ", "
-                      << first_line.substr(4) << " ..." << std::endl;
+                      << first_line.substr(4) << " ... " << std::flush;
 
             // config for current run
             infix::Config config;
+            bool expect_fail = false;
             auto proc_options = {"parse_only", "calculate"};
             std::string selected_proc;
 
@@ -148,6 +203,8 @@ int main(int argc, char** argv)
                   "Which operation(s) to run on the code")
                 ->required()
                 ->transform(CLI::IsMember(proc_options));
+              config_app.add_flag(
+                "--expect-fail", expect_fail, "This run is supposed to fail");
 
               try
               {
@@ -195,12 +252,33 @@ int main(int argc, char** argv)
               actual_str = result_to_str.str();
             }
 
+            bool ok = true;
             if (actual_str != expected_output)
             {
-              std::cout << "Unexpected output:" << std::endl;
-              std::cout << actual_str;
-              std::cout << std::endl;
-              std::cout << expected_output << std::endl;
+              std::cout << "unexpected output:" << std::endl;
+              diffy_print(expected_output, actual_str, std::cout);
+              ok = false;
+            }
+            if (expect_fail && result.ok)
+            {
+              std::cout << "unexpected success, last pass: " << result.last_pass
+                        << std::endl;
+              ok = false;
+            }
+            if (!expect_fail && !result.ok)
+            {
+              std::cout << "unexpected failure, last pass: " << result.last_pass
+                        << std::endl;
+              ok = false;
+            }
+
+            if (ok)
+            {
+              std::cout << "ok." << std::endl;
+            }
+            else
+            {
+              std::cout << "abort." << std::endl;
               return 1;
             }
           }
