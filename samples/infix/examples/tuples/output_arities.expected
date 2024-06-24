@@ -12,20 +12,42 @@
     (infix-output
       (infix-string 9:"arity 1")
       (infix-expression
-        (infix-tuple !!)))
+        (infix-tuple
+          (infix-expression
+            (infix-int 1:1)))))
     (infix-output
       (infix-string 12:"arity 1 op")
       (infix-expression
-        (infix-tuple !!)))
+        (infix-tuple
+          (infix-expression
+            (infix-subtract
+              (infix-expression
+                (infix-int 1:2))
+              (infix-expression
+                (infix-int 1:1)))))))
     (infix-output
       (infix-string 9:"arity 2")
       (infix-expression
-        (infix-tuple !!)))
+        (infix-tuple
+          (infix-expression
+            (infix-int 1:1))
+          (infix-expression
+            (infix-int 1:2)))))
     (infix-output
       (infix-string 18:"arity 2 trailing")
       (infix-expression
-        (infix-tuple !!)))
+        (infix-tuple
+          (infix-expression
+            (infix-int 1:1))
+          (infix-expression
+            (infix-int 1:2)))))
     (infix-output
       (infix-string 9:"arity 3")
       (infix-expression
-        (infix-tuple !!)))))
+        (infix-tuple
+          (infix-expression
+            (infix-int 1:1))
+          (infix-expression
+            (infix-int 1:2))
+          (infix-expression
+            (infix-int 1:3)))))))

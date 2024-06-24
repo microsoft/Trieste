@@ -269,6 +269,7 @@ int main(int argc, char** argv)
             {
               std::cout << "unexpected failure, last pass: " << result.last_pass
                         << std::endl;
+              // TODO: print more errors?
               ok = false;
             }
 

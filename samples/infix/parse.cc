@@ -3,7 +3,7 @@
 
 namespace infix
 {
-  const std::initializer_list<Token> terminators = {Equals, Tuple};
+  const std::initializer_list<Token> terminators = {Equals, ParserTuple};
 
   Parse parser(bool use_parser_tuples)
   {
@@ -23,7 +23,7 @@ namespace infix
           [use_parser_tuples](auto& m) {
             if (use_parser_tuples)
             {
-              m.seq(Comma);
+              m.seq(ParserTuple);
             }
             else
             {
@@ -50,7 +50,8 @@ namespace infix
             // terminate the current group
             m.term(terminators);
             // pop back up out of the Paren
-            m.pop(Paren);
+            m.pop(Paren); // TODO: how do we avoid being in a Paren, if we had a
+                          // ParserTuple?
           },
 
         // Float.

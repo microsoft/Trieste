@@ -1,5 +1,6 @@
 #include "infix.h"
 #include "internal.h"
+#include "trieste/pass.h"
 #include "trieste/rewrite.h"
 
 namespace
@@ -34,6 +35,8 @@ namespace
     | (Output <<= String * Expression)
     // [1] here indicates that there should be at least one token
     | (Expression <<= wf_expressions_tokens++[1])
+    // --- tuples extension ---
+    | (ParserTuple <<= Expression++)
     ;
   // clang-format on
 
@@ -53,8 +56,7 @@ namespace
     ;
   // clang-format on
 
-  inline const auto wf_tupled_tokens =
-    (wf_expressions_tokens - TupleCandidate - Comma) | Tuple;
+  inline const auto wf_tupled_tokens = wf_expressions_tokens | Tuple;
 
   // clang-format off
   inline const auto wf_pass_tuple_literals =
@@ -64,7 +66,17 @@ namespace
     ;
   // clang-format on
 
-  inline const auto wf_operands_tokens = wf_tupled_tokens - Expression;
+  inline const auto wf_tupled_orphaned_tokens =
+    wf_tupled_tokens - Comma - TupleCandidate - ParserTuple;
+
+  // clang-format off
+  inline const auto wf_pass_tuple_literals_orphans =
+    wf_pass_tuple_literals
+    | (Expression <<= wf_tupled_orphaned_tokens++[1])
+    ;
+  // clang-format on
+
+  inline const auto wf_operands_tokens = wf_tupled_orphaned_tokens - Expression;
 
   // clang-format off
   inline const auto wf_pass_trim =
@@ -299,13 +311,6 @@ namespace
         T(Expression) << (T(TupleCandidate)[TupleCandidate] * End) >>
           [](Match& _) { return Expression << (Tuple ^ _(TupleCandidate)); },
 
-        // TODO: ??!? why does commenting out the error case make the steps
-        // above pass? anything that doesn't make sense here
-        In(Expression) * T(TupleCandidate)[TupleCandidate] >>
-          [](Match& _) {
-            return err(_(TupleCandidate), "Malformed tuple literal");
-          },
-
         // --- if parens are not required for tupling, then our rules treat the
         // --- comma as a regular min-precedence operator instead.
         // --- notice these rules don't use TupleCandidate, and just look for
@@ -325,17 +330,35 @@ namespace
         In(Expression) *
             (T(Expression)[Expression] * T(Comma) * End)(enable_if_no_parens) >>
           [](Match& _) { return Tuple << _(Expression); },
-        // malformed tuple, didn't match rules above
-        In(Expression) * T(Comma)[Comma](enable_if_no_parens) >>
-          [](Match& _) { return err(_(Comma), "Malformed tuple literal"); },
 
         // --- if the parser is trying to read tuples directly, extract them
         T(Expression) * (T(ParserTuple) << T(Expression)++[Expression]) >>
           [](Match& _) { return Expression << (Tuple << _[Expression]); },
+      }};
+  }
 
-        // --- catch-all error, any stray commas left over
-        // In(Expression) * T(Comma)[Comma] >>
-        //   [](Match& _) { return err(_(Comma), "Invalid use of comma"); },
+  // This rule has to be distinct from tuple_literals, because the rule above
+  // requires repeated iterations before it matches everything. If these rules
+  // were mixed in there, then an in-progress transformation by the previous
+  // pass could be flagged as an error mid-pass, breaking the compiler.
+  PassDef tuple_literals_orphans()
+  {
+    return {
+      "tuple_literals_orphans",
+      wf_pass_tuple_literals_orphans,
+      dir::topdown,
+      {
+        // if a comma remains, replace it with an error.
+        // it was not able to match anything in the previous rule.
+        In(Expression) * T(Comma)[Comma] >>
+          [](Match& _) { return err(_(Comma), "Invalid use of comma"); },
+
+        // likewise, all possible tuples should be either been resolved as
+        // actual tuples or plain expressions; other cases are errors.
+        In(Expression) * T(TupleCandidate)[TupleCandidate] >>
+          [](Match& _) {
+            return err(_(TupleCandidate), "Malformed tuple literal");
+          },
       }};
   }
 
@@ -394,6 +417,7 @@ namespace infix
         multiply_divide(),
         add_subtract(),
         tuple_literals(config),
+        tuple_literals_orphans(),
         trim(),
         check_refs(),
       },
