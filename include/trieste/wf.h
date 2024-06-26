@@ -162,6 +162,15 @@ namespace trieste
     {
       std::vector<Token> types;
 
+      SNMALLOC_SLOW_PATH Choice() = default;
+      SNMALLOC_SLOW_PATH Choice(std::vector<Token> types_) :
+        types{types_} {}
+      SNMALLOC_SLOW_PATH Choice(const Choice&) = default;
+      SNMALLOC_SLOW_PATH Choice(Choice&&) = default;
+      SNMALLOC_SLOW_PATH Choice& operator=(const Choice&) = default;
+      SNMALLOC_SLOW_PATH Choice& operator=(Choice&&) = default;
+      SNMALLOC_SLOW_PATH ~Choice() = default;
+
       bool check(Node node) const
       {
         if (node == Error)
@@ -239,6 +248,15 @@ namespace trieste
       Choice choice;
       size_t minlen;
 
+      SNMALLOC_SLOW_PATH Sequence(Choice choice_, size_t minlen_) :
+        choice{choice_}, minlen{minlen_} {}
+      SNMALLOC_SLOW_PATH Sequence() = default;
+      SNMALLOC_SLOW_PATH Sequence(const Sequence&) = default;
+      SNMALLOC_SLOW_PATH Sequence(Sequence&&) = default;
+      SNMALLOC_SLOW_PATH Sequence& operator=(const Sequence&) = default;
+      SNMALLOC_SLOW_PATH Sequence& operator=(Sequence&&) = default;
+      SNMALLOC_SLOW_PATH ~Sequence() = default;
+
       size_t index(const Token&) const
       {
         return std::numeric_limits<size_t>::max();
@@ -305,6 +323,15 @@ namespace trieste
     {
       std::vector<Field> fields;
       Token binding;
+
+      SNMALLOC_SLOW_PATH Fields(std::vector<Field> fields_, Token binding_) :
+        fields{fields_}, binding{binding_} {}
+      SNMALLOC_SLOW_PATH Fields() = default;
+      SNMALLOC_SLOW_PATH Fields(const Fields&) = default;
+      SNMALLOC_SLOW_PATH Fields(Fields&&) = default;
+      SNMALLOC_SLOW_PATH Fields& operator=(const Fields&) = default;
+      SNMALLOC_SLOW_PATH Fields& operator=(Fields&&) = default;
+      SNMALLOC_SLOW_PATH ~Fields() = default;
 
       size_t index(const Token& field) const
       {
@@ -455,6 +482,15 @@ namespace trieste
       Token type;
       ShapeT shape;
 
+      SNMALLOC_SLOW_PATH Shape(Token type_, ShapeT shape_) :
+        type{type_}, shape{shape_} {}
+      SNMALLOC_SLOW_PATH Shape() = default;
+      SNMALLOC_SLOW_PATH Shape(const Shape&) = default;
+      SNMALLOC_SLOW_PATH Shape(Shape&&) = default;
+      SNMALLOC_SLOW_PATH Shape& operator=(const Shape&) = default;
+      SNMALLOC_SLOW_PATH Shape& operator=(Shape&&) = default;
+      SNMALLOC_SLOW_PATH ~Shape() = default;
+
       Shape& operator[](const Token& binding)
       {
         std::visit([&](auto& s) { s[binding]; }, shape);
@@ -465,6 +501,13 @@ namespace trieste
     struct Wellformed
     {
       std::map<Token, ShapeT> shapes;
+
+      SNMALLOC_SLOW_PATH Wellformed() = default;
+      SNMALLOC_SLOW_PATH Wellformed(const Wellformed&) = default;
+      SNMALLOC_SLOW_PATH Wellformed(Wellformed&&) = default;
+      SNMALLOC_SLOW_PATH Wellformed& operator=(const Wellformed&) = default;
+      SNMALLOC_SLOW_PATH Wellformed& operator=(Wellformed&&) = default;
+      SNMALLOC_SLOW_PATH ~Wellformed() = default;
 
       operator bool() const
       {
@@ -482,26 +525,26 @@ namespace trieste
           [&](auto& shape) { return shape.index(field); }, find->second);
       }
 
-      void prepend(const Shape& shape)
+      void SNMALLOC_SLOW_PATH prepend(const Shape& shape)
       {
         auto find = shapes.find(shape.type);
         if (find == shapes.end())
           append(shape);
       }
 
-      void prepend(Shape&& shape)
+      void SNMALLOC_SLOW_PATH prepend(Shape&& shape)
       {
         auto find = shapes.find(shape.type);
         if (find == shapes.end())
           append(shape);
       }
 
-      void append(const Shape& shape)
+      void SNMALLOC_SLOW_PATH append(const Shape& shape)
       {
         shapes[shape.type] = shape.shape;
       }
 
-      void append(Shape&& shape)
+      void SNMALLOC_SLOW_PATH append(Shape&& shape)
       {
         shapes[shape.type] = std::move(shape.shape);
       }
@@ -718,20 +761,20 @@ namespace trieste
         return Choice{std::vector<Token>{type1, type2}};
       }
 
-      inline Choice operator|(const Token& type, const Choice& choice)
+      inline SNMALLOC_SLOW_PATH Choice operator|(const Token& type, const Choice& choice)
       {
         Choice result{choice.types};
         result.types.push_back(type);
         return result;
       }
 
-      inline Choice operator|(const Token& type, Choice&& choice)
+      inline SNMALLOC_SLOW_PATH Choice operator|(const Token& type, Choice&& choice)
       {
         choice.types.push_back(type);
         return std::move(choice);
       }
 
-      inline Choice operator|(const Choice& choice1, const Choice& choice2)
+      inline SNMALLOC_SLOW_PATH Choice operator|(const Choice& choice1, const Choice& choice2)
       {
         Choice result{choice1.types};
         result.types.insert(
@@ -739,7 +782,7 @@ namespace trieste
         return result;
       }
 
-      inline Choice operator|(const Choice& choice1, Choice&& choice2)
+      inline SNMALLOC_SLOW_PATH Choice operator|(const Choice& choice1, Choice&& choice2)
       {
         choice2.types.insert(
           choice2.types.end(), choice1.types.begin(), choice1.types.end());
@@ -761,7 +804,7 @@ namespace trieste
         return choice2 | choice1;
       }
 
-      inline Choice operator-(const Choice& choice, const Token& type)
+      inline SNMALLOC_SLOW_PATH Choice operator-(const Choice& choice, const Token& type)
       {
         Choice result{choice.types};
         result.types.erase(
@@ -770,7 +813,7 @@ namespace trieste
         return result;
       }
 
-      inline Choice operator-(const Choice& choice1, const Choice& choice2)
+      inline SNMALLOC_SLOW_PATH Choice operator-(const Choice& choice1, const Choice& choice2)
       {
         Choice result{choice1.types};
         result.types.erase(
@@ -860,14 +903,14 @@ namespace trieste
         return (fst >>= fst) * snd;
       }
 
-      inline Fields operator*(const Fields& fst, const Field& snd)
+      inline SNMALLOC_SLOW_PATH Fields operator*(const Fields& fst, const Field& snd)
       {
         auto fields = Fields{fst.fields, Invalid};
         fields.fields.push_back(snd);
         return fields;
       }
 
-      inline Fields operator*(Fields&& fst, const Field& snd)
+      inline SNMALLOC_SLOW_PATH Fields operator*(Fields&& fst, const Field& snd)
       {
         fst.fields.push_back(snd);
         return std::move(fst);
