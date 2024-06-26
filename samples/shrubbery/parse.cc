@@ -124,10 +124,10 @@ namespace shrubbery
 
             if (m.in(Block)) {
                 m.pop(Block);
-                if (col < last_col) m.term();
+                if (col <= last_col) m.term();
             } else if (m.in(Alt)) {
                 m.pop(Alt);
-                if (col < last_col) m.term();
+                if (col <= last_col) m.term();
             }
         }
 

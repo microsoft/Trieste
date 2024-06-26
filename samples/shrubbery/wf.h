@@ -55,5 +55,6 @@ namespace shrubbery
     | (Brace <<= Group++)
     | (Block <<= Group++)
     ;
+
   // clang-format on
 }

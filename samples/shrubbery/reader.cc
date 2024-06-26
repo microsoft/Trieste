@@ -3,7 +3,6 @@
 
 namespace shrubbery
 {
-
   auto err(const NodeRange& r, const std::string& msg)
   {
     return Error << (ErrorMsg ^ msg) << (ErrorAst << r);
@@ -19,7 +18,7 @@ namespace shrubbery
     return {
       "check parsing",
       wf_check_parser,
-      dir::topdown,
+      dir::bottomup | dir::once,
       {
         // An empty block followed by alternatives is ignored
         ((T(Block) << End) * (T(Alt)[Alt])) >>
@@ -58,10 +57,33 @@ namespace shrubbery
 
         In(File) * (T(Group) << (((!T(Block)) * (!T(Block))++ * (T(Block)[Block] << End) * End))) >>
           [](Match& _) { return err(_[Block], "Blocks may not be empty"); },
+      }
+    };
+  }
 
-        // Alternatives cannot be empty
-        T(Alt)[Alt] << End >>
-          [](Match& _) { return err(_[Alt], "Alternatives may not be empty"); },
+  // Alternatives belong to the preceeding Group and keep their contents in
+  // blocks
+  PassDef alternative_blocks()
+  {
+    return {
+      "alternative blocks",
+      wf_alternatives,
+      dir::bottomup | dir::once,
+      {
+        // Move a trailing alternatives into the preceding group but do not
+        // cross a comma or semi-colon
+        (--In(Comma, Semi) * T(Group)[Group] * ((T(Group) << T(Alt)) * (T(Group) << T(Alt))++)[Alt]) >>
+          [](Match& _) {
+            Node group = _(Group);
+            for (auto& node : _[Alt]) {
+              group << node->front();
+            }
+            return group;
+          },
+
+        // Alternatives keep their contents in a block
+        (T(Alt)[Alt] << !T(Block)) >>
+          [](Match& _) { return Alt << (Block << *_[Alt]); },
       }
     };
   }
@@ -72,46 +94,85 @@ namespace shrubbery
     return {
       "merge alternatives",
       wf_alternatives,
-      dir::topdown,
+      dir::bottomup | dir::once,
       {
-        // Move a trailing alternative into the preceding group but do not cross
-        // a comma or semi-colon
-        (--In(Comma, Semi) * T(Group)[Group] * (T(Group) << (T(Alt)[Alt]))) >>
-          [](Match& _) { return _(Group) << _(Alt); },
-
-        // Alternatives keep their contents in a block
-        (T(Alt)[Alt] << !T(Block)) >>
-          [](Match& _) { return Alt << (Block << *_[Alt]); },
-
         // Merge sequence of alternatives into a single alternative
-        (T(Alt)[Alt] * (T(Alt) << T(Block)[Block])) >>
-          [](Match& _) { return _(Alt) << _(Block); },
+        (T(Alt)[Alt] * (T(Alt) << T(Block))++[Group]) >>
+          [](Match& _) {
+            Node alt = _(Alt);
+            for (auto& node : _[Group]) {
+              alt << node->front();
+            }
+            return alt;
+          },
       }
     };
   }
 
   // Remove nodes for commas and semicolons and replace them by their children.
-  // Also check for empty alternatives, which may only appear immediately under
-  // braces and brackets
   PassDef drop_separators()
   {
     return {
       "drop separators",
       wf_no_semis_or_commas,
-      dir::topdown,
+      dir::bottomup | dir::once,
       {
         (T(Comma)[Comma]) >>
           [](Match& _) { return Seq << *_[Comma]; },
 
         T(Semi)[Semi] >>
           [](Match& _) { return Seq << *_[Semi]; },
-
-        // Alternatives can only appear first in a group directly under Braces or Brackets
-        (--In(Brace, Bracket)) * T(Group) << T(Alt)[Alt] >>
-          [](Match& _) { return err(_[Alt], "Alternative cannot appear first in a group"); },
       }
     };
   }
+
+  // Check that groups starting with alternatives only appear immediately under
+  // braces and brackets
+  PassDef check_alternatives()
+  {
+    return {
+      "check alternatives",
+      wf_no_semis_or_commas,
+      dir::bottomup | dir::once,
+      {
+        (--In(Brace, Bracket)) * T(Group) << T(Alt)[Alt] >>
+          [](Match& _) { return err(_[Alt], "Alternative cannot appear first in a group"); },
+
+        // Alternatives cannot be empty
+        T(Alt)[Alt] << End >>
+          [](Match& _) { return err(_[Alt], "Alternatives may not be empty"); },
+      }
+    };
+  }
+
+  // Structure groups so that they contain their atoms in a Contents node,
+  // followed by a
+  PassDef group_structure()
+  {
+    return {
+      "group structure",
+      wf,
+      dir::bottomup | dir::once,
+      {
+        In(Group) * Start * (!T(Block, Alt))++[Atom] * ~T(Block)[Block] * ~T(Alt)[Alt] * End >>
+          [](Match& _) {
+            return Seq << (Terms << _[Atom])
+                       << (_(Block)? _(Block): None)
+                       << (_(Alt)? _(Alt): None);
+          },
+
+        // Groups cannot be empty
+        T(Group)[Group] << End >>
+          [](Match& _) { return err(_[Group], "Groups cannot be empty"); },
+
+        // Overly permissive wf rules from before allows groups to have
+        // impossible structure. To pass fuzz testing, we add this rule
+        T(Group)[Group] << !T(Terms) >>
+          [](Match& _) { return err(_[Group], "Should never happen"); },
+      }
+    };
+  }
+
 
   Reader reader()
   {
@@ -119,8 +180,11 @@ namespace shrubbery
       "shrubbery",
       {
         check_parsing(),
+        alternative_blocks(),
         merge_alternatives(),
-        drop_separators()
+        drop_separators(),
+        check_alternatives(),
+        group_structure(),
       },
       parser(),
     };
