@@ -22,6 +22,7 @@ namespace
     | Expression
     // --- tuples extension ---
     | TupleCandidate
+    | ParserTuple
     ;
   // clang-format on
 
@@ -130,6 +131,7 @@ namespace
           [](Match& _) { return Output << _(Lhs) << (Expression << _[Rhs]); },
 
         // --- tuples only:
+
         // (...), a group with parens, might be a tuple.
         // It depends on how many commas there are in it.
         // We need this if tuples require parens, and we are not handling tuples
@@ -137,14 +139,28 @@ namespace
         (In(Expression) *
          (T(Paren)[Paren] << T(Group)[Group]))([config](auto&&) {
           return !config.use_parser_tuples &&
-            config.tuples_require_parens; // restrict when this rule applies
+            config.tuples_require_parens; // restrict this rule to only if
+                                          // tuples require parens, otherwise we
+                                          // can think of a tuple as an infix
+                                          // operator with a low precedence.
         }) >>
           [](Match& _) {
             return Expression << (TupleCandidate ^ _(Paren)) << *_[Group];
           },
 
         // --- tuples only, parser tuples version:
-        In(Expression) * (T(ParserTuple)[ParserTuple] << T(Group)++[Group]) >>
+        // Special case: a ParserTuple with one empty group child is (,), which
+        // we consider a valid empty tuple.
+        In(Expression) *
+            (T(Paren)
+             << (T(ParserTuple)[ParserTuple] << ((T(Group) << End) * End))) >>
+          [](Match& _) { return Expression << (ParserTuple ^ _(ParserTuple)); },
+        // This grabs any Paren whose only child is a ParserTuple, and unwraps
+        // that ParserTuple's nested groups into Expression nodes so future
+        // passes will parse their contents properly.
+        In(Expression) *
+            (T(Paren) << (T(ParserTuple)[ParserTuple] << T(Group)++[Group]) *
+               End) >>
           [](Match& _) {
             Node parser_tuple = ParserTuple;
             for (const auto& child : _[Group])
@@ -182,11 +198,12 @@ namespace
 
         // errors
 
-        // because rules are matched in order, this catches any
-        // Paren nodes that had no children (because the rule above
-        // will have handled those *with* children)
+        // because rules are matched in order, this catches any invalid
+        // Paren nodes, usually ones that had no children (because the rule
+        // above will have handled those *with* children), or unusually
+        // malformed parser tuples.
         T(Paren)[Paren] >>
-          [](Match& _) { return err(_(Paren), "Empty paren"); },
+          [](Match& _) { return err(_(Paren), "Invalid paren"); },
 
         // Ditto for malformed equals nodes
         T(Equals)[Equals] >>
@@ -316,6 +333,17 @@ namespace
         // --- notice these rules don't use TupleCandidate, and just look for
         // --- raw Comma instances
 
+        // an expression exclusively composed of one comma is a nullary tuple.
+        // this is not the only way to do it, but it allows mostly sensible
+        // examples like
+        // ```
+        // x = ,;
+        // x = (,);
+        // x = , + ,; // semantically bad but syntactically ok
+        // ```
+        // etc...
+        T(Expression) << (T(Comma)[Comma] * End)(enable_if_no_parens) >>
+          [](Match& _) { return Expression << (Tuple ^ _(Comma)); },
         // 2 expressions comma-separated makes a tuple
         In(Expression) *
             (T(Expression)[Lhs] * T(Comma) *
@@ -330,9 +358,13 @@ namespace
         In(Expression) *
             (T(Expression)[Expression] * T(Comma) * End)(enable_if_no_parens) >>
           [](Match& _) { return Tuple << _(Expression); },
+        // one trailing comma at the end of a tuple is allowed (but not more)
+        T(Expression) << (T(Tuple)[Tuple] * T(Comma) * End)(
+          enable_if_no_parens) >>
+          [](Match& _) { return Expression << _(Tuple); },
 
         // --- if the parser is trying to read tuples directly, extract them
-        T(Expression) * (T(ParserTuple) << T(Expression)++[Expression]) >>
+        T(Expression) << (T(ParserTuple) << T(Expression)++[Expression]) >>
           [](Match& _) { return Expression << (Tuple << _[Expression]); },
       }};
   }
@@ -359,6 +391,9 @@ namespace
           [](Match& _) {
             return err(_(TupleCandidate), "Malformed tuple literal");
           },
+
+        In(Expression) * T(ParserTuple)[ParserTuple] >>
+          [](Match& _) { return err(_(ParserTuple), "Invalid tuple"); },
       }};
   }
 
