@@ -248,9 +248,9 @@ namespace trieste
       Choice choice;
       size_t minlen;
 
-      SNMALLOC_SLOW_PATH Sequence() = default;
       SNMALLOC_SLOW_PATH Sequence(Choice choice_, size_t minlen_) :
         choice{choice_}, minlen{minlen_} {}
+      SNMALLOC_SLOW_PATH Sequence() = default;
       SNMALLOC_SLOW_PATH Sequence(const Sequence&) = default;
       SNMALLOC_SLOW_PATH Sequence(Sequence&&) = default;
       SNMALLOC_SLOW_PATH Sequence& operator=(const Sequence&) = default;
@@ -324,9 +324,9 @@ namespace trieste
       std::vector<Field> fields;
       Token binding;
 
-      SNMALLOC_SLOW_PATH Fields() = default;
       SNMALLOC_SLOW_PATH Fields(std::vector<Field> fields_, Token binding_) :
         fields{fields_}, binding{binding_} {}
+      SNMALLOC_SLOW_PATH Fields() = default;
       SNMALLOC_SLOW_PATH Fields(const Fields&) = default;
       SNMALLOC_SLOW_PATH Fields(Fields&&) = default;
       SNMALLOC_SLOW_PATH Fields& operator=(const Fields&) = default;
@@ -482,9 +482,9 @@ namespace trieste
       Token type;
       ShapeT shape;
 
-      SNMALLOC_SLOW_PATH Shape() = default;
       SNMALLOC_SLOW_PATH Shape(Token type_, ShapeT shape_) :
         type{type_}, shape{shape_} {}
+      SNMALLOC_SLOW_PATH Shape() = default;
       SNMALLOC_SLOW_PATH Shape(const Shape&) = default;
       SNMALLOC_SLOW_PATH Shape(Shape&&) = default;
       SNMALLOC_SLOW_PATH Shape& operator=(const Shape&) = default;
