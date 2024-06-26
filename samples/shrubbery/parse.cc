@@ -316,7 +316,8 @@ namespace shrubbery
         [match_indentation, close_all, newline, expect_indent](auto& m) {
             // Alternatives terminate the current alternative (which may in turn
             // contain semi-colons)
-            if (!*newline) close_all(m, {Alt, Semi});
+            close_all(m, {Alt, Semi});
+            m.term();
 
             if (match_indentation(m)) {
                 m.push(Alt);

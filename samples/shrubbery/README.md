@@ -37,7 +37,7 @@ identifiers, strings and numbers, *operators* such as `+` and
 `>>=`, and *opener-closer pairs* including parentheses, brackets
 and braces. The grammar can be sketched as follows:
 
-    Group ::= Term* Block? (Alt+)?
+    Group ::= Term* Block? (Alt+)?    (cannot be empty)
     Term  ::= Atom | Op | '(' Group ')' | '[' Group ']' | '{' Group '}'
     Block ::= ':' Group+
     Alt   ::= '|' Group+
@@ -202,13 +202,12 @@ virtually anywhere:
       | (Group   <<= wf_term++)
       ;
 
-The first rewriting pass (see `reader.cc`) ensures that commas and
-semi-colons appear in the right places and that blocks and
-alternatives are not empty (except in a few special cases). It
-also throws away empty groups caused by semi-colons. The resulting
-well-formedness specification now says where commas and
-semi-colons may appear and that alternatives and comma-separated
-sequences cannot be empty:
+The first rewriting pass (see `reader.cc`) ensures that commas and semi-colons
+appear in the right places and that blocks and alternatives are not empty
+(except in a few special cases). It also throws away empty groups caused by
+semi-colons. The resulting well-formedness specification now says where commas
+and semi-colons may appear and that alternatives and comma-separated sequences
+cannot be empty:
 
     inline const auto wf_check_parser =
         wf_parser
@@ -229,11 +228,11 @@ a sequence of `Block` nodes. The only change to well-formedness is
 that `Alt` nodes now hold a non-empty sequence of `Block`s:
 
     inline const auto wf_alternatives =
-      wf_check_parser
+        wf_check_parser
       | (Alt <<= Block++[1])
       ;
 
-Finally, the last pass removes the `Comma` and `Semi` blocks
+The next pass removes the `Comma` and `Semi` blocks
 altogether, replacing them by their children. This pass also
 handles the restriction that alternatives can only appear first in
 a group if nested immediately under a `Brace` or `Bracket` node.
@@ -242,7 +241,7 @@ contains a sequence of groups, except alternatives and groups
 which retain their previous definitions:
 
     inline const auto wf_drop_separators =
-      wf_alternatives
+        wf_alternatives
       | (File    <<= Group++)
       | (Paren   <<= Group++)
       | (Bracket <<= Group++)
@@ -250,14 +249,28 @@ which retain their previous definitions:
       | (Block   <<= Group++)
       ;
 
-Ideally, we would also like the well-formedness specification to
-say that a group is a sequence of terms followed by an optional
-(non-empty) `Block` node and an optional (non-empty) `Alt` node.
-However, well-formedness specifications currently do not support
-following a repetition (e.g. `wf_term++`) with another token, nor
-do they support optional entries. The closest we can currently get
-is grouping all the terms of a group under some node and then
-rewriting groups to one of four kinds of nodes: one with no block
-and no alternative, one with a block but no alternatives, one with
-no block but at least one alternative, and one with both a block
-and at least one alternative. We do not explore this further here.
+After removing the separators, we check the special rule that alternatives may
+not not appear first in their group, except when directly under a brace or
+bracket. This pass does not change the well-formedness specification.
+
+Finally, we are ready to move to our final well-formedness specification that
+says that a group is a sequence of terms followed by an optional `Block` node
+and an optional (non-empty) `Alt` node. However, well-formedness specifications
+currently do not support following a repetition (e.g. `wf_term++`) with another
+token, nor do they support optional entries. The closest we can get is grouping
+all the terms of a group under a node `Terms` and then emulate optional entries
+by introducing a special token `None` that is used to mean that a `Block`/`Alt`
+is not there:
+
+    inline const auto wf =
+        (Top <<= File)
+      | (File <<= Group++)
+      | (Paren <<= Group++)
+      | (Bracket <<= Group++)
+      | (Brace <<= Group++)
+      | (Block <<= Group++)
+      | (Alt <<= Block++[1])
+      | (Group <<= Terms * (Block >>= Block | None) * (Alt >>= Alt | None))
+      | (Terms <<= (Paren | Bracket | Brace | Op | Atom)++)
+      ;
+

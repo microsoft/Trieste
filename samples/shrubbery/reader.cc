@@ -21,8 +21,10 @@ namespace shrubbery
       dir::bottomup | dir::once,
       {
         // An empty block followed by alternatives is ignored
-        ((T(Block) << End) * (T(Alt)[Alt])) >>
-          [](Match& _) { return _(Alt); },
+        (T(Group) << (!T(Block))++[Terms] * (T(Block) << End)) * (T(Group) << T(Alt))[Alt] >>
+          [](Match& _) { return Seq << (Group << _[Terms])
+                                    << _(Alt);
+                       },
 
         (T(Block) << (T(Group)[Group] << T(Alt))) >>
           [](Match& _) { return Seq << *_[Group]; },
@@ -57,38 +59,17 @@ namespace shrubbery
 
         In(File) * (T(Group) << (((!T(Block)) * (!T(Block))++ * (T(Block)[Block] << End) * End))) >>
           [](Match& _) { return err(_[Block], "Blocks may not be empty"); },
+
+        // Alternatives cannot be empty
+        T(Alt)[Alt] << End >>
+          [](Match& _) { return err(_[Alt], "Alternatives may not be empty"); },
+
       }
     };
   }
 
   // Alternatives belong to the preceeding Group and keep their contents in
   // blocks
-  PassDef alternative_blocks()
-  {
-    return {
-      "alternative blocks",
-      wf_alternatives,
-      dir::bottomup | dir::once,
-      {
-        // Move a trailing alternatives into the preceding group but do not
-        // cross a comma or semi-colon
-        (--In(Comma, Semi) * T(Group)[Group] * ((T(Group) << T(Alt)) * (T(Group) << T(Alt))++)[Alt]) >>
-          [](Match& _) {
-            Node group = _(Group);
-            for (auto& node : _[Alt]) {
-              group << node->front();
-            }
-            return group;
-          },
-
-        // Alternatives keep their contents in a block
-        (T(Alt)[Alt] << !T(Block)) >>
-          [](Match& _) { return Alt << (Block << *_[Alt]); },
-      }
-    };
-  }
-
-  // Merge alternatives into a single Alt node containing blocks
   PassDef merge_alternatives()
   {
     return {
@@ -96,14 +77,19 @@ namespace shrubbery
       wf_alternatives,
       dir::bottomup | dir::once,
       {
-        // Merge sequence of alternatives into a single alternative
-        (T(Alt)[Alt] * (T(Alt) << T(Block))++[Group]) >>
+        // Alternatives keep their contents in a block
+        (T(Alt)[Alt] << !T(Block)) >>
+          [](Match& _) { return Alt << (Block << *_[Alt]); },
+
+        // Move a trailing alternatives into the preceding group but do not
+        // cross a comma or semi-colon. Merge the alternatives into one
+        (--In(Comma, Semi) * T(Group)[Group] * ((T(Group) << T(Alt)[Alt]) * (T(Group) << T(Alt))++[Terms])) >>
           [](Match& _) {
             Node alt = _(Alt);
-            for (auto& node : _[Group]) {
-              alt << node->front();
+            for (auto& node : _[Terms]) {
+              alt << node->front()->front(); // Group->Alt->Block
             }
-            return alt;
+            return _(Group) << alt;
           },
       }
     };
@@ -137,10 +123,6 @@ namespace shrubbery
       {
         (--In(Brace, Bracket)) * T(Group) << T(Alt)[Alt] >>
           [](Match& _) { return err(_[Alt], "Alternative cannot appear first in a group"); },
-
-        // Alternatives cannot be empty
-        T(Alt)[Alt] << End >>
-          [](Match& _) { return err(_[Alt], "Alternatives may not be empty"); },
       }
     };
   }
@@ -180,7 +162,6 @@ namespace shrubbery
       "shrubbery",
       {
         check_parsing(),
-        alternative_blocks(),
         merge_alternatives(),
         drop_separators(),
         check_alternatives(),
