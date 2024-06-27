@@ -1,5 +1,0 @@
-group 1
-(group 2 - subgroup I, group 2 - subgroup II,
- group 2 - subgroup III,
- (group 2 - subgroup IV - subsubgroup A,
-  group 2 - subgroup IV - subsubgroup B))

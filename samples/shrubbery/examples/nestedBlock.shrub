@@ -1,5 +1,0 @@
-fun foo(x :: Int, y :: Int):
-    fun bar(z :: Int):
-        def sum = x + y + z
-        sum
-    bar() + 1
