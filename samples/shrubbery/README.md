@@ -260,7 +260,8 @@ currently do not support following a repetition (e.g. `wf_term++`) with another
 token, nor do they support optional entries. The closest we can get is grouping
 all the terms of a group under a node `Terms` and then emulate optional entries
 by introducing a special token `None` that is used to mean that a `Block`/`Alt`
-is not there:
+is not there. This indirection aside, we get a well-formedness specification
+that corresponds to the original grammar of shrubbery notation:
 
     inline const auto wf =
         (Top <<= File)
