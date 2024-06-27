@@ -2,6 +2,7 @@
 #include "internal.h"
 #include "trieste/pass.h"
 #include "trieste/rewrite.h"
+#include "trieste/source.h"
 
 namespace
 {
@@ -38,6 +39,7 @@ namespace
     | (Expression <<= wf_expressions_tokens++[1])
     // --- tuples extension ---
     | (ParserTuple <<= Expression++)
+    | (Append <<= Expression)
     ;
   // clang-format on
 
@@ -81,16 +83,23 @@ namespace
 
   // clang-format off
   inline const auto wf_pass_trim =
-    wf_pass_tuple_literals
+    wf_pass_tuple_literals_orphans
     | (Expression <<= wf_operands_tokens)
     ;
   //clang-format on
+
+  // clang-format off
+  inline const auto wf_pass_append_post =
+    wf_pass_trim
+    | (Append <<= Expression++)
+    ;
+  // clang-format on
 
   inline const auto wf_check_refs_tokens = (wf_operands_tokens - Ident) | Ref;
 
   // clang-format off
   inline const auto wf_pass_check_refs =
-    wf_pass_trim
+    wf_pass_append_post
     | (Expression <<= wf_check_refs_tokens)
     | (Ref <<= Ident)
     ;
@@ -98,6 +107,25 @@ namespace
 
   PassDef expressions(const Config& config)
   {
+    // How to restrict a rule to only if tuples require parens and aren't
+    // handled in the parser.
+
+    // Note that if we captured config "by value", then we would copy the const
+    // Config&. This does bad things, in that we will be storing a reference to
+    // a temporary object, not the actual config value, on the pass object. The
+    // situation can be avoided with more careful capturing / ensuring the
+    // captures type is just Config, but it might be simpler to just generate 2
+    // capture-less lambdas.
+    const auto enable_if_parens_no_parser_tuples =
+      config.tuples_require_parens && !config.use_parser_tuples ?
+      [](NodeRange&) { return true; } :
+      [](NodeRange&) { return false; };
+    // Double caution: you have to use *enable_if_parens_no_parser_tuples (with
+    // the dereference!) or the pass will capture a reference to this function
+    // pointer, which is basically just the address of the above var on the
+    // stack. That will, of course, cause undefined behavior that does not spark
+    // joy.
+
     return {
       "expressions",
       wf_pass_expressions,
@@ -132,18 +160,22 @@ namespace
 
         // --- tuples only:
 
+        // an append operation looks like append(...); we rely on tuple parsing
+        // to get the (...) part right, but we can immediately recognize
+        // append with a () next to it.
+        // Marking the (...) under Expression ensures normal parsing happens to
+        // it later.
+        In(Expression) * T(Append)[Append] * T(Paren)[Paren] >>
+          [](Match& _) {
+            return Expression << (_(Append) << (Expression << _(Paren)));
+          },
+
         // (...), a group with parens, might be a tuple.
         // It depends on how many commas there are in it.
         // We need this if tuples require parens, and we are not handling tuples
         // in the parser.
-        (In(Expression) *
-         (T(Paren)[Paren] << T(Group)[Group]))([config](auto&&) {
-          return !config.use_parser_tuples &&
-            config.tuples_require_parens; // restrict this rule to only if
-                                          // tuples require parens, otherwise we
-                                          // can think of a tuple as an infix
-                                          // operator with a low precedence.
-        }) >>
+        (In(Expression) * (T(Paren)[Paren] << T(Group)[Group]))(
+          *enable_if_parens_no_parser_tuples) >>
           [](Match& _) {
             return Expression << (TupleCandidate ^ _(Paren)) << *_[Group];
           },
@@ -197,6 +229,11 @@ namespace
           [](Match& _) { return Expression << _(Expression); },
 
         // errors
+
+        // a tuple append that was not caught by append(...) is invalid.
+        // We can tell because a stray append will not have an expression in it.
+        T(Append)[Append] << --T(Expression) >>
+          [](Match& _) { return err(_(Append), "Invalid append"); },
 
         // because rules are matched in order, this catches any invalid
         // Paren nodes, usually ones that had no children (because the rule
@@ -266,10 +303,10 @@ namespace
 
   PassDef tuple_literals(const Config& config)
   {
-    const auto enable_if_no_parens = [config](auto&&) {
-      return config.enable_tuples && !config.tuples_require_parens &&
-        !config.use_parser_tuples;
-    };
+    const auto enable_if_no_parens = config.enable_tuples &&
+        !config.tuples_require_parens && !config.use_parser_tuples ?
+      [](NodeRange&) { return true; } :
+      [](NodeRange&) { return false; };
     return {
       "tuple_literals",
       wf_pass_tuple_literals,
@@ -342,25 +379,26 @@ namespace
         // x = , + ,; // semantically bad but syntactically ok
         // ```
         // etc...
-        T(Expression) << (T(Comma)[Comma] * End)(enable_if_no_parens) >>
+        T(Expression) << (T(Comma)[Comma] * End)(*enable_if_no_parens) >>
           [](Match& _) { return Expression << (Tuple ^ _(Comma)); },
         // 2 expressions comma-separated makes a tuple
         In(Expression) *
             (T(Expression)[Lhs] * T(Comma) *
-             T(Expression)[Rhs])(enable_if_no_parens) >>
+             T(Expression)[Rhs])(*enable_if_no_parens) >>
           [](Match& _) { return (Tuple << _(Lhs) << _(Rhs)); },
         // a tuple, a comma, and an expression makes a longer tuple
         In(Expression) *
             (T(Tuple)[Lhs] * T(Comma) *
-             T(Expression)[Rhs])(enable_if_no_parens) >>
+             T(Expression)[Rhs])(*enable_if_no_parens) >>
           [](Match& _) { return _(Lhs) << _(Rhs); },
         // the one-element tuple uses , as a postfix operator
         In(Expression) *
-            (T(Expression)[Expression] * T(Comma) * End)(enable_if_no_parens) >>
+            (T(Expression)[Expression] * T(Comma) *
+             End)(*enable_if_no_parens) >>
           [](Match& _) { return Tuple << _(Expression); },
         // one trailing comma at the end of a tuple is allowed (but not more)
         T(Expression) << (T(Tuple)[Tuple] * T(Comma) * End)(
-          enable_if_no_parens) >>
+          *enable_if_no_parens) >>
           [](Match& _) { return Expression << _(Tuple); },
 
         // --- if the parser is trying to read tuples directly, extract them
@@ -418,6 +456,23 @@ namespace
       }};
   }
 
+  PassDef append_post()
+  {
+    return {
+      "append_post",
+      wf_pass_append_post,
+      dir::topdown | dir::once,
+      {
+        T(Append)[Append] << (T(Expression) << --T(Tuple)) >>
+          [](Match& _) { return err(_(Append), "Invalid use of append"); },
+
+        T(Append)
+            << (T(Expression)
+                << (T(Tuple) << (T(Expression)++[Expression] * End))) >>
+          [](Match& _) { return Append << _[Expression]; },
+      }};
+  }
+
   PassDef check_refs()
   {
     return {
@@ -454,6 +509,7 @@ namespace infix
         tuple_literals(config),
         tuple_literals_orphans(),
         trim(),
+        append_post(),
         check_refs(),
       },
       parser(config.use_parser_tuples),

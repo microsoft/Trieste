@@ -1,5 +1,6 @@
 #include "infix.h"
 #include "internal.h"
+#include "trieste/token.h"
 
 namespace infix
 {
@@ -23,7 +24,28 @@ namespace infix
           [use_parser_tuples](auto& m) {
             if (use_parser_tuples)
             {
-              m.seq(ParserTuple);
+              // Point of care: it only makes sense to .seq a ParserTuple inside
+              // a Paren. If we just blindly .seq here, then it is easy for even
+              // slightly strange inputs to cause a WF violation, because a
+              // group turned into a ParserTuple unexpectedly. So, we have to
+              // directly forbid bad-looking commas in the parser if we're
+              // trying to capture tuples (or other tuple like things) directly.
+              if (m.in(Paren) || m.group_in(Paren) || m.group_in(ParserTuple))
+              {
+                // note: group_in is necessary because we will initially
+                // be in a state like (Paren ...) [groups are lazy, added, so
+                // just a comma in a Paren hits this case], at which point .add
+                // might change us to (Paren (Group ...)). So, we are either
+                // directly in a Paren, or we are in a Group in a Paren. If we
+                // already did .seq(ParserTuple) once, we might be in a (Paren
+                // (ParserTuple (Group ...))). We check for all 3 conditions
+                // before seq-ing, otherwise this is an error.
+                m.seq(ParserTuple);
+              }
+              else
+              {
+                m.error("Commas outside parens are illegal");
+              }
             }
             else
             {
@@ -69,6 +91,9 @@ namespace infix
 
         // Print.
         R"(print\b)" >> [](auto& m) { m.add(Print); },
+
+        // Append.
+        R"(append\b)" >> [](auto& m) { m.add(Append); },
 
         // Identifier.
         R"([_[:alpha:]][_[:alnum:]]*\b)" >> [](auto& m) { m.add(Ident); },

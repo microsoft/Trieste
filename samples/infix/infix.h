@@ -62,7 +62,7 @@ namespace infix
 
   inline const auto Tuple = TokenDef("infix-tuple");
   inline const auto TupleIdx = TokenDef("infix-tupleidx");
-  inline const auto TupleAppend = TokenDef("infix-tupleappend");
+  inline const auto Append = TokenDef("infix-append");
   inline const auto Add = TokenDef("infix-add");
   inline const auto Subtract = TokenDef("infix-subtract");
   inline const auto Multiply = TokenDef("infix-multiply");
@@ -88,10 +88,10 @@ namespace infix
     | (Multiply <<= Expression * Expression)
     | (Divide <<= Expression * Expression)
     // --- tuples extension ---
-    | (Expression <<= (Tuple | TupleIdx | TupleAppend | Add | Subtract | Multiply | Divide | Ref | Float | Int))
+    | (Expression <<= (Tuple | TupleIdx | Append | Add | Subtract | Multiply | Divide | Ref | Float | Int))
     | (Tuple <<= Expression++)
     | (TupleIdx <<= Expression * Expression)
-    | (TupleAppend <<= Expression * Expression)
+    | (Append <<= Expression++)
     // --- functions extension --- (TODO)
     // | (Calculation <<= (Assign | Output | FnDef)++)
     // | (FnDef <<= Ident * FnArguments * FnBody)

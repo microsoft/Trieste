@@ -88,6 +88,9 @@ Ideas:
 
 ## Tuples in Infix
 
+Notes:
+- it's possible to get lost combining tuple and call parsing
+
 Ideas:
 - `(a, b, ...)` (note: do in parser, or have a `,` token and resolve with a pass)
 - `a, b, ...` (note: interpret `,` as a binop? trouble with distinguishing tuples of tuples vs wider tuples?)

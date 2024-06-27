@@ -1,6 +1,7 @@
 #include "infix.h"
 #include "internal.h"
 #include "trieste/pass.h"
+#include "trieste/token.h"
 
 namespace
 {
@@ -153,15 +154,26 @@ namespace
         T(Expression) << Number[Rhs] >>
           [](Match& _) { return Literal << _(Rhs); },
 
-        // --- tuples extension
+        // --- tuples extension ---
 
         // a tuple of only literals is a literal; strip the expression prefix
-        T(Expression) << T(Tuple) << (T(Literal)++[Literal] * End) >>
-          [](Match& _) { return Literal << Tuple << _[Literal]; },
+        T(Expression) << (T(Tuple)[Tuple] << (T(Literal)++ * End)) >>
+          [](Match& _) {
+            return Literal << _(Tuple);
+          },
 
-        // two tuple literals appended is a bigger tuple literal
-        T(TupleAppend) << ((T(Literal) << T(Tuple)[Lhs]) * (T(Literal) << T(Tuple)[Rhs])) >>
-          [](Match& _) { return Literal << *_[Lhs] << *_[Rhs]; },
+        // 0 or more tuples appended make an aggregate tuple
+        T(Expression) << (T(Append) << ((T(Literal) << T(Tuple))++[Literal] * End)) >>
+          [](Match& _) {
+            Node combined_tuple = Tuple;
+            for(Node child : _[Literal]) {
+              Node sub_tuple = child->front();
+              for(Node elem : *sub_tuple) {
+                combined_tuple->push_back(elem);
+              }
+            }
+            return Literal << combined_tuple;
+          },
 
         // given a literal tuple and a literal idx, pick out the relevant tuple part or leave an error
         T(TupleIdx) << ((T(Literal) << T(Tuple)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
@@ -227,8 +239,6 @@ namespace
       dir::topdown,
       {
         In(Calculation) * T(Assign) >> [](Match&) -> Node { return {}; },
-
-        // T(Literal) << Any[Rhs] >> [](Match& _) { return _(Rhs); },
       
         T(String, R"("[^"]*")")[String] >> [](Match& _) {
           Location loc = _(String)->location();

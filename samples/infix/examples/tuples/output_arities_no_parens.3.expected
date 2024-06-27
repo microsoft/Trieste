@@ -1,0 +1,67 @@
+//! --enable-tuples calculate
+(top
+  {}
+  (infix-calculation
+    {}
+    (infix-output
+      (infix-string 7:arity 0)
+      (infix-literal
+        (infix-tuple)))
+    (infix-output
+      (infix-string 7:arity 1)
+      (infix-literal
+        (infix-tuple
+          (infix-literal
+            (infix-int 1:1)))))
+    (infix-output
+      (infix-string 10:arity 1 op)
+      (infix-literal
+        (infix-tuple
+          (infix-literal
+            (infix-int 1:1)))))
+    (infix-output
+      (infix-string 7:arity 2)
+      (infix-literal
+        (infix-tuple
+          (infix-literal
+            (infix-int 1:1))
+          (infix-literal
+            (infix-int 1:2)))))
+    (infix-output
+      (infix-string 16:arity 2 trailing)
+      (infix-literal
+        (infix-tuple
+          (infix-literal
+            (infix-int 1:1))
+          (infix-literal
+            (infix-int 1:2)))))
+    (infix-output
+      (infix-string 7:arity 3)
+      (infix-literal
+        (infix-tuple
+          (infix-literal
+            (infix-int 1:1))
+          (infix-literal
+            (infix-int 1:2))
+          (infix-literal
+            (infix-int 1:3)))))
+    (infix-output
+      (infix-string 16:arity 3 trailing)
+      (infix-literal
+        (infix-tuple
+          (infix-literal
+            (infix-int 1:1))
+          (infix-literal
+            (infix-int 1:2))
+          (infix-literal
+            (infix-int 1:3)))))
+    (infix-output
+      (infix-string 10:arity 3 op)
+      (infix-literal
+        (infix-tuple
+          (infix-literal
+            (infix-int 1:1))
+          (infix-literal
+            (infix-int 1:2))
+          (infix-literal
+            (infix-int 1:2)))))))

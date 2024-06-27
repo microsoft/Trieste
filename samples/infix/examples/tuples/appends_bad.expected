@@ -1,0 +1,43 @@
+//! --expect-fail --enable-tuples --tuples-require-parens calculate
+(top
+  {}
+  (infix-calculation
+    {}
+    (infix-output
+      (infix-string 9:"no args")
+      (infix-expression
+        (error
+          (errormsg 14:Invalid append)
+          (errorast
+            (infix-append)))))
+    (infix-output
+      (infix-string 11:"duplicate")
+      (infix-expression
+        (error
+          (errormsg 14:Invalid append)
+          (errorast
+            (infix-append)))
+        (infix-expression
+          (infix-append
+            (infix-expression
+              (infix-expression
+                (infix-tuple-candidate)
+                (infix-expression
+                  (infix-tuple-candidate)
+                  (infix-expression
+                    (infix-int 1:1))
+                  (infix-comma)
+                  (infix-expression
+                    (infix-int 1:2)))))))))
+    (infix-output
+      (infix-string 12:"arithmetic")
+      (infix-expression
+        (error
+          (errormsg 14:Invalid append)
+          (errorast
+            (infix-append)))
+        (infix-add)
+        (error
+          (errormsg 14:Invalid append)
+          (errorast
+            (infix-append)))))))
