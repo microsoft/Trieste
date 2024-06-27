@@ -52,10 +52,10 @@ namespace shrubbery
     // A stack of established indentation levels
     auto indent = std::make_shared<std::vector<Indent>>();
 
-    // True iff the next group should establish a new indentation level
+    // True iff the next term should establish a new indentation level
     auto expect_indent = std::make_shared<bool>(true);
 
-    // True iff the next group starts a new line
+    // True iff the next term starts a new line
     auto newline = std::make_shared<bool>(false);
 
     // Check that the current indentation is larger than the previous
@@ -93,7 +93,7 @@ namespace shrubbery
     };
 
     // Figure out which indentation level we are currently at (and ensure that it is valid)
-    auto match_indentation = [pop_indentation, newline, expect_indent, indent](auto& m) {
+    auto match_indentation = [pop_indentation, newline, indent](auto& m) {
         if (!*newline) {
             return true;
         }
@@ -196,7 +196,7 @@ namespace shrubbery
     };
 
     // Close a pair of parentheses, brackets or braces
-    auto close_pair = [close_all, match_indentation, pop_indentation, newline](auto &m) {
+    auto close_pair = [close_all, match_indentation, pop_indentation](auto &m) {
         pop_indentation();
         if (match_indentation(m)) {
             // Closing parens/brackets/braces close all currently open blocks or
