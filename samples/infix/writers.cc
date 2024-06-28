@@ -306,6 +306,72 @@ namespace
       return false;
     }
 
+    if (node == Tuple)
+    {
+      os << "(";
+      bool is_init = true;
+      for (auto child : *node)
+      {
+        if (is_init)
+        {
+          is_init = false;
+        }
+        else
+        {
+          os << ", ";
+        }
+        if (write_infix(os, child))
+        {
+          return true;
+        }
+      }
+      os << ",)";
+
+      return false;
+    }
+
+    if (node == Append)
+    {
+      // very similar to tuples... could deduplicate at some point
+      os << "append(";
+      bool is_init = true;
+      for (auto child : *node)
+      {
+        if (is_init)
+        {
+          is_init = false;
+        }
+        else
+        {
+          os << ", ";
+        }
+        if (write_infix(os, child))
+        {
+          return true;
+        }
+      }
+      os << ",)";
+
+      return false;
+    }
+
+    if (node == TupleIdx)
+    {
+      os << "(";
+      if (write_infix(os, node->front()))
+      {
+        return true;
+      }
+      os << ").(";
+      if (write_infix(os, node->back()))
+      {
+        return true;
+      }
+      os << ")";
+
+      return false;
+    }
+
     if (node == Assign)
     {
       if (write_infix(os, node->front()))

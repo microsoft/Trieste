@@ -15,7 +15,7 @@ namespace infix
   inline const auto wf_parse_tokens =
     Int | Float | String | Paren | Print | Ident | Add | Subtract | Divide | Multiply
     // --- tuples extension ---
-    | Comma | Append
+    | Comma | Append | TupleIdx
     ;
   // clang-format on
 

@@ -1,5 +1,6 @@
 #include "infix.h"
 #include "internal.h"
+#include "trieste/ast.h"
 #include "trieste/pass.h"
 #include "trieste/rewrite.h"
 #include "trieste/source.h"
@@ -44,8 +45,15 @@ namespace
   // clang-format on
 
   // clang-format off
-  inline const auto wf_pass_multiply_divide =
+  inline const auto wf_pass_tuple_idx =
     wf_pass_expressions
+    | (TupleIdx <<= Expression * Expression)
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline const auto wf_pass_multiply_divide =
+    wf_pass_tuple_idx
     | (Multiply <<= Expression * Expression)
     | (Divide <<= Expression * Expression)
     ;
@@ -262,6 +270,28 @@ namespace
 
         T(Group)[Group] >>
           [](Match& _) { return err(_[Group], "syntax error"); },
+      }};
+  }
+
+  PassDef tuple_idx(const Config& config)
+  {
+    auto enable_if_no_tuples = config.enable_tuples ?
+      [](NodeRange&) { return false; } :
+      [](NodeRange&) { return true; };
+
+    return {
+      "tuple_idx",
+      wf_pass_tuple_idx,
+      dir::topdown,
+      {
+        T(TupleIdx)[Op](*enable_if_no_tuples) >>
+          [](Match& _) { return err(_(Op), "Tuples are disabled."); },
+
+        In(Expression) *
+            (T(Expression)[Lhs] * T(TupleIdx)[Op] * T(Expression)[Rhs]) >>
+          [](Match& _) { return Expression << (_(Op) << _(Lhs) << (_(Rhs))); },
+        (T(TupleIdx))[Op] << End >>
+          [](Match& _) { return err(_(Op), "No arguments"); },
       }};
   }
 
@@ -504,6 +534,7 @@ namespace infix
       "infix",
       {
         expressions(config),
+        tuple_idx(config),
         multiply_divide(),
         add_subtract(),
         tuple_literals(config),

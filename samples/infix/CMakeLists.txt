@@ -24,6 +24,11 @@ add_test(NAME invalid_input COMMAND infix ./infix)
 set_property(TEST invalid_input PROPERTY WILL_FAIL On)
 add_test(NAME infix_test_examples COMMAND infix_test dir ${CMAKE_CURRENT_SOURCE_DIR}/examples)
 
+# depth 1 means no nested operators; op count 1 means one single assignment
+# ... this is about what might be tolerable in CI.
+# Run it yourself with bigger numbers if you want; some slight increases might be useful.
+add_test(NAME infix_test_bfs COMMAND infix_test bfs_test --op-count 1 --depth 1)
+
 # fuzz all configs
 add_test(
   NAME infix_test_fuzz_reader_base
@@ -57,6 +62,10 @@ add_executable(infix
   writers.cc
   infix.cc
   parse.cc
+)
+
+add_executable(bfs_test
+  bfs_test.cc
 )
 
 target_link_libraries(infix
