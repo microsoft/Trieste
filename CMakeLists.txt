@@ -38,7 +38,11 @@ FetchContent_Declare(
   snmalloc
   GIT_REPOSITORY https://github.com/microsoft/snmalloc
   GIT_TAG 835ab5186325736ff5aa8ef53728970d1d74c3bc
-  GIT_SHALLOW TRUE
+  # per https://gitlab.kitware.com/cmake/cmake/-/issues/17770, do not use GIT_SHALLOW here
+  # or it will silently break new builds days later, once the commit hash above no longer
+  # matches a named branch, like main.
+  # Tracking a named branch with GIT_SHALLOW enabled is ok, however.
+  # GIT_SHALLOW TRUE
 )
 
 FetchContent_MakeAvailable(snmalloc)
