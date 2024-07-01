@@ -5,6 +5,7 @@
 #include <optional>
 #include <sstream>
 #include <stack>
+#include <string_view>
 #include <utility>
 #include <variant>
 
@@ -165,15 +166,16 @@ namespace bfs
 
   struct CatString
   {
-    using Enum = std::variant<std::string, std::pair<CatString, CatString>>;
+    using Enum = std::variant<
+      std::string_view,
+      std::shared_ptr<std::string>,
+      std::shared_ptr<std::pair<CatString, CatString>>>;
+    Enum self;
 
-    std::shared_ptr<Enum> self;
-
-    CatString(std::string str) : self{std::make_shared<Enum>(str)} {}
-
+    CatString(std::string_view str) : self{str} {}
+    CatString(std::string str) : self{std::make_shared<std::string>(str)} {}
     CatString(CatString lhs, CatString rhs)
-    : self{std::make_shared<Enum>(
-        std::in_place_type_t<std::pair<CatString, CatString>>{}, lhs, rhs)}
+    : self{std::make_shared<std::pair<CatString, CatString>>(lhs, rhs)}
     {}
 
     inline CatString concat(CatString rhs) const
@@ -204,12 +206,13 @@ namespace bfs
 
       std::visit(
         overloaded{
-          [&](const std::string& str) { out << str; },
-          [&](const std::pair<CatString, CatString>& str) {
-            stack.push(str.first);
-            stack.push(str.second);
+          [&](std::string_view str) { out << str; },
+          [&](const std::shared_ptr<std::string>& str) { out << *str; },
+          [&](const std::shared_ptr<std::pair<CatString, CatString>>& str) {
+            stack.push(str->second);
+            stack.push(str->first);
           }},
-        *str.get().self);
+        str.get().self);
     }
 
     return out;

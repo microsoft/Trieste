@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <sstream>
 #include <string>
 
@@ -64,6 +65,7 @@ namespace
 
   namespace progspace
   {
+    using namespace std::string_view_literals;
     using namespace infix;
 
     using R = bfs::Result<trieste::Node>;
@@ -114,8 +116,9 @@ namespace
                     R(Expression << (Tuple << lhs->clone() << rhs->clone())))
                   .concat(
                     R(Expression << (Append << lhs->clone() << rhs->clone())))
-                  .concat(R(
-                    Expression << (TupleIdx << lhs->clone() << rhs->clone())));
+                  .concat(
+                    R(Expression
+                      << ((TupleIdx ^ ".") << lhs->clone() << rhs->clone())));
               });
             });
         }));
@@ -150,6 +153,257 @@ namespace
       }
       return assigns.map<trieste::Node>([](auto pair) { return pair.first; });
     }
+
+    struct CSData
+    {
+      bfs::CatString str;
+      bool tuple_parens_omitted;
+
+      CSData(std::string_view str) : CSData{bfs::CatString(str)} {}
+
+      CSData(std::string str) : CSData{bfs::CatString(str)} {}
+
+      CSData(bfs::CatString str) : CSData{str, false} {}
+
+      CSData(bfs::CatString str, bool tuple_parens_omitted)
+      : str{str}, tuple_parens_omitted{tuple_parens_omitted}
+      {}
+
+      CSData parens_omitted() const
+      {
+        return {str, true};
+      }
+
+      CSData concat(CSData other) const
+      {
+        return {
+          str.concat(other.str),
+          tuple_parens_omitted || other.tuple_parens_omitted,
+        };
+      }
+    };
+
+    using CS = bfs::Result<CSData>;
+
+    inline CS cat_cs(CS lhs, CS rhs)
+    {
+      return lhs.flat_map<CSData>([=](auto prefix) {
+        return rhs.map<CSData>(
+          [=](auto suffix) { return prefix.concat(suffix); });
+      });
+    }
+
+    inline CS cat_css(std::initializer_list<CS> css)
+    {
+      CS result = CS{""sv};
+      for (auto elem : css)
+      {
+        result = cat_cs(result, elem);
+      }
+      return result;
+    }
+
+    struct GroupPrecedence
+    {
+      int curr_precedence = -4;
+      bool allow_assoc = false;
+
+      GroupPrecedence with_precedence(int precedence) const
+      {
+        return {precedence, allow_assoc};
+      }
+
+      GroupPrecedence with_assoc(bool allow_assoc_) const
+      {
+        return {curr_precedence, allow_assoc_};
+      }
+
+      template<typename Fn>
+      CS wrap_group(int precedence, Fn fn) const
+      {
+        auto grouped = cat_css({
+          CS{"("sv},
+          fn(GroupPrecedence{}),
+          CS{")"sv},
+        });
+
+        if (
+          (precedence >= curr_precedence && allow_assoc) ||
+          (precedence > curr_precedence))
+        {
+          return fn(with_precedence(precedence).with_assoc(false))
+            .concat(grouped);
+        }
+        else
+        {
+          return grouped;
+        }
+      }
+    };
+
+    CS expression_strings(GroupPrecedence precedence, Node expression)
+    {
+      assert(expression == Expression);
+      assert(expression->size() == 1);
+      expression = expression->front();
+
+      if (expression == Ref)
+      {
+        assert(expression->size() == 1);
+        expression = expression->front();
+      }
+
+      if (expression->in({Int, Float, String, Ident}))
+      {
+        return CS{std::string(expression->location().view())};
+      }
+
+      if (expression->in({TupleIdx, Multiply, Divide, Add, Subtract}))
+      {
+        assert(expression->size() == 2);
+
+        auto binop_wrap_precedence = [&](int level) {
+          return precedence.wrap_group(level, [&](GroupPrecedence precedence) {
+            return cat_css({
+              expression_strings(
+                precedence.with_assoc(true), expression->front()),
+              CS{" " + std::string(expression->location().view()) + " "},
+              expression_strings(
+                precedence.with_assoc(false), expression->back()),
+            });
+          });
+        };
+
+        if (expression == TupleIdx)
+        {
+          return binop_wrap_precedence(0);
+        }
+        else if (expression->in({Multiply, Divide}))
+        {
+          return binop_wrap_precedence(-1);
+        }
+        else if (expression->in({Add, Subtract}))
+        {
+          return binop_wrap_precedence(-2);
+        }
+        else
+        {
+          assert(false);
+        }
+      }
+
+      // code for both tuple literals and append(...)
+      auto comma_sep_children = [=](GroupPrecedence precedence) {
+        auto result = CS{""sv};
+        bool first = true;
+        for (auto child : *expression)
+        {
+          if (first)
+          {
+            first = false;
+          }
+          else
+          {
+            result = cat_cs(result, CS{", "sv});
+          }
+
+          result = cat_cs(result, expression_strings(precedence, child));
+        }
+
+        if (expression->size() < 2)
+        {
+          result = cat_cs(result, CS{","sv});
+        }
+        else
+        {
+          // optional trailing comma (except sizes 0 and 1, where it is
+          // mandatory)
+          result = result.concat([=]() { return cat_cs(result, CS{","sv}); });
+        }
+        return result;
+      };
+
+      if (expression == Tuple)
+      {
+        // track whether this tuple needs or may have parens
+        bfs::Result<bool> parens_omitted;
+        // size 0 or 1 tuples must have ()
+        if (
+          expression->size() > 1 &&
+          ((-3 >= precedence.curr_precedence && precedence.allow_assoc) ||
+           (-3 > precedence.curr_precedence)))
+        {
+          parens_omitted = bfs::Result(true).concat(false);
+        }
+        else
+        {
+          parens_omitted = false;
+        }
+        return parens_omitted.flat_map<CSData>([=](bool parens_omitted) {
+          auto result = comma_sep_children(
+            precedence.with_precedence(-3).with_assoc(false));
+
+          if (parens_omitted)
+          {
+            return result.map<CSData>(
+              [](CSData result) { return result.parens_omitted(); });
+          }
+          else
+          {
+            return cat_css({
+              CS{"("sv},
+              result,
+              CS{")"sv},
+            });
+          }
+        });
+      }
+
+      if (expression == Append)
+      {
+        return cat_css({
+          CS{"append("sv},
+          comma_sep_children(precedence.with_precedence(-3).with_assoc(false)),
+          CS{")"sv},
+        });
+      }
+
+      return CS{"<unknown: " + expression->str() + ">"};
+    }
+
+    CS assign_strings(Node assign)
+    {
+      assert(assign == Assign);
+      assert(assign->size() == 2);
+      assert(assign->front() == Ident);
+      assert(assign->back() == Expression);
+
+      return cat_css({
+        CS{std::string(assign->front()->location().view())},
+        CS{" = "sv},
+        expression_strings(GroupPrecedence{}, assign->back()),
+        CS{";"sv},
+      });
+    }
+
+    CS calculation_strings(Node calculation)
+    {
+      assert(calculation == Calculation);
+
+      auto result = CS{""sv};
+      for (Node child : *calculation)
+      {
+        result = cat_cs(result, assign_strings(child));
+      }
+      return result;
+    }
+  }
+
+  inline bool contains_tuple_ops(trieste::Node node)
+  {
+    return node == infix::Tuple || node == infix::Append ||
+      node == infix::TupleIdx ||
+      std::any_of(node->begin(), node->end(), contains_tuple_ops);
   }
 }
 
@@ -183,8 +437,10 @@ int main(int argc, char** argv)
   // use breadth-first program generation to test a comprehensive collection of
   // small programs
   auto bfs_test = app.add_subcommand("bfs_test");
+  infix::Config bfs_test_config;
   int bfs_op_count = 1;
   int bfs_depth = 0;
+  bfs_test_config.install_cli(bfs_test);
   bfs_test->add_option(
     "--op-count",
     bfs_op_count,
@@ -448,6 +704,7 @@ int main(int argc, char** argv)
   }
   else if (*bfs_test)
   {
+    bfs_test_config.sanity();
     std::cout << "Testing BFS-generated programs, up to depth " << bfs_depth
               << "." << std::endl;
     int ok_count = 0;
@@ -457,9 +714,39 @@ int main(int argc, char** argv)
       std::cout << "Exploring depth " << curr_bfs_depth << "..." << std::endl;
       auto valid_calcs =
         progspace::valid_calculation(bfs_op_count, curr_bfs_depth);
+      auto valid_calc_str_pairs =
+        valid_calcs.flat_map<std::pair<trieste::Node, progspace::CSData>>(
+          [](trieste::Node calculation) {
+            return progspace::calculation_strings(calculation)
+              .concat([=]() {
+                // also check that the "real" writer agrees with us; no desyncs!
+                auto synth_dest = trieste::DestinationDef::synthetic();
+                auto result = (trieste::Top << calculation) >>
+                  infix::writer("infix").destination(synth_dest);
+                if (!result.ok)
+                {
+                  std::cout
+                    << "Something went wrong when trying to render this AST:"
+                    << std::endl
+                    << calculation << std::endl;
+                  std::exit(1);
+                }
 
-      for (auto calculation : valid_calcs)
+                auto files = synth_dest->files();
+                return progspace::CSData{
+                  files.at("./infix"),
+                  false, // always false for default writer
+                };
+              })
+              .map<std::pair<trieste::Node, progspace::CSData>>(
+                [=](progspace::CSData csdata) {
+                  return std::pair{calculation->clone(), csdata};
+                });
+          });
+
+      for (auto [calculation, csdata] : valid_calc_str_pairs)
       {
+        bool prog_contains_tuple_ops = contains_tuple_ops(calculation);
         auto prog = trieste::Top << calculation;
         // this will fix up symbol tables for our generated tree (or the sumbol
         // tables will be empty and our tests will fail!)
@@ -472,46 +759,54 @@ int main(int argc, char** argv)
           return 1;
         }
 
-        auto synth_dest = trieste::DestinationDef::synthetic();
-
-        {
-          // TODO: this test is simple to write, but ideally I'd want a
-          // generator that adds little anomalies, like
-          //       optional commas, optional parens, etc. That will really
-          //       stress the parser. Could re-use the bfs infra to do that,
-          //       though it recreates the writer, but also the writer is quite
-          //       simple...
-          auto result = prog >> infix::writer("infix").destination(synth_dest);
-          if (!result.ok)
-          {
-            std::cout << "Something went wrong when trying to render this AST:"
-                      << std::endl
-                      << prog << std::endl;
-            return 1;
-          }
-        }
-
-        auto files = synth_dest->files();
-        auto rendered_str = files.at("./infix");
-
-        infix::Config config;
-        config.enable_tuples = true;
-        config.sanity();
-        auto reader =
-          infix::reader(config).synthetic(rendered_str).wf_check_enabled(true);
+        std::string rendered_str = csdata.str.str();
+        auto reader = infix::reader(bfs_test_config)
+                        .synthetic(rendered_str)
+                        .wf_check_enabled(true);
 
         {
           auto result = reader.read();
+
+          bool expect_failure = false;
+          if (!bfs_test_config.enable_tuples && prog_contains_tuple_ops)
+          {
+            expect_failure = true; // tuples are not allowed here
+          }
+          if (
+            bfs_test_config.tuples_require_parens &&
+            csdata.tuple_parens_omitted)
+          {
+            expect_failure = true; // omitted tuple parens must cause failure,
+                                   // or at least a mis-parse (see below)
+          }
+
           bool ok = true;
-          if (!result.ok)
+          if (!result.ok && !expect_failure)
           {
             std::cout << "Error reparsing this AST:" << std::endl
                       << prog << std::endl;
             ok = false;
           }
+          else if (result.ok && expect_failure)
+          {
+            // only report an unexpected success if the AST is somehow perfectly
+            // right. mis-parsing counts as an error when it's due to a
+            // configuration mismatch.
+            if (prog->equals(result.ast))
+            {
+              std::cout << "Should have had error reparsing this AST:"
+                        << std::endl
+                        << prog << std::endl
+                        << "Based on this string:" << std::endl
+                        << rendered_str << std::endl;
+              ok = false;
+            }
+          }
+
           auto result_str = result.ast->str();
           auto prog_str = prog->str();
-          if (result_str != prog_str)
+          // if we were expecting failure, it won't match anyhow
+          if (result_str != prog_str && !expect_failure)
           {
             std::cout << "Didn't reparse the same AST." << std::endl
                       << "What we generated:" << std::endl
@@ -534,6 +829,10 @@ int main(int argc, char** argv)
         ++ok_count;
         auto print_count = [&]() {
           std::cout << ok_count << " programs ok..." << std::endl;
+          // << "This one was:" << std::endl
+          // << prog << std::endl
+          // << "Rendered as:" << std::endl
+          // << rendered_str << std::endl;
         };
         if (ok_count > 1000)
         {

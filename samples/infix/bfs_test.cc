@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+using namespace std::string_view_literals;
+
 namespace
 {
   using R = bfs::Result<bfs::CatString>;
@@ -10,7 +12,7 @@ namespace
   {
     if (count == 0)
     {
-      return {R{}, R{std::string("")}};
+      return {R{}, R{""sv}};
     }
     else
     {
@@ -35,11 +37,7 @@ namespace
 // FIXME: this isn't really a test, just a quick check things make sense
 int main()
 {
-  R combinations = list_of_up_to(
-    []() {
-      return R(std::string("^")).concat([]() { return R(std::string("!")); });
-    },
-    3);
+  R combinations = list_of_up_to([]() { return R("^"sv).concat(R("!"sv)); }, 3);
 
   for (auto elem : combinations)
   {
