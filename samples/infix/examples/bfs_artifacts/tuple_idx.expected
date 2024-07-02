@@ -1,0 +1,31 @@
+//! --enable-tuples --tuples-require-parens parse_only
+//! --enable-tuples --tuples-require-parens --use-parser-tuples parse_only
+//! --enable-tuples parse_only
+(top
+  {}
+  (infix-calculation
+    {
+      bar = infix-assign
+      foo = infix-assign}
+    (infix-assign
+      (infix-ident 3:foo)
+      (infix-expression
+        (infix-tuple
+          (infix-expression
+            (infix-tuple
+              (infix-expression
+                (infix-int 1:1)))))))
+    (infix-assign
+      (infix-ident 3:bar)
+      (infix-expression
+        (infix-tupleidx
+          (infix-expression
+            (infix-tupleidx
+              (infix-expression
+                (infix-int 1:1))
+              (infix-expression
+                (infix-int 1:1))))
+          (infix-expression
+            (infix-tuple
+              (infix-expression
+                (infix-int 1:1)))))))))

@@ -1,0 +1,4 @@
+tpl1 = (1,2,3);
+print "1" tpl1.0;
+print "2" (42, tpl1, 42).1.(1); // () to avoid writing a float
+print "3" tpl1.(tpl1.1);

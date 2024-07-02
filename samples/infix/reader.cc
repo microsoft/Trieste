@@ -20,7 +20,8 @@ namespace
 
   // clang-format off
   inline const auto wf_expressions_tokens =
-    (wf_parse_tokens - (String | Paren | Print))
+    (wf_parse_tokens - (String | Paren | Print | Ident))
+    | Ref
     | Expression
     // --- tuples extension ---
     | TupleCandidate
@@ -35,6 +36,7 @@ namespace
     // [Ident] here indicates that the Ident node is a symbol that should
     // be stored in the symbol table  
     | (Assign <<= Ident * Expression)[Ident]
+    | (Ref <<= Ident) // not checked yet, but syntactically we're sure it's an identifier
     | (Output <<= String * Expression)
     // [1] here indicates that there should be at least one token
     | (Expression <<= wf_expressions_tokens++[1])
@@ -236,6 +238,11 @@ namespace
         In(Expression) * T(Int, Float)[Expression] * (--End) >>
           [](Match& _) { return Expression << _(Expression); },
 
+        // Do the same thing as above for identifiers, but it's easier because
+        // the Ref marker simplifies telling before and after states apart.
+        In(Expression) * T(Ident)[Ident] >>
+          [](Match& _) { return Expression << (Ref << _(Ident)); },
+
         // errors
 
         // a tuple append that was not caught by append(...) is invalid.
@@ -282,15 +289,16 @@ namespace
     return {
       "tuple_idx",
       wf_pass_tuple_idx,
-      dir::topdown,
+      dir::bottomup,
       {
         T(TupleIdx)[Op](*enable_if_no_tuples) >>
           [](Match& _) { return err(_(Op), "Tuples are disabled."); },
 
         In(Expression) *
-            (T(Expression)[Lhs] * T(TupleIdx)[Op] * T(Expression)[Rhs]) >>
-          [](Match& _) { return Expression << (_(Op) << _(Lhs) << (_(Rhs))); },
-        (T(TupleIdx))[Op] << End >>
+            (T(Expression)[Lhs] * (T(TupleIdx)[Op] << End) *
+             T(Expression)[Rhs]) >>
+          [](Match& _) { return Expression << (_(Op) << _(Lhs) << _(Rhs)); },
+        T(TupleIdx)[Op] << End >>
           [](Match& _) { return err(_(Op), "No arguments"); },
       }};
   }
@@ -309,7 +317,7 @@ namespace
         In(Expression) *
             (T(Expression)[Lhs] * (T(Multiply, Divide))[Op] *
              T(Expression)[Rhs]) >>
-          [](Match& _) { return Expression << (_(Op) << _(Lhs) << (_(Rhs))); },
+          [](Match& _) { return Expression << (_(Op) << _(Lhs) << _(Rhs)); },
         (T(Multiply, Divide))[Op] << End >>
           [](Match& _) { return err(_(Op), "No arguments"); },
       }};
@@ -510,7 +518,7 @@ namespace
       wf_pass_check_refs,
       dir::topdown,
       {
-        In(Expression) * T(Ident)[Id] >>
+        T(Expression) << (T(Ref) << T(Ident)[Id]) >>
           [](Match& _) {
             auto id = _(Id); // the Node object for the identifier
             auto defs = id->lookup(); // a list of matching symbols
@@ -520,7 +528,9 @@ namespace
               return err(id, "undefined");
             }
 
-            return Ref << id;
+            // we're just checking refs; we only make a change if we find an
+            // error
+            return NoChange ^ "";
           },
       }};
   }

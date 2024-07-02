@@ -21,7 +21,7 @@ namespace progspace
       return R(Expression << (Int ^ "1"))
         .concat([env]() {
           R ref{};
-          for (const auto& name : env)
+          for (auto name : env)
           {
             ref = ref.concat(
               [name]() { return R(Expression << (Ref << (Ident ^ name))); });

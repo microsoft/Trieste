@@ -52,67 +52,96 @@ int main(int argc, char** argv)
 
   using namespace infix;
 
-  std::vector<StringTest> string_tests = {
+  std::vector<StringTest> string_tests =
     {
-      .input = Calculation
-        << (Assign << (Ident ^ "foo")
-                   << (Expression
-                       << ((Add ^ "+")
-                           << (Expression << (Int ^ "0"))
-                           << (Expression
-                               << ((Add ^ "+")
-                                   << (Expression << (Int ^ "1"))
-                                   << (Expression << (Int ^ "2"))))))),
-      .expected =
-        {
-          // {
-          //   .tuple_parens_omitted = false,
-          //   .str = "foo = 0 + 1 + 2;",
-          // },
+      {
+        .input = Calculation
+          << (Assign << (Ident ^ "foo")
+                     << (Expression
+                         << ((Add ^ "+")
+                             << (Expression << (Int ^ "0"))
+                             << (Expression
+                                 << ((Add ^ "+")
+                                     << (Expression << (Int ^ "1"))
+                                     << (Expression << (Int ^ "2"))))))),
+        .expected =
           {
-            .tuple_parens_omitted = false,
-            .str = "foo = 0 + (1 + 2);",
+            // {
+            //   .tuple_parens_omitted = false,
+            //   .str = "foo = 0 + 1 + 2;",
+            // },
+            {
+              .tuple_parens_omitted = false,
+              .str = "foo = 0 + (1 + 2);",
+            },
+            // {
+            //   .tuple_parens_omitted = false,
+            //   .str = "foo = (0 + 1 + 2);",
+            // },
+            {
+              .tuple_parens_omitted = false,
+              .str = "foo = (0 + (1 + 2));",
+            },
           },
-          // {
-          //   .tuple_parens_omitted = false,
-          //   .str = "foo = (0 + 1 + 2);",
-          // },
+      },
+      {
+        .input = Calculation
+          << (Assign << (Ident ^ "foo")
+                     << (Expression
+                         << ((Add ^ "+")
+                             << (Expression
+                                 << ((Add ^ "+")
+                                     << (Expression << (Int ^ "0"))
+                                     << (Expression << (Int ^ "1"))))
+                             << (Expression << (Int ^ "2"))))),
+        .expected =
           {
-            .tuple_parens_omitted = false,
-            .str = "foo = (0 + (1 + 2));",
+            {
+              .tuple_parens_omitted = false,
+              .str = "foo = 0 + 1 + 2;",
+            },
+            {
+              .tuple_parens_omitted = false,
+              .str = "foo = (0 + 1) + 2;",
+            },
+            {
+              .tuple_parens_omitted = false,
+              .str = "foo = (0 + 1 + 2);",
+            },
+            {
+              .tuple_parens_omitted = false,
+              .str = "foo = ((0 + 1) + 2);",
+            },
           },
-        },
-    },
-    {
-      .input = Calculation
-        << (Assign << (Ident ^ "foo")
-                   << (Expression
-                       << ((Add ^ "+")
-                           << (Expression
-                               << ((Add ^ "+") << (Expression << (Int ^ "0"))
-                                               << (Expression << (Int ^ "1"))))
-                           << (Expression << (Int ^ "2"))))),
-      .expected =
-        {
+      },
+      {
+        .input = Calculation
+          << (Assign << (Ident ^ "foo")
+                     << (Expression
+                         << (Tuple << (Expression << (Int ^ "1"))
+                                   << (Expression << (Int ^ "2"))
+                                   << (Expression << (Int ^ "3"))))),
+        .expected =
           {
-            .tuple_parens_omitted = false,
-            .str = "foo = 0 + 1 + 2;",
+            {
+              .tuple_parens_omitted = true,
+              .str = "foo = 1, 2, 3;",
+            },
+            {
+              .tuple_parens_omitted = true,
+              .str = "foo = 1, 2, 3,;",
+            },
+            {
+              .tuple_parens_omitted = false,
+              .str = "foo = (1, 2, 3);",
+            },
+            {
+              .tuple_parens_omitted = false,
+              .str = "foo = (1, 2, 3,);",
+            },
           },
-          {
-            .tuple_parens_omitted = false,
-            .str = "foo = (0 + 1) + 2;",
-          },
-          {
-            .tuple_parens_omitted = false,
-            .str = "foo = (0 + 1 + 2);",
-          },
-          {
-            .tuple_parens_omitted = false,
-            .str = "foo = ((0 + 1) + 2);",
-          },
-        },
-    },
-  };
+      },
+    };
 
   for (const auto& test : string_tests)
   {

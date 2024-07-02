@@ -1,0 +1,19 @@
+//! --enable-tuples --tuples-require-parens calculate
+//! --enable-tuples --tuples-require-parens --use-parser-tuples calculate
+//! --enable-tuples calculate
+(top
+  {}
+  (infix-calculation
+    {}
+    (infix-output
+      (infix-string 1:1)
+      (infix-literal
+        (infix-int 1:1)))
+    (infix-output
+      (infix-string 1:2)
+      (infix-literal
+        (infix-int 1:2)))
+    (infix-output
+      (infix-string 1:3)
+      (infix-literal
+        (infix-int 1:3)))))

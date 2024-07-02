@@ -176,17 +176,22 @@ namespace
           },
 
         // given a literal tuple and a literal idx, pick out the relevant tuple part or leave an error
-        T(TupleIdx) << ((T(Literal) << T(Tuple)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+        T(Expression) << (T(TupleIdx)[TupleIdx] << (T(Literal) << T(Tuple)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
           [](Match& _) {
             Node lhs = _(Lhs);
             Node rhs = _(Rhs);
             int rhs_val = get_int(rhs);
 
-            if(rhs_val < 0 || size_t(rhs_val) > lhs->size()) {
-              return err(rhs, "Tuple index out of range");
+            if(rhs_val < 0 || size_t(rhs_val) >= lhs->size()) {
+              return err(_(TupleIdx), "Tuple index out of range");
             }
             
-            return lhs->at(rhs_val)->front(); // first child, to avoid Literal << Literal << ...
+            return lhs->at(rhs_val);
+          },
+        // if we have a tuple idx but the wrong inputs, raise an error
+        T(Expression) << (T(TupleIdx)[TupleIdx] << (T(Literal) * T(Literal))) >>
+          [](Match& _) {
+            return err(_(TupleIdx), "Invalid tuple index, or tried to index a non-tuple");
           },
 
         // errors

@@ -59,13 +59,14 @@ int main(int argc, char** argv)
   // small programs
   auto bfs_test = app.add_subcommand("bfs_test");
   infix::Config bfs_test_config;
-  int bfs_op_count = 1;
-  int bfs_depth = 0;
+  unsigned int bfs_op_count = 1;
+  unsigned int bfs_depth = 0;
   unsigned int bfs_test_concurrency = std::thread::hardware_concurrency();
   if (bfs_test_concurrency == 0)
   {
     bfs_test_concurrency = 1;
   }
+
   bfs_test_config.install_cli(bfs_test);
   bfs_test->add_option(
     "--op-count",
@@ -329,9 +330,10 @@ int main(int argc, char** argv)
     std::cout << "Testing BFS-generated programs, up to depth " << bfs_depth
               << ". [concurrency factor = " << bfs_test_concurrency << "]"
               << std::endl;
-    std::atomic<int> ok_count = 0;
+    unsigned int ok_count = 0;
 
-    for (int curr_bfs_depth = 0; curr_bfs_depth <= bfs_depth; ++curr_bfs_depth)
+    for (unsigned int curr_bfs_depth = 0; curr_bfs_depth <= bfs_depth;
+         ++curr_bfs_depth)
     {
       std::cout << "Exploring depth " << curr_bfs_depth << "..." << std::endl;
       auto valid_calcs =
