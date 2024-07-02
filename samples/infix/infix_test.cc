@@ -1,404 +1,25 @@
 #include "bfs.h"
 #include "infix.h"
+#include "progspace.h"
+#include "test_util.h"
 #include "trieste/fuzzer.h"
 #include "trieste/token.h"
 #include "trieste/writer.h"
 
 #include <CLI/CLI.hpp>
-#include <cstddef>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <initializer_list>
+#include <optional>
+#include <queue>
 #include <sstream>
 #include <string>
+#include <thread>
 
 namespace
 {
-  std::vector<std::string> split_lines(const std::string& str)
-  {
-    std::vector<std::string> lines;
-
-    std::istringstream in(str);
-    std::string line;
-    while (std::getline(in, line))
-    {
-      lines.push_back(line);
-    }
-
-    return lines;
-  }
-
-  void diffy_print(
-    const std::string& expected, const std::string& actual, std::ostream& out)
-  {
-    auto expected_lines = split_lines(expected);
-    auto actual_lines = split_lines(actual);
-
-    std::size_t pos = 0;
-    for (const auto& actual_line : actual_lines)
-    {
-      if (pos < expected_lines.size())
-      {
-        auto expected_line = expected_lines[pos];
-        if (actual_line == expected_line)
-        {
-          out << "  " << actual_line << std::endl;
-        }
-        else
-        {
-          out << "! " << actual_line << std::endl;
-        }
-      }
-      else if (pos - expected_lines.size() > 3)
-      {
-        out << "..." << std::endl;
-        break;
-      }
-      else
-      {
-        out << "+ " << actual_line << std::endl;
-      }
-
-      ++pos;
-    }
-  }
-
-  namespace progspace
-  {
-    using namespace std::string_view_literals;
-    using namespace infix;
-
-    using R = bfs::Result<trieste::Node>;
-    using Env = std::set<std::string>;
-    using RP = bfs::Result<std::pair<trieste::Node, Env>>;
-
-    R valid_expression(Env env, int depth)
-    {
-      if (depth == 0)
-      {
-        return R(Expression << (Int ^ "0"))
-          .concat([]() { return R(Expression << (Int ^ "1")); })
-          .concat([env]() {
-            R ref{};
-            for (const auto& name : env)
-            {
-              ref = ref.concat(
-                [name]() { return R(Expression << (Ref << (Ident ^ name))); });
-            }
-            return ref;
-          })
-          .concat([]() { return R(Expression << (Tuple ^ "")); })
-          .concat([]() { return R(Expression << (Append ^ "")); });
-      }
-      else
-      {
-        auto sub_expr = valid_expression(env, depth - 1);
-        return (sub_expr.flat_map<trieste::Node>([sub_expr](auto lhs) {
-          return R(Expression << (Tuple << lhs))
-            .concat(R(Expression << (Append << lhs->clone())))
-            .concat([sub_expr, lhs]() {
-              return sub_expr.flat_map<trieste::Node>([lhs](auto rhs) {
-                // note: we add fake locations to some binops, because the
-                // writer assumes their location
-                //       is also their lexical representation
-                return R(Expression
-                         << ((Add ^ "+") << lhs->clone() << rhs->clone()))
-                  .concat(
-                    R(Expression
-                      << ((Subtract ^ "-") << lhs->clone() << rhs->clone())))
-                  .concat(
-                    R(Expression
-                      << ((Multiply ^ "*") << lhs->clone() << rhs->clone())))
-                  .concat(
-                    R(Expression
-                      << ((Divide ^ "/") << lhs->clone() << rhs->clone())))
-                  .concat(
-                    R(Expression << (Tuple << lhs->clone() << rhs->clone())))
-                  .concat(
-                    R(Expression << (Append << lhs->clone() << rhs->clone())))
-                  .concat(
-                    R(Expression
-                      << ((TupleIdx ^ ".") << lhs->clone() << rhs->clone())));
-              });
-            });
-        }));
-      }
-    }
-
-    R valid_assignment(Env env, std::string name, int depth)
-    {
-      return valid_expression(env, depth)
-        .flat_map<trieste::Node>([name](auto value) {
-          return R(Assign << (Ident ^ name) << value->clone());
-        });
-    }
-
-    R valid_calculation(int op_count, int depth)
-    {
-      RP assigns = RP({NodeDef::create(Calculation), {}});
-      std::array valid_names = {"foo", "bar", "ping", "bnorg"};
-      assert(op_count < int(valid_names.size()));
-      for (int i = 0; i < op_count; ++i)
-      {
-        auto name = valid_names[i];
-        assigns = assigns.flat_map<std::pair<trieste::Node, Env>>(
-          [depth, name](auto pair) {
-            auto [calculation, env] = pair;
-            return valid_assignment(env, name, depth)
-              .template map<std::pair<trieste::Node, Env>>(
-                [calculation, env](auto assign) {
-                  return std::pair{calculation->clone() << assign, env};
-                });
-          });
-      }
-      return assigns.map<trieste::Node>([](auto pair) { return pair.first; });
-    }
-
-    struct CSData
-    {
-      bfs::CatString str;
-      bool tuple_parens_omitted;
-
-      CSData(std::string_view str) : CSData{bfs::CatString(str)} {}
-
-      CSData(std::string str) : CSData{bfs::CatString(str)} {}
-
-      CSData(bfs::CatString str) : CSData{str, false} {}
-
-      CSData(bfs::CatString str, bool tuple_parens_omitted)
-      : str{str}, tuple_parens_omitted{tuple_parens_omitted}
-      {}
-
-      CSData parens_omitted() const
-      {
-        return {str, true};
-      }
-
-      CSData concat(CSData other) const
-      {
-        return {
-          str.concat(other.str),
-          tuple_parens_omitted || other.tuple_parens_omitted,
-        };
-      }
-    };
-
-    using CS = bfs::Result<CSData>;
-
-    inline CS cat_cs(CS lhs, CS rhs)
-    {
-      return lhs.flat_map<CSData>([=](auto prefix) {
-        return rhs.map<CSData>(
-          [=](auto suffix) { return prefix.concat(suffix); });
-      });
-    }
-
-    inline CS cat_css(std::initializer_list<CS> css)
-    {
-      CS result = CS{""sv};
-      for (auto elem : css)
-      {
-        result = cat_cs(result, elem);
-      }
-      return result;
-    }
-
-    struct GroupPrecedence
-    {
-      int curr_precedence = -4;
-      bool allow_assoc = false;
-
-      GroupPrecedence with_precedence(int precedence) const
-      {
-        return {precedence, allow_assoc};
-      }
-
-      GroupPrecedence with_assoc(bool allow_assoc_) const
-      {
-        return {curr_precedence, allow_assoc_};
-      }
-
-      template<typename Fn>
-      CS wrap_group(int precedence, Fn fn) const
-      {
-        auto grouped = cat_css({
-          CS{"("sv},
-          fn(GroupPrecedence{}),
-          CS{")"sv},
-        });
-
-        if (
-          (precedence >= curr_precedence && allow_assoc) ||
-          (precedence > curr_precedence))
-        {
-          return fn(with_precedence(precedence).with_assoc(false))
-            .concat(grouped);
-        }
-        else
-        {
-          return grouped;
-        }
-      }
-    };
-
-    CS expression_strings(GroupPrecedence precedence, Node expression)
-    {
-      assert(expression == Expression);
-      assert(expression->size() == 1);
-      expression = expression->front();
-
-      if (expression == Ref)
-      {
-        assert(expression->size() == 1);
-        expression = expression->front();
-      }
-
-      if (expression->in({Int, Float, String, Ident}))
-      {
-        return CS{std::string(expression->location().view())};
-      }
-
-      if (expression->in({TupleIdx, Multiply, Divide, Add, Subtract}))
-      {
-        assert(expression->size() == 2);
-
-        auto binop_wrap_precedence = [&](int level) {
-          return precedence.wrap_group(level, [&](GroupPrecedence precedence) {
-            return cat_css({
-              expression_strings(
-                precedence.with_assoc(true), expression->front()),
-              CS{" " + std::string(expression->location().view()) + " "},
-              expression_strings(
-                precedence.with_assoc(false), expression->back()),
-            });
-          });
-        };
-
-        if (expression == TupleIdx)
-        {
-          return binop_wrap_precedence(0);
-        }
-        else if (expression->in({Multiply, Divide}))
-        {
-          return binop_wrap_precedence(-1);
-        }
-        else if (expression->in({Add, Subtract}))
-        {
-          return binop_wrap_precedence(-2);
-        }
-        else
-        {
-          assert(false);
-        }
-      }
-
-      // code for both tuple literals and append(...)
-      auto comma_sep_children = [=](GroupPrecedence precedence) {
-        auto result = CS{""sv};
-        bool first = true;
-        for (auto child : *expression)
-        {
-          if (first)
-          {
-            first = false;
-          }
-          else
-          {
-            result = cat_cs(result, CS{", "sv});
-          }
-
-          result = cat_cs(result, expression_strings(precedence, child));
-        }
-
-        if (expression->size() < 2)
-        {
-          result = cat_cs(result, CS{","sv});
-        }
-        else
-        {
-          // optional trailing comma (except sizes 0 and 1, where it is
-          // mandatory)
-          result = result.concat([=]() { return cat_cs(result, CS{","sv}); });
-        }
-        return result;
-      };
-
-      if (expression == Tuple)
-      {
-        // track whether this tuple needs or may have parens
-        bfs::Result<bool> parens_omitted;
-        // size 0 or 1 tuples must have ()
-        if (
-          expression->size() > 1 &&
-          ((-3 >= precedence.curr_precedence && precedence.allow_assoc) ||
-           (-3 > precedence.curr_precedence)))
-        {
-          parens_omitted = bfs::Result(true).concat(false);
-        }
-        else
-        {
-          parens_omitted = false;
-        }
-        return parens_omitted.flat_map<CSData>([=](bool parens_omitted) {
-          auto result = comma_sep_children(
-            precedence.with_precedence(-3).with_assoc(false));
-
-          if (parens_omitted)
-          {
-            return result.map<CSData>(
-              [](CSData result) { return result.parens_omitted(); });
-          }
-          else
-          {
-            return cat_css({
-              CS{"("sv},
-              result,
-              CS{")"sv},
-            });
-          }
-        });
-      }
-
-      if (expression == Append)
-      {
-        return cat_css({
-          CS{"append("sv},
-          comma_sep_children(precedence.with_precedence(-3).with_assoc(false)),
-          CS{")"sv},
-        });
-      }
-
-      return CS{"<unknown: " + expression->str() + ">"};
-    }
-
-    CS assign_strings(Node assign)
-    {
-      assert(assign == Assign);
-      assert(assign->size() == 2);
-      assert(assign->front() == Ident);
-      assert(assign->back() == Expression);
-
-      return cat_css({
-        CS{std::string(assign->front()->location().view())},
-        CS{" = "sv},
-        expression_strings(GroupPrecedence{}, assign->back()),
-        CS{";"sv},
-      });
-    }
-
-    CS calculation_strings(Node calculation)
-    {
-      assert(calculation == Calculation);
-
-      auto result = CS{""sv};
-      for (Node child : *calculation)
-      {
-        result = cat_cs(result, assign_strings(child));
-      }
-      return result;
-    }
-  }
-
   inline bool contains_tuple_ops(trieste::Node node)
   {
     return node == infix::Tuple || node == infix::Append ||
@@ -440,6 +61,11 @@ int main(int argc, char** argv)
   infix::Config bfs_test_config;
   int bfs_op_count = 1;
   int bfs_depth = 0;
+  unsigned int bfs_test_concurrency = std::thread::hardware_concurrency();
+  if (bfs_test_concurrency == 0)
+  {
+    bfs_test_concurrency = 1;
+  }
   bfs_test_config.install_cli(bfs_test);
   bfs_test->add_option(
     "--op-count",
@@ -449,6 +75,11 @@ int main(int argc, char** argv)
     "--depth",
     bfs_depth,
     "How deeply nested should expressions be? (defaults to 0)");
+  bfs_test->add_option(
+    "--concurrency",
+    bfs_test_concurrency,
+    "How many concurrent tasks to use (defaults to " +
+      std::to_string(bfs_test_concurrency) + ")");
 
   try
   {
@@ -531,33 +162,23 @@ int main(int argc, char** argv)
             std::string selected_proc;
 
             {
-              std::vector<char*> fake_argv;
+              std::vector<std::string> fake_argv;
               {
                 // This hack forces CLI11 to parse an initial line of the
-                // file by tokenizing it as a traditional argv. Technically, the
-                // program name is "//!". This makes a complete mess of the
-                // string by putting NUL everywhere, but the string will be
-                // tossed afterwards anyway.
-                bool was_space = true;
-                for (char* ptr = first_line.data(); *ptr != 0; ++ptr)
+                // file by tokenizing it as a traditional argv.
+                // Fortunately we can use the vector-of-strings overload rather
+                // than accurately recreate a true argc and argv.
+                std::istringstream in(first_line.substr(4));
+                std::string tok;
+                while (in >> tok)
                 {
-                  if (*ptr == ' ')
-                  {
-                    was_space = true;
-                    *ptr = 0;
-                  }
-                  else
-                  {
-                    if (was_space == true)
-                    {
-                      fake_argv.push_back(ptr);
-                    }
-                    was_space = false;
-                  }
+                  fake_argv.push_back(tok);
                 }
+                std::reverse(fake_argv.begin(), fake_argv.end());
               }
 
               CLI::App config_app;
+              config_app.name("//!");
               config.install_cli(&config_app);
               config_app
                 .add_option(
@@ -571,7 +192,7 @@ int main(int argc, char** argv)
 
               try
               {
-                config_app.parse(fake_argv.size(), fake_argv.data());
+                config_app.parse(fake_argv);
               }
               catch (const CLI::ParseError& e)
               {
@@ -706,8 +327,9 @@ int main(int argc, char** argv)
   {
     bfs_test_config.sanity();
     std::cout << "Testing BFS-generated programs, up to depth " << bfs_depth
-              << "." << std::endl;
-    int ok_count = 0;
+              << ". [concurrency factor = " << bfs_test_concurrency << "]"
+              << std::endl;
+    std::atomic<int> ok_count = 0;
 
     for (int curr_bfs_depth = 0; curr_bfs_depth <= bfs_depth; ++curr_bfs_depth)
     {
@@ -744,107 +366,140 @@ int main(int argc, char** argv)
                 });
           });
 
-      for (auto [calculation, csdata] : valid_calc_str_pairs)
-      {
-        bool prog_contains_tuple_ops = contains_tuple_ops(calculation);
-        auto prog = trieste::Top << calculation;
-        // this will fix up symbol tables for our generated tree (or the sumbol
-        // tables will be empty and our tests will fail!)
-        if (!infix::wf.build_st(prog))
+      std::queue<std::future<std::optional<std::string>>> tasks_pending;
+      auto pump_tasks_pending = [&](bool ok, std::size_t target_size) -> bool {
+        while (tasks_pending.size() > target_size)
         {
-          std::cout << "Problem rebuilding symbol table for this program:"
-                    << std::endl
-                    << prog << std::endl
-                    << "Aborting." << std::endl;
-          return 1;
-        }
-
-        std::string rendered_str = csdata.str.str();
-        auto reader = infix::reader(bfs_test_config)
-                        .synthetic(rendered_str)
-                        .wf_check_enabled(true);
-
-        {
-          auto result = reader.read();
-
-          bool expect_failure = false;
-          if (!bfs_test_config.enable_tuples && prog_contains_tuple_ops)
+          auto err_msg = tasks_pending.front().get();
+          tasks_pending.pop();
+          if (err_msg && ok)
           {
-            expect_failure = true; // tuples are not allowed here
-          }
-          if (
-            bfs_test_config.tuples_require_parens &&
-            csdata.tuple_parens_omitted)
-          {
-            expect_failure = true; // omitted tuple parens must cause failure,
-                                   // or at least a mis-parse (see below)
-          }
-
-          bool ok = true;
-          if (!result.ok && !expect_failure)
-          {
-            std::cout << "Error reparsing this AST:" << std::endl
-                      << prog << std::endl;
+            std::cout << *err_msg;
             ok = false;
           }
-          else if (result.ok && expect_failure)
-          {
-            // only report an unexpected success if the AST is somehow perfectly
-            // right. mis-parsing counts as an error when it's due to a
-            // configuration mismatch.
-            if (prog->equals(result.ast))
+
+          ++ok_count;
+          auto print_count = [&]() {
+            if (ok)
             {
-              std::cout << "Should have had error reparsing this AST:"
-                        << std::endl
-                        << prog << std::endl
-                        << "Based on this string:" << std::endl
-                        << rendered_str << std::endl;
-              ok = false;
+              std::cout << ok_count << " programs ok..." << std::endl;
+            }
+          };
+          if (ok_count > 1000)
+          {
+            if (ok_count % 1000 == 0)
+            {
+              print_count();
             }
           }
-
-          auto result_str = result.ast->str();
-          auto prog_str = prog->str();
-          // if we were expecting failure, it won't match anyhow
-          if (result_str != prog_str && !expect_failure)
-          {
-            std::cout << "Didn't reparse the same AST." << std::endl
-                      << "What we generated:" << std::endl
-                      << prog_str << std::endl
-                      << "----" << std::endl
-                      << "What we rendered:" << std::endl
-                      << rendered_str << std::endl
-                      << "----" << std::endl
-                      << "What we reparsed (diffy view):" << std::endl;
-            diffy_print(prog_str, result_str, std::cout);
-            ok = false;
-          }
-          if (!ok)
-          {
-            std::cout << "Aborting." << std::endl;
-            return 1;
-          }
-        }
-
-        ++ok_count;
-        auto print_count = [&]() {
-          std::cout << ok_count << " programs ok..." << std::endl;
-          // << "This one was:" << std::endl
-          // << prog << std::endl
-          // << "Rendered as:" << std::endl
-          // << rendered_str << std::endl;
-        };
-        if (ok_count > 1000)
-        {
-          if (ok_count % 1000 == 0)
+          else if (ok_count % 100 == 0)
           {
             print_count();
           }
         }
-        else if (ok_count % 100 == 0)
+        return ok;
+      };
+
+      for (auto [calculation, csdata] : valid_calc_str_pairs)
+      {
+        auto task_fn = [=]() -> std::optional<std::string> {
+          std::ostringstream out;
+          bool prog_contains_tuple_ops = contains_tuple_ops(calculation);
+          auto prog = trieste::Top << calculation;
+          // this will fix up symbol tables for our generated tree (or the
+          // sumbol tables will be empty and our tests will fail!)
+          if (!infix::wf.build_st(prog))
+          {
+            out << "Problem rebuilding symbol table for this program:"
+                << std::endl
+                << prog << std::endl
+                << "Aborting." << std::endl;
+            return out.str();
+          }
+
+          std::string rendered_str = csdata.str.str();
+          auto reader = infix::reader(bfs_test_config)
+                          .synthetic(rendered_str)
+                          .wf_check_enabled(true);
+
+          {
+            auto result = reader.read();
+
+            bool expect_failure = false;
+            if (!bfs_test_config.enable_tuples && prog_contains_tuple_ops)
+            {
+              expect_failure = true; // tuples are not allowed here
+            }
+            if (
+              bfs_test_config.tuples_require_parens &&
+              csdata.tuple_parens_omitted)
+            {
+              expect_failure = true; // omitted tuple parens must cause failure,
+                                     // or at least a mis-parse (see below)
+            }
+
+            bool ok = true;
+            if (!result.ok && !expect_failure)
+            {
+              out << "Error reparsing this AST:" << std::endl
+                  << prog << std::endl;
+              ok = false;
+            }
+            else if (result.ok && expect_failure)
+            {
+              // only report an unexpected success if the AST is somehow
+              // perfectly right. mis-parsing counts as an error when it's due
+              // to a configuration mismatch.
+              if (prog->equals(result.ast))
+              {
+                out << "Should have had error reparsing this AST:" << std::endl
+                    << prog << std::endl
+                    << "Based on this string:" << std::endl
+                    << rendered_str << std::endl;
+                ok = false;
+              }
+            }
+
+            auto result_str = result.ast->str();
+            auto prog_str = prog->str();
+            // if we were expecting failure, it won't match anyhow
+            if (result_str != prog_str && !expect_failure)
+            {
+              out << "Didn't reparse the same AST." << std::endl
+                  << "What we generated:" << std::endl
+                  << prog_str << std::endl
+                  << "----" << std::endl
+                  << "What we rendered:" << std::endl
+                  << rendered_str << std::endl
+                  << "----" << std::endl
+                  << "What we reparsed (diffy view):" << std::endl;
+              diffy_print(prog_str, result_str, out);
+              ok = false;
+            }
+            if (!ok)
+            {
+              out << "Aborting." << std::endl;
+              return out.str();
+            }
+          }
+          return std::nullopt;
+        };
+
+        if (!pump_tasks_pending(true, bfs_test_concurrency))
         {
-          print_count();
+          // drain and ignore all other ongoing tasks (multiple errors are
+          // spammy and difficult to parse, and it won't be consistent across
+          // runs anyway)
+          pump_tasks_pending(false, 0);
+          return 1;
         }
+
+        tasks_pending.emplace(std::async(std::launch::async, task_fn));
+      }
+
+      if (!pump_tasks_pending(true, 0))
+      {
+        return 1;
       }
     }
 
