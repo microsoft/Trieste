@@ -504,6 +504,8 @@ namespace
         T(Append)[Append] << (T(Expression) << --T(Tuple)) >>
           [](Match& _) { return err(_(Append), "Invalid use of append"); },
 
+        // find an append whose child is a tuple expression, and capture all the
+        // tuple expression's child expressions
         T(Append)
             << (T(Expression)
                 << (T(Tuple) << (T(Expression)++[Expression] * End))) >>

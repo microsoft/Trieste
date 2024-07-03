@@ -76,8 +76,11 @@ namespace progspace
 
   inline R valid_calculation(int op_count, int depth)
   {
-    RP assigns = RP({NodeDef::create(Calculation), {}});
-    std::array valid_names = {"foo", "bar", "ping", "bnorg"};
+    RP assigns = RP({
+      Calculation << (Assign << (Ident ^ "foo") << (Expression << (Int ^ "1"))),
+      {"foo"},
+    });
+    std::array valid_names = {"bar", "ping", "bnorg"};
     assert(op_count < int(valid_names.size()));
     for (int i = 0; i < op_count; ++i)
     {
@@ -85,10 +88,12 @@ namespace progspace
       assigns = assigns.flat_map<std::pair<trieste::Node, Env>>(
         [depth, name](auto pair) {
           auto [calculation, env] = pair;
+          auto env_post = env;
+          env_post.insert(name);
           return valid_assignment(env, name, depth)
             .template map<std::pair<trieste::Node, Env>>(
-              [calculation, env](auto assign) {
-                return std::pair{calculation->clone() << assign, env};
+              [calculation, env_post](auto assign) {
+                return std::pair{calculation->clone() << assign, env_post};
               });
         });
     }

@@ -90,6 +90,8 @@ Ideas:
 
 Notes:
 - it's possible to get lost combining tuple and call parsing
+- "stuck terms" and the original version of the code; explain that you can do sometimes error handling in 1 pass but it doesn't really scale once you have many ways to fail (TODO: edits to the original tutorial, where there is only one way to have an evaluation succeed and cause an error (e.g. `1 / (1-1)`))
+- p.s. and splitting one pass into 2 can cause `String * (Foo >>= Literal | Expression)` because one term becomes a `|`. Warn people for now, plot design improvements later.
 
 Ideas:
 - `(a, b, ...)` (note: do in parser, or have a `,` token and resolve with a pass)

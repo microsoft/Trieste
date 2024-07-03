@@ -3,6 +3,8 @@
 #include "trieste/pass.h"
 #include "trieste/token.h"
 
+#include <string>
+
 namespace
 {
   using namespace trieste;
@@ -10,19 +12,39 @@ namespace
 
   // clang-format off
   inline const auto wf_pass_maths = 
-    infix::wf 
+    infix::wf
+    // The Op >>= prefix ensures the internal structure of the WF is set up properly.
+    // The disjunction cannot otherwise be nested inside *
+    // Technically it names the disjunction "Op", but we do not use that name.
+    | (Assign <<= Ident * (Op >>= Literal | Expression)) 
+    | (Output <<= String * (Op >>= Literal | Expression)) 
+    | (Literal <<= Int | Float)
+    // all the math ops, but with both literal and expression as options
+    | (Add <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+    | (Subtract <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+    | (Multiply <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+    | (Divide <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+    // --- tuples extension
+    | (Literal <<= Int | Float | Tuple)
+    | (Tuple <<= (Literal | Expression)++)
+    | (Append <<= (Literal | Expression)++)
+    | (TupleIdx <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline const auto wf_pass_math_errs = 
+    wf_pass_maths
     | (Assign <<= Ident * Literal) 
     | (Output <<= String * Literal) 
-    | (Literal <<= Int | Float)
-    // tuples extension
-    | (Literal <<= Int | Float | Tuple)
+    // --- tuples extension
     | (Tuple <<= Literal++)
     ;
   // clang-format on
 
   // clang-format off
   inline const auto wf_pass_cleanup =
-    wf_pass_maths
+    wf_pass_math_errs
     // ensure that there are no assignments, only
     // outputs here  
     | (Calculation <<= Output++) 
@@ -62,83 +84,68 @@ namespace
 
   PassDef maths()
   {
+    // TODO: revert this or no? Might be a bit technical for intro tutorial; I just wanted to see what it looked like.
+    auto coerce_num_types = [](Node lhs, Node rhs, auto op) -> Node {
+      auto opt_to_result = [](auto num_opt, const TokenDef& tok) -> Node {
+        if(num_opt) {
+          // ^ here means to create a new node of Token type Int with the
+          // provided string as its location (which means its "value").
+          return tok ^ std::to_string(*num_opt);
+        } else {
+          return NoChange ^ "";
+        }
+      };
+
+      if(lhs == Int && rhs == Int) {
+        return opt_to_result(
+          op(get_int(lhs), get_int(rhs)),
+          Int);
+      } else {
+        return opt_to_result(
+          op(get_double(lhs), get_double(rhs)),
+          Float);
+      }
+    };
+
     return {
       "maths",
       wf_pass_maths,
       dir::topdown,
       {
-        T(Add) << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
-          [](Match& _) {
-            int lhs = get_int(_(Lhs));
-            int rhs = get_int(_(Rhs));
-            // ^ here means to create a new node of Token type Int with the
-            // provided string as its location.
-            return Int ^ std::to_string(lhs + rhs);
-          },
-
         T(Add) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
-          [](Match& _) {
-            double lhs = get_double(_(Lhs));
-            double rhs = get_double(_(Rhs));
-            return Float ^ std::to_string(lhs + rhs);
-          },
-
-        T(Subtract)
-            << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
-          [](Match& _) {
-            int lhs = get_int(_(Lhs));
-            int rhs = get_int(_(Rhs));
-            return Int ^ std::to_string(lhs - rhs);
+          [coerce_num_types](Match& _) {
+            return coerce_num_types(_(Lhs), _(Rhs), [](auto lhs, auto rhs) {
+              return std::optional{lhs + rhs};
+            });
           },
 
         T(Subtract)
             << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
-          [](Match& _) {
-            double lhs = get_double(_(Lhs));
-            double rhs = get_double(_(Rhs));
-            return Float ^ std::to_string(lhs - rhs);
-          },
-
-        T(Multiply)
-            << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
-          [](Match& _) {
-            double lhs = get_double(_(Lhs));
-            double rhs = get_double(_(Rhs));
-            return Int ^ std::to_string(lhs * rhs);
+          [coerce_num_types](Match& _) {
+            return coerce_num_types(_(Lhs), _(Rhs), [](auto lhs, auto rhs) {
+              return std::optional{lhs - rhs};
+            });
           },
 
         T(Multiply)
             << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
-          [](Match& _) {
-            double lhs = get_double(_(Lhs));
-            double rhs = get_double(_(Rhs));
-            return Float ^ std::to_string(lhs * rhs);
-          },
-
-        T(Divide)
-            << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
-          [](Match& _) {
-            int lhs = get_int(_(Lhs));
-            int rhs = get_int(_(Rhs));
-            if (rhs == 0)
-            {
-              return err(_(Rhs), "Divide by zero");
-            }
-
-            return Int ^ std::to_string(lhs / rhs);
+          [coerce_num_types](Match& _) {
+            return coerce_num_types(_(Lhs), _(Rhs), [](auto lhs, auto rhs) {
+              return std::optional{lhs * rhs};
+            });
           },
 
         T(Divide)
             << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
-          [](Match& _) {
-            double lhs = get_double(_(Lhs));
-            double rhs = get_double(_(Rhs));
-            if (rhs == 0.0)
-            {
-              return err(_(Rhs), "Divide by zero");
-            }
-
-            return Float ^ std::to_string(lhs / rhs);
+          [coerce_num_types](Match& _) {
+            return coerce_num_types(_(Lhs), _(Rhs), [](auto lhs, auto rhs) -> std::optional<decltype(lhs)> {
+              // avoid doing divide by 0 ... we will report this in the errors pass
+              if(rhs == 0) {
+                return std::nullopt;
+              } else {
+                return std::optional{lhs / rhs};
+              }
+            });
           },
 
         T(Expression) << (T(Ref) << T(Ident)[Id])(
@@ -183,18 +190,30 @@ namespace
             int rhs_val = get_int(rhs);
 
             if(rhs_val < 0 || size_t(rhs_val) >= lhs->size()) {
-              return err(_(TupleIdx), "Tuple index out of range");
+              return NoChange ^ ""; // error, see next pass
             }
             
             return lhs->at(rhs_val);
           },
-        // if we have a tuple idx but the wrong inputs, raise an error
-        T(Expression) << (T(TupleIdx)[TupleIdx] << (T(Literal) * T(Literal))) >>
-          [](Match& _) {
-            return err(_(TupleIdx), "Invalid tuple index, or tried to index a non-tuple");
-          },
+      }};
+  }
 
-        // errors
+  PassDef math_errs() {
+    return {
+      "math_errs",
+      wf_pass_math_errs,
+      dir::topdown,
+      {
+        // custom error pattern: we can catch specific shapes and give more useful errors in those cases
+        T(Expression) << (T(Divide)[Divide] << (Any * (T(Literal) << T(Int, Float)[Rhs]))) >>
+          [](Match& _) {
+            auto rhs = _(Rhs);
+            if((rhs == Int && get_int(rhs) == 0) || (rhs == Float && get_double(rhs) == 0)) {
+              return err(_(Divide), "Divide by 0");
+            } else {
+              return NoChange ^ "";
+            }
+          },
 
         T(Expression) << (T(Ref) << T(Ident)[Id])(
           [](NodeRange& n) { return !exists(n); }) >>
@@ -206,33 +225,27 @@ namespace
             return Literal << (Int ^ "0");
           },
 
-        // Note how we pattern match explicitly for the Error node
-        In(Expression) *
-            (MathsOp
-             << ((T(Expression)[Expression] << T(Error)) * T(Literal))) >>
+        T(Expression) << MathsOp[Op] >>
           [](Match& _) {
-            return err(_(Expression), "Invalid left hand argument");
+            return err(_(Op), "Invalid maths op");
           },
 
-        In(Expression) *
-            (MathsOp
-             << (T(Literal) * (T(Expression)[Expression] << T(Error)))) >>
+        // --- tuple errors ---
+
+        T(Expression) << T(Tuple)[Tuple] >>
           [](Match& _) {
-            return err(_(Expression), "Invalid right hand argument");
+            return err(_(Tuple), "Couldn't evaluate tuple literal");
           },
 
-        In(Expression) *
-            (MathsOp[Op]
-             << ((T(Expression) << T(Error)) * (T(Expression) << T(Error)))) >>
-          [](Match& _) { return err(_(Op), "No valid arguments"); },
+        T(Expression) << T(Append)[Append] >>
+          [](Match& _) {
+            return err(_(Append), "Invalid or unevaluatable tuple append operands");
+          },
 
-        In(Calculation) *
-            (T(Output)[Output] << (T(String) * (T(Expression) << T(Error)))) >>
-          [](Match& _) { return err(_(Output), "Empty output expression"); },
-
-        In(Calculation) *
-            (T(Assign)[Assign] << (T(Ident) * (T(Expression) << T(Error)))) >>
-          [](Match& _) { return err(_(Assign), "Empty assign expression"); },
+        T(Expression) << T(TupleIdx)[TupleIdx] >>
+          [](Match& _) {
+            return err(_(TupleIdx), "Invalid or unevaluatable tuple index");
+          },
       }};
   }
 
@@ -526,7 +539,11 @@ namespace infix
 {
   Rewriter calculate()
   {
-    return {"calculate", {maths(), cleanup()}, infix::wf};
+    return {
+      "calculate",
+      {maths(), math_errs(), cleanup()},
+      infix::wf,
+    };
   }
 
   Writer writer(const std::filesystem::path& path)

@@ -478,6 +478,47 @@ int main(int argc, char** argv)
               diffy_print(prog_str, result_str, out);
               ok = false;
             }
+
+            // extra checking: smoke-test calculation.
+            // for something we constructed that has valid names,
+            // the only error should come from type problems in maths
+            if (ok)
+            {
+              auto process_result = prog >> infix::calculate();
+              if (process_result.ok)
+              {
+                // that's fine, smoke test ok
+              }
+              else
+              {
+                auto diagnostic = [&]() {
+                  out << "Program:" << std::endl
+                      << prog << std::endl
+                      << "Last state (from pass \"" << process_result.last_pass
+                      << "\"):" << std::endl
+                      << process_result.ast << std::endl;
+                };
+                if (process_result.last_pass != "math_errs")
+                {
+                  out << "Calculation failed somewhere other than the "
+                         "math_errs pass."
+                      << std::endl;
+                  diagnostic();
+                  ok = false;
+                }
+                else if (process_result.errors.size() == 0)
+                {
+                  // if the AST had an error in it, we would have been ok
+                  // because that's coded-for
+                  out << "Calculation failed due to a WF error, not a handled "
+                         "error - it failed without any error nodes."
+                      << std::endl;
+                  diagnostic();
+                  ok = false;
+                }
+              }
+            }
+
             if (!ok)
             {
               out << "Aborting." << std::endl;
