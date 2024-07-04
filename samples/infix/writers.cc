@@ -85,7 +85,7 @@ namespace
   PassDef maths()
   {
     // TODO: revert this or no? Might be a bit technical for intro tutorial; I just wanted to see what it looked like.
-    auto coerce_num_types = [](Node lhs, Node rhs, auto op) -> Node {
+    auto coerce_num_types = [](Match& _, auto int_op, auto double_op) -> Node {
       auto opt_to_result = [](auto num_opt, const TokenDef& tok) -> Node {
         if(num_opt) {
           // ^ here means to create a new node of Token type Int with the
@@ -96,13 +96,15 @@ namespace
         }
       };
 
+      Node lhs = _(Lhs);
+      Node rhs = _(Rhs);
       if(lhs == Int && rhs == Int) {
         return opt_to_result(
-          op(get_int(lhs), get_int(rhs)),
+          int_op(get_int(lhs), get_int(rhs)),
           Int);
       } else {
         return opt_to_result(
-          op(get_double(lhs), get_double(rhs)),
+          double_op(get_double(lhs), get_double(rhs)),
           Float);
       }
     };
@@ -114,7 +116,9 @@ namespace
       {
         T(Add) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
           [coerce_num_types](Match& _) {
-            return coerce_num_types(_(Lhs), _(Rhs), [](auto lhs, auto rhs) {
+            return coerce_num_types(_, [](int lhs, int rhs) {
+              return std::optional{lhs + rhs};
+            }, [](double lhs, double rhs) {
               return std::optional{lhs + rhs};
             });
           },
@@ -122,7 +126,9 @@ namespace
         T(Subtract)
             << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
           [coerce_num_types](Match& _) {
-            return coerce_num_types(_(Lhs), _(Rhs), [](auto lhs, auto rhs) {
+            return coerce_num_types(_, [](int lhs, int rhs) {
+              return std::optional{lhs - rhs};
+            }, [](double lhs, double rhs) {
               return std::optional{lhs - rhs};
             });
           },
@@ -130,7 +136,9 @@ namespace
         T(Multiply)
             << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
           [coerce_num_types](Match& _) {
-            return coerce_num_types(_(Lhs), _(Rhs), [](auto lhs, auto rhs) {
+            return coerce_num_types(_, [](int lhs, int rhs) {
+              return std::optional{lhs * rhs};
+            }, [](double lhs, double rhs) {
               return std::optional{lhs * rhs};
             });
           },
@@ -138,13 +146,12 @@ namespace
         T(Divide)
             << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
           [coerce_num_types](Match& _) {
-            return coerce_num_types(_(Lhs), _(Rhs), [](auto lhs, auto rhs) -> std::optional<decltype(lhs)> {
-              // avoid doing divide by 0 ... we will report this in the errors pass
-              if(rhs == 0) {
-                return std::nullopt;
-              } else {
-                return std::optional{lhs / rhs};
-              }
+            return coerce_num_types(_, [](int lhs, int rhs) -> std::optional<int> {
+              if(rhs == 0) return std::nullopt;
+              return std::optional{lhs / rhs};
+            }, [](double lhs, double rhs) -> std::optional<double> {
+              if(rhs == 0.0) return std::nullopt;
+              return std::optional{lhs / rhs};
             });
           },
 
@@ -202,7 +209,7 @@ namespace
     return {
       "math_errs",
       wf_pass_math_errs,
-      dir::topdown,
+      dir::bottomup,
       {
         // custom error pattern: we can catch specific shapes and give more useful errors in those cases
         T(Expression) << (T(Divide)[Divide] << (Any * (T(Literal) << T(Int, Float)[Rhs]))) >>
@@ -246,6 +253,10 @@ namespace
           [](Match& _) {
             return err(_(TupleIdx), "Invalid or unevaluatable tuple index");
           },
+
+        // --- catch-all: fuzz testing generates expressions that wouldn't be stuck but somehow are
+        T(Expression)[Expression] >>
+          [](Match& _) { return err(_(Expression), "Unevaluated expression"); },
       }};
   }
 

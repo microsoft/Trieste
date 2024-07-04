@@ -1,0 +1,117 @@
+//! --enable-tuples --tuples-require-parens --expect-fail calculate
+//! --enable-tuples --tuples-require-parens --use-parser-tuples --expect-fail calculate
+//! --enable-tuples --expect-fail calculate
+(top
+  {}
+  (infix-calculation
+    {}
+    (infix-assign
+      (infix-ident 3:foo)
+      (infix-literal
+        (infix-tuple
+          (infix-literal
+            (infix-int 1:1))
+          (infix-literal
+            (infix-int 1:2))
+          (infix-literal
+            (infix-int 1:3)))))
+    (infix-output
+      (infix-string 7:"tpl +")
+      (error
+        (errormsg 16:Invalid maths op)
+        (errorast
+          (infix-add
+            (infix-literal
+              (infix-tuple
+                (infix-literal
+                  (infix-int 1:1))
+                (infix-literal
+                  (infix-int 1:2))
+                (infix-literal
+                  (infix-int 1:3))))
+            (infix-literal
+              (infix-int 1:1))))))
+    (infix-output
+      (infix-string 7:"tpl -")
+      (error
+        (errormsg 16:Invalid maths op)
+        (errorast
+          (infix-subtract
+            (infix-literal
+              (infix-tuple
+                (infix-literal
+                  (infix-int 1:1))
+                (infix-literal
+                  (infix-int 1:2))
+                (infix-literal
+                  (infix-int 1:3))))
+            (infix-literal
+              (infix-int 1:1))))))
+    (infix-output
+      (infix-string 7:"tpl *")
+      (error
+        (errormsg 16:Invalid maths op)
+        (errorast
+          (infix-multiply
+            (infix-literal
+              (infix-tuple
+                (infix-literal
+                  (infix-int 1:1))
+                (infix-literal
+                  (infix-int 1:2))
+                (infix-literal
+                  (infix-int 1:3))))
+            (infix-literal
+              (infix-int 1:1))))))
+    (infix-output
+      (infix-string 7:"tpl /")
+      (error
+        (errormsg 16:Invalid maths op)
+        (errorast
+          (infix-divide
+            (infix-literal
+              (infix-tuple
+                (infix-literal
+                  (infix-int 1:1))
+                (infix-literal
+                  (infix-int 1:2))
+                (infix-literal
+                  (infix-int 1:3))))
+            (infix-literal
+              (infix-int 1:1))))))
+    (infix-output
+      (infix-string 9:"bad idx")
+      (error
+        (errormsg 36:Invalid or unevaluatable tuple index)
+        (errorast
+          (infix-tupleidx
+            (infix-literal
+              (infix-int 1:1))
+            (infix-literal
+              (infix-tuple
+                (infix-literal
+                  (infix-int 1:1))
+                (infix-literal
+                  (infix-int 1:2))
+                (infix-literal
+                  (infix-int 1:3))))))))
+    (infix-output
+      (infix-string 12:"nested bad")
+      (infix-expression
+        (infix-tuple
+          (infix-literal
+            (infix-int 2:42))
+          (error
+            (errormsg 16:Invalid maths op)
+            (errorast
+              (infix-add
+                (infix-literal
+                  (infix-tuple
+                    (infix-literal
+                      (infix-int 1:1))
+                    (infix-literal
+                      (infix-int 1:2))
+                    (infix-literal
+                      (infix-int 1:3))))
+                (infix-literal
+                  (infix-int 1:1))))))))))

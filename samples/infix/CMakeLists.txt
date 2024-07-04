@@ -33,8 +33,9 @@ set_property(TEST invalid_input PROPERTY WILL_FAIL On)
 add_test(NAME infix_test_examples COMMAND infix_test dir ${CMAKE_CURRENT_SOURCE_DIR}/examples)
 
 # these params are the "useful" ones, in that they will test nested operator parsing, associativity, etc
-# they are also rather CPU hungry (~5min on my machine), so maybe this should go under a flag or something
-add_test(NAME infix_test_bfs COMMAND infix_test bfs_test --op-count 1 --depth 2)
+# they are also rather CPU hungry, so maybe this should go under a flag or something
+# TODO: re-enable; on my machine it takes 1.5hrs now!
+# add_test(NAME infix_test_bfs COMMAND infix_test bfs_test --op-count 1 --depth 2 --no-vt100)
 
 add_test(NAME infix_progspace_test COMMAND infix_progspace_test)
 

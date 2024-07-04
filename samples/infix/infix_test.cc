@@ -58,7 +58,6 @@ int main(int argc, char** argv)
   // use breadth-first program generation to test a comprehensive collection of
   // small programs
   auto bfs_test = app.add_subcommand("bfs_test");
-  infix::Config bfs_test_config;
   unsigned int bfs_op_count = 1;
   unsigned int bfs_depth = 0;
   unsigned int bfs_test_concurrency = std::thread::hardware_concurrency();
@@ -66,8 +65,9 @@ int main(int argc, char** argv)
   {
     bfs_test_concurrency = 1;
   }
+  bool bfs_test_no_vt100 = false;
+  bool bfs_test_run_calculate = false;
 
-  bfs_test_config.install_cli(bfs_test);
   bfs_test->add_option(
     "--op-count",
     bfs_op_count,
@@ -81,6 +81,15 @@ int main(int argc, char** argv)
     bfs_test_concurrency,
     "How many concurrent tasks to use (defaults to " +
       std::to_string(bfs_test_concurrency) + ")");
+  bfs_test->add_flag(
+    "--no-vt100",
+    bfs_test_no_vt100,
+    "Disable VT100 escapes that display progress by rewriting the current "
+    "line");
+  bfs_test->add_flag(
+    "--run-calculate",
+    bfs_test_run_calculate,
+    "Run the calculate pass on all generated ASTs");
 
   try
   {
@@ -254,7 +263,12 @@ int main(int argc, char** argv)
             {
               std::cout << "unexpected failure, last pass: " << result.last_pass
                         << std::endl;
-              // TODO: print more errors?
+              ok = false;
+            }
+            if (!result.ok && result.errors.size() == 0)
+            {
+              std::cout << "failed but no errors; WF violation from pass: "
+                        << result.last_pass << std::endl;
               ok = false;
             }
 
@@ -326,7 +340,6 @@ int main(int argc, char** argv)
   }
   else if (*bfs_test)
   {
-    bfs_test_config.sanity();
     std::cout << "Testing BFS-generated programs, up to depth " << bfs_depth
               << ". [concurrency factor = " << bfs_test_concurrency << "]"
               << std::endl;
@@ -335,14 +348,20 @@ int main(int argc, char** argv)
     for (unsigned int curr_bfs_depth = 0; curr_bfs_depth <= bfs_depth;
          ++curr_bfs_depth)
     {
+      bool first_status_print = true;
       std::cout << "Exploring depth " << curr_bfs_depth << "..." << std::endl;
+
+      using TaskFn = std::function<std::optional<std::string>()>;
+
       auto valid_calcs =
         progspace::valid_calculation(bfs_op_count, curr_bfs_depth);
-      auto valid_calc_str_pairs =
-        valid_calcs.flat_map<std::pair<trieste::Node, progspace::CSData>>(
-          [](trieste::Node calculation) {
-            return progspace::calculation_strings(calculation)
-              .concat([=]() {
+
+      auto all_tasks = valid_calcs.flat_map<TaskFn>([=](trieste::Node
+                                                          calculation) {
+        auto tasks_for_calc =
+          progspace::calculation_strings(calculation)
+            .concat(
+              [=]() {
                 // also check that the "real" writer agrees with us; no desyncs!
                 auto synth_dest = trieste::DestinationDef::synthetic();
                 auto result = (trieste::Top << calculation) >>
@@ -362,128 +381,151 @@ int main(int argc, char** argv)
                   false, // always false for default writer
                 };
               })
-              .map<std::pair<trieste::Node, progspace::CSData>>(
-                [=](progspace::CSData csdata) {
-                  return std::pair{calculation->clone(), csdata};
-                });
-          });
+            .flat_map<std::pair<infix::Config, progspace::CSData>>(
+              [](progspace::CSData csdata) {
+                using RR =
+                  bfs::Result<std::pair<infix::Config, progspace::CSData>>;
+                return RR({
+                            infix::Config{
+                              .use_parser_tuples = false,
+                              .enable_tuples = false,
+                              .tuples_require_parens = false,
+                            },
+                            csdata,
+                          })
+                  .concat(RR({
+                    infix::Config{
+                      .use_parser_tuples = false,
+                      .enable_tuples = true,
+                      .tuples_require_parens = false,
+                    },
+                    csdata,
+                  }))
+                  .concat(RR({
+                    infix::Config{
+                      .use_parser_tuples = false,
+                      .enable_tuples = true,
+                      .tuples_require_parens = true,
+                    },
+                    csdata,
+                  }))
+                  .concat(RR({
+                    infix::Config{
+                      .use_parser_tuples = true,
+                      .enable_tuples = true,
+                      .tuples_require_parens = true,
+                    },
+                    csdata,
+                  }));
+              })
+            .map<TaskFn>([=](auto pair) {
+              auto [config, csdata] = pair;
+              return [=]() -> std::optional<std::string> {
+                std::ostringstream out;
+                bool prog_contains_tuple_ops = contains_tuple_ops(calculation);
+                auto prog = trieste::Top << calculation->clone();
+                // this will fix up symbol tables for our generated tree (or the
+                // sumbol tables will be empty and our tests will fail!)
+                if (!infix::wf.build_st(prog))
+                {
+                  out << "Problem rebuilding symbol table for this program:"
+                      << std::endl
+                      << prog << std::endl
+                      << "Aborting." << std::endl;
+                  return out.str();
+                }
 
-      std::queue<std::future<std::optional<std::string>>> tasks_pending;
-      auto pump_tasks_pending = [&](bool ok, std::size_t target_size) -> bool {
-        while (tasks_pending.size() > target_size)
+                std::string rendered_str = csdata.str.str();
+                auto reader = infix::reader(config)
+                                .synthetic(rendered_str)
+                                .wf_check_enabled(true);
+
+                {
+                  auto result = reader.read();
+
+                  bool expect_failure = false;
+                  if (!config.enable_tuples && prog_contains_tuple_ops)
+                  {
+                    expect_failure = true; // tuples are not allowed here
+                  }
+                  if (
+                    config.tuples_require_parens && csdata.tuple_parens_omitted)
+                  {
+                    expect_failure =
+                      true; // omitted tuple parens must cause failure,
+                            // or at least a mis-parse (see below)
+                  }
+
+                  bool ok = true;
+                  if (!result.ok && !expect_failure)
+                  {
+                    out << "Error reparsing this AST:" << std::endl
+                        << prog << std::endl;
+                    ok = false;
+                  }
+                  else if (result.ok && expect_failure)
+                  {
+                    // only report an unexpected success if the AST is somehow
+                    // perfectly right. mis-parsing counts as an error when it's
+                    // due to a configuration mismatch.
+                    if (prog->equals(result.ast))
+                    {
+                      out << "Should have had error reparsing this AST:"
+                          << std::endl
+                          << prog << std::endl
+                          << "Based on this string:" << std::endl
+                          << rendered_str << std::endl;
+                      ok = false;
+                    }
+                  }
+
+                  auto result_str = result.ast->str();
+                  auto prog_str = prog->str();
+                  // if we were expecting failure, it won't match anyhow
+                  if (result_str != prog_str && !expect_failure)
+                  {
+                    out << "Didn't reparse the same AST." << std::endl
+                        << "What we generated:" << std::endl
+                        << prog_str << std::endl
+                        << "----" << std::endl
+                        << "What we rendered:" << std::endl
+                        << rendered_str << std::endl
+                        << "----" << std::endl
+                        << "What we reparsed (diffy view):" << std::endl;
+                    diffy_print(prog_str, result_str, out);
+                    ok = false;
+                  }
+
+                  if (!ok)
+                  {
+                    out << "Aborting." << std::endl;
+                    return out.str();
+                  }
+                }
+                return std::nullopt;
+              };
+            });
+
+        if (bfs_test_run_calculate)
         {
-          auto err_msg = tasks_pending.front().get();
-          tasks_pending.pop();
-          if (err_msg && ok)
-          {
-            std::cout << *err_msg;
-            ok = false;
-          }
+          tasks_for_calc = tasks_for_calc.concat([=]() -> bfs::Result<TaskFn> {
+            return bfs::Result<TaskFn>([=]() -> std::optional<std::string> {
+              std::ostringstream out;
+              bool ok = true;
 
-          ++ok_count;
-          auto print_count = [&]() {
-            if (ok)
-            {
-              std::cout << ok_count << " programs ok..." << std::endl;
-            }
-          };
-          if (ok_count > 1000)
-          {
-            if (ok_count % 1000 == 0)
-            {
-              print_count();
-            }
-          }
-          else if (ok_count % 100 == 0)
-          {
-            print_count();
-          }
-        }
-        return ok;
-      };
-
-      for (auto [calculation, csdata] : valid_calc_str_pairs)
-      {
-        auto task_fn = [=]() -> std::optional<std::string> {
-          std::ostringstream out;
-          bool prog_contains_tuple_ops = contains_tuple_ops(calculation);
-          auto prog = trieste::Top << calculation;
-          // this will fix up symbol tables for our generated tree (or the
-          // sumbol tables will be empty and our tests will fail!)
-          if (!infix::wf.build_st(prog))
-          {
-            out << "Problem rebuilding symbol table for this program:"
-                << std::endl
-                << prog << std::endl
-                << "Aborting." << std::endl;
-            return out.str();
-          }
-
-          std::string rendered_str = csdata.str.str();
-          auto reader = infix::reader(bfs_test_config)
-                          .synthetic(rendered_str)
-                          .wf_check_enabled(true);
-
-          {
-            auto result = reader.read();
-
-            bool expect_failure = false;
-            if (!bfs_test_config.enable_tuples && prog_contains_tuple_ops)
-            {
-              expect_failure = true; // tuples are not allowed here
-            }
-            if (
-              bfs_test_config.tuples_require_parens &&
-              csdata.tuple_parens_omitted)
-            {
-              expect_failure = true; // omitted tuple parens must cause failure,
-                                     // or at least a mis-parse (see below)
-            }
-
-            bool ok = true;
-            if (!result.ok && !expect_failure)
-            {
-              out << "Error reparsing this AST:" << std::endl
-                  << prog << std::endl;
-              ok = false;
-            }
-            else if (result.ok && expect_failure)
-            {
-              // only report an unexpected success if the AST is somehow
-              // perfectly right. mis-parsing counts as an error when it's due
-              // to a configuration mismatch.
-              if (prog->equals(result.ast))
+              trieste::Node prog = trieste::Top << calculation->clone();
+              if (!infix::wf.build_st(prog))
               {
-                out << "Should have had error reparsing this AST:" << std::endl
+                out << "Problem rebuilding symbol table for this program:"
+                    << std::endl
                     << prog << std::endl
-                    << "Based on this string:" << std::endl
-                    << rendered_str << std::endl;
-                ok = false;
+                    << "Aborting." << std::endl;
+                return out.str();
               }
-            }
 
-            auto result_str = result.ast->str();
-            auto prog_str = prog->str();
-            // if we were expecting failure, it won't match anyhow
-            if (result_str != prog_str && !expect_failure)
-            {
-              out << "Didn't reparse the same AST." << std::endl
-                  << "What we generated:" << std::endl
-                  << prog_str << std::endl
-                  << "----" << std::endl
-                  << "What we rendered:" << std::endl
-                  << rendered_str << std::endl
-                  << "----" << std::endl
-                  << "What we reparsed (diffy view):" << std::endl;
-              diffy_print(prog_str, result_str, out);
-              ok = false;
-            }
-
-            // extra checking: smoke-test calculation.
-            // for something we constructed that has valid names,
-            // the only error should come from type problems in maths
-            if (ok)
-            {
+              // extra checking: smoke-test calculation.
+              // for something we constructed that has valid names,
+              // the only error should come from type problems in maths
               auto process_result = prog >> infix::calculate();
               if (process_result.ok)
               {
@@ -517,17 +559,85 @@ int main(int argc, char** argv)
                   ok = false;
                 }
               }
-            }
 
-            if (!ok)
+              if (!ok)
+              {
+                out << "Aborting." << std::endl;
+                return out.str();
+              }
+
+              return std::nullopt;
+            });
+          });
+        }
+
+        return tasks_for_calc;
+      });
+
+      // This is a simplified async task queue. It makes things faster than
+      // single-threaded, while not increasing complexity very much. It
+      // parallelizes only the assertions, not case generation. We give it a max
+      // size which indicates how many concurrent tasks we allow. Responses from
+      // tasks are an optional string, which is an error message if there is
+      // one, or nothing which means "carry on".
+
+      // Notably, the queue structure ensures that we "see" task completions in
+      // the order we added them. Sure, it is possible for one task to hold up
+      // the completion queue and prevent retiring newer tasks that have
+      // completed, but assuming most tasks are relatively uniform, and having
+      // measured a roughly 2x speed-up, it seems worth it for usability to
+      // report errors as-if we were running on a single thread still.
+      std::queue<std::future<std::optional<std::string>>> tasks_pending;
+      auto pump_tasks_pending = [&](bool ok, std::size_t target_size) -> bool {
+        while (tasks_pending.size() > target_size)
+        {
+          auto err_msg = tasks_pending.front().get();
+          tasks_pending.pop();
+          if (err_msg && ok)
+          {
+            std::cout << *err_msg;
+            ok = false;
+          }
+
+          ++ok_count;
+          auto print_count = [&]() {
+            if (ok)
             {
-              out << "Aborting." << std::endl;
-              return out.str();
+              // for less spammy output, we have the options of rewriting the
+              // current line using a VT100 escape.
+              if (!bfs_test_no_vt100)
+              {
+                if (first_status_print)
+                {
+                  first_status_print = false;
+                }
+                else
+                {
+                  // after writing first progress update, go up one line, clear,
+                  // and go to start
+                  std::cout << "\033[1A\033[2K\r";
+                }
+              }
+              std::cout << ok_count << " cases ok..." << std::endl;
+            }
+          };
+          if (ok_count > 1000)
+          {
+            if (ok_count % 1000 == 0)
+            {
+              print_count();
             }
           }
-          return std::nullopt;
-        };
+          else if (ok_count % 100 == 0)
+          {
+            print_count();
+          }
+        }
+        return ok;
+      };
 
+      for (auto task_fn : all_tasks)
+      {
         if (!pump_tasks_pending(true, bfs_test_concurrency))
         {
           // drain and ignore all other ongoing tasks (multiple errors are
@@ -546,7 +656,7 @@ int main(int argc, char** argv)
       }
     }
 
-    std::cout << "Tested " << ok_count << " programs, all ok." << std::endl;
+    std::cout << "Tested " << ok_count << " cases, all ok." << std::endl;
   }
   else
   {
