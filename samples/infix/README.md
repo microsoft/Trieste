@@ -56,6 +56,12 @@ infix operators. All variables are constants (i.e. their values do not
 change) and the only action the program can take is to print a result
 to the console.
 
+**Note to reader:**
+The source tree associated with this tutorial contains implementations of advanced concepts that extend the Infix language beyond what is presented here.
+We annotate all such extensions with notes like "tuples only" for the tuples features, or equivalent for other features.
+The code is written such that, if you ignore those parts, they will have no effect.
+See the [beyond infix](./beyond-infix.md) tutorial to learn more about that.
+
 The language is defined by the following grammar (we assume standard 
 syntax for $string$, $number$ and $variable$):
 
@@ -153,28 +159,28 @@ rules:
 p("start", // this indicates the 'mode' these rules are associated with
   {
     // Whitespace between tokens.
-    "[[:blank:]]+" >> [](auto&) {}, // no-op
+    R"([[:blank:]]+)" >> [](auto&) {}, // no-op
 
     // Line comment.
-    "//[^\n]*" >> [](auto&) {}, // another no-op
+    R"(//[^\n]*\n)" >> [](auto&) {}, // another no-op
 
     // Int.
-    "[[:digit:]]+\\b" >> [](auto& m) { m.add(Int); },
+    R"([[:digit:]]+\b)" >> [](auto& m) { m.add(Int); },
     
     // String. s
     R"("[^"]*")" >> [](auto& m) { m.add(String); },
 
     // Print.
-    "print\\b" >> [](auto& m) { m.add(Print); },
+    R"(print\b)" >> [](auto& m) { m.add(Print); },
 
     // Add ('+' is a reserved RegEx character)
-    "\\+" >> [](auto& m) { m.add(Add); },
+    R"(\+)" >> [](auto& m) { m.add(Add); },
 
     // Equals.
-    "=" >> [](auto& m) { m.seq(Equals); },
+    R"(=)" >> [](auto& m) { m.seq(Equals); },
 
     // Terminator.
-    ";[\n]*" >> [](auto& m) { m.term({Equals}); },
+    R"(;[\n]*)" >> [](auto& m) { m.term({Equals}); },
 
     // ...
   });
@@ -185,6 +191,12 @@ in the code example above) is overloaded in the `Parse` class and is called with
 a string (representing a 'mode') and the list of `Rule`s as arguments which are 
 added to the `Parse` object. A mode is simply a string, used for controlling
 the application of the rules. Currently, only the 'start' mode is used.
+Notice that we use C++ raw-strings to avoid two levels of character escapes:
+`R"(...)"` means that the contents `...` will be exactly the string's contents,
+even if it contains characters that would be C++ character escapes.
+We recommend adding this to be safe, even if it seems redundant.
+A previous version of this tutorial had a parsing bug due to an interaction between
+C++ and RegEx escape sequences.
 
 ### Tokens
 
@@ -430,13 +442,13 @@ auto indent = std::make_shared<std::vector<size_t>>();
 /* ... */
 
 // Parens.
-"(\\()[[:blank:]]*" >> [indent](auto& m) {
+R"((\\()[[:blank:]]*)" >> [indent](auto& m) {
   // we push a Paren node. Subsequent nodes will be added
   // as its children.
   m.push(Paren, 1);
 },
 
-"\\)" >>
+R"(\\))" >>
   [indent](auto& m) {
     // terminate the current group
     m.term();
@@ -627,10 +639,10 @@ Let's look at the rule definitions again in detail:
 
 ``` c++
 // Equals.
-"=" >> [](auto& m) { m.seq(Equals); },
+R"(=)" >> [](auto& m) { m.seq(Equals); },
 
 // Terminator.
-";[\n]*" >> [](auto& m) { m.term({Equals}); },
+R"(;[\n]*)" >> [](auto& m) { m.term({Equals}); },
 ```
 
 These rules, for parsing assignments, are different from the other parsing rules for
@@ -976,7 +988,9 @@ the `expressions` pass:
 
 ``` c++
 inline const auto wf_expressions_tokens =
-    wf_literal | Ident | Add | Subtract | Divide | Multiply | Expression;
+  (wf_parse_tokens - (String | Paren | Print))
+  | Expression
+  ;
 
 inline const auto wf_pass_expressions =
     (Top <<= Calculation)
@@ -1013,7 +1027,25 @@ function returns the `Parse` object that we specified before.
 We then include our rewrite passes, where the `PassDef` returned
 by the function `expressions()` is the only one defined thus far. 
 
-### Passes 2 and 3: Operator precedence
+### Pass 2: Terminals
+
+While it might be possible to write patterns that means "int or float or identifier or nested expression" while parsing operator precedence, this quickly stops scaling for more complex languages.
+So, before we parse binary operators, we quickly note which single tokens count expressions on their own.
+
+To do this, we can match `In(Expression) * T(Int / Float)[Expression]` in order to catch all single int and float tokens.
+We can then wrap our captured token in an expression, as in `Expression << _(Expression)`, and we will have stablished the invariant that all future passes can just check for `T(Expression)` to tell whether something is known to be an expression or not.
+
+Similarly, in our language all identifiers in an expression count as leaf sub-expressions, so we also look up `In(Expression) * T(Ident)[Ident]` and wrap it as `Expression << _(Ident)`.
+
+**Danger!**
+But wait... if you look at the patterns and what we're replacing closely, doesn't our expression-wrapped int also count as "an int token in an expression"?
+Marking this pass as either `dir::topdown` or `dir::bottomup` will both cause the pass to run forever, creating infinitely nested chains of `(expr (expr ... (int)))`.
+In this case, the practical solution is to include the tag `dir::once` to ensure that, once every int and float has been wrapped in an expression, we don't check back to see if any more wrapping needs doing.
+This works here, because we can always wrap a single token in one step.
+
+If you need to tackle the more complex case of looking for "an int token that has at least one sibling on either side", then look in the [box of tricks](./tricks.md) for a pattern you can use.
+
+### Passes 3 and 4: Operator precedence
 
 Now that we have our tokens roughly organized around mathematical
 expressions, we need to solve the problem of operator precedence.
@@ -1032,11 +1064,11 @@ Here is the first rule:
 // replace it with a single <expr> node that has the triplet as
 // its children.
 In(Expression) *
-    (ExpressionArg[Lhs] * (T(Multiply) / T(Divide))[Op] *
-      ExpressionArg[Rhs]) >>
+    (T(Expression)[Lhs] * (T(Multiply) / T(Divide))[Op] *
+      T(Expression)[Rhs]) >>
   [](Match& _) {
     return Expression
-      << (_(Op) << (Expression << _(Lhs)) << (Expression << _[Rhs]));
+      << (_(Op) << _(Lhs) << _[Rhs]);
   },
 ```
 
@@ -1057,11 +1089,11 @@ Now we want to do the same for add and subtract:
 
 ``` c++
 In(Expression) *
-    (ExpressionArg[Lhs] * (T(Add) / T(Subtract))[Op] *
-      ExpressionArg[Rhs]) >>
+    (T(Expression)[Lhs] * (T(Add) / T(Subtract))[Op] *
+      T(Expression)[Rhs]) >>
   [](Match& _) {
     return Expression
-      << (_(Op) << (Expression << _(Lhs)) << (Expression << _[Rhs]));
+      << (_(Op) << _(Lhs) << _[Rhs]);
   },
 ```
 
@@ -1080,7 +1112,7 @@ where every token was a child of an expression is now a binary tree.
 Let's see this develop by looking at the following expression:
 
 ``` typescript
-1 + 2 * 3 - 4 + 5 / (6 - 7)
+1 + 2 * 3 - 4 / (5 - 6)
 ```
 
 and how its tree evolves over time:
@@ -1100,31 +1132,60 @@ flowchart TD
   A-->H[Int 4]
   A-->I["#47;"]
   A-->J[Expr]
-  J-->K[Int 6]
+  J-->K[Int 5]
   J-->L[-]
-  J-->M[Int 7]
+  J-->M[Int 6]
 ```
 
 </td></tr>
+<tr><td>terminals[0]</td><td>
+
+``` mermaid
+flowchart TD
+  A[Expr]-.->BB[Expr]:::current
+  BB-.->B[Int 1]
+  A-->C[+]
+  A-.->DD[Expr]:::current
+  DD-.->D[Int 2]
+  A-->E[*]
+  A-.->FF[Expr]:::current
+  FF-.->F[Int 3]
+  A-->G[-]
+  A-.->HH[Expr]:::current
+  HH-.->H[Int 4]
+  A-->I["#47;"]
+  A-->J[Expr]
+  J-.->KK[Expr]:::current
+  KK-.->K[Int 5]
+  J-->L[-]
+  J-.->MM[Expr]:::current
+  MM-.->M[Int 6]
+  classDef current stroke-width:4px,stroke-dasharray:5 5;
+```
+</td>
 <tr><td>multiply_divide[0]</td><td>
 
 ``` mermaid
 flowchart TD
-  A[Expr]-->B[Int 1]
+  A[Expr]-->BB[Expr]
+  BB-->B[Int 1]
   A-->C[+]
   A-.->N[Expr]:::current
   N-.->E[*]
-  E-.->DD[Expr]:::current
-  DD-.->D[Int 2]
-  E-.->FF[Expr]:::current
-  FF-.->F[Int 3]
+  E-.->DD[Expr]
+  DD-->D[Int 2]
+  E-.->FF[Expr]
+  FF-->F[Int 3]
   A-->G[-]
-  A-->H[Int 4]
+  A-->HH[Expr]
+  HH-->H[Int 4]
   A-->I["#47;"]
   A-->J[Expr]
-  J-->K[Int 6]
+  J-->KK[Expr]
+  KK-->K[Int 5]
   J-->L[-]
-  J-->M[Int 7]
+  J-->MM[Expr]
+  MM-->M[Int 6]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -1133,7 +1194,8 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[Expr]-->B[Int 1]
+  A[Expr]-->BB[Expr]
+  BB-->B[Int 1]
   A-->C[+]
   A-->N[Expr]
   N-->E[*]
@@ -1142,14 +1204,16 @@ flowchart TD
   E-->FF[Expr]
   FF-->F[Int 3]
   A-->G[-]
-  A-.->O[Expr]:::current
-  O-.->I["#47;"]
-  I-.->HH[Expr]:::current
-  HH-.->H[Int 4]
-  I-.->J[Expr]
-  J-->K[Int 6]
+  I-->HH[Expr]
+  HH-->H[Int 4]
+  A-.->II[Expr]:::current
+  II-.->I["#47;"]
+  I-->J[Expr]
+  J-->KK[Expr]
+  KK-->K[Int 5]
   J-->L[-]
-  J-->M[Int 7]
+  J-->MM[Expr]
+  MM-->M[Int 6]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -1158,10 +1222,10 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[Expr]-.->CC[Expr]:::current
-  CC-.->C[+]
-  C-.->BB[Expr]:::current
-  BB-.->B[Int 1]
+  C-.->BB[Expr]
+  BB-->B[Int 1]
+  A[Expr]-->CC[Expr]:::current
+  CC-->C[+]
   C-.->N[Expr]
   N-->E[*]
   E-->DD[Expr]
@@ -1169,14 +1233,16 @@ flowchart TD
   E-->FF[Expr]
   FF-->F[Int 3]
   A-->G[-]
-  A-->O[Expr]
-  O-->I["#47;"]
   I-->HH[Expr]
   HH-->H[Int 4]
+  A-->II[Expr]
+  II-->I["#47;"]
   I-->J[Expr]
-  J-->K[Int 6]
+  J-->KK[Expr]
+  KK-->K[Int 5]
   J-->L[-]
-  J-->M[Int 7]
+  J-->MM[Expr]
+  MM-->M[Int 6]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -1185,25 +1251,29 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[Expr]-->GG[-]
-  GG-.->CC[Expr]
-  CC-->C[+]
   C-->BB[Expr]
   BB-->B[Int 1]
+  G-.->CC[Expr]
+  CC-->C[+]
   C-->N[Expr]
   N-->E[*]
   E-->DD[Expr]
   DD-->D[Int 2]
   E-->FF[Expr]
   FF-->F[Int 3]
-  GG-.->O[Expr]
-  O-->I["#47;"]
+  A[Expr]-->GG[Expr]:::current
+  GG-.->G[-]
   I-->HH[Expr]
   HH-->H[Int 4]
+  G-.->II[Expr]
+  II-->I["#47;"]
   I-->J[Expr]
-  J-->K[Int 6]
+  J-->KK[Expr]
+  KK-->K[Int 5]
   J-->L[-]
-  J-->M[Int 7]
+  J-->MM[Expr]
+  MM-->M[Int 6]
+  classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
 
 </td></tr>
@@ -1211,27 +1281,29 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[Expr]-->GG[-]
-  GG-->CC[Expr]
-  CC-->C[+]
   C-->BB[Expr]
   BB-->B[Int 1]
+  G-.->CC[Expr]
+  CC-->C[+]
   C-->N[Expr]
   N-->E[*]
   E-->DD[Expr]
   DD-->D[Int 2]
   E-->FF[Expr]
   FF-->F[Int 3]
-  GG-->O[Expr]
-  O-->I["#47;"]
+  A[Expr]-->GG[Expr]
+  GG-->G[-]
   I-->HH[Expr]
   HH-->H[Int 4]
+  G-->II[Expr]
+  II-->I["#47;"]
   I-->J[Expr]
-  J-->L[-]
-  L-.->KK[Expr]:::current
-  KK-.->K[Int 6]
-  L-.->MM[Expr]:::current
-  MM-.->M[Int 7]
+  L-.->KK[Expr]
+  KK-->K[Int 5]
+  J-->LL[Expr]:::current
+  LL-.->L[-]
+  L-.->MM[Expr]
+  MM-->M[Int 6]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
 
@@ -1279,7 +1351,8 @@ top
 └── calculation
     ├── symbols: {x y z}
     ├── assign
-    │   ├── ident x
+    │   ├── ref
+    |   |   └── ident x
     │   └── expression
     │       └── +
     │           ├── expression
@@ -1287,7 +1360,8 @@ top
     │           └── expression
     │               └── int 10
     ├── assign
-    │   ├── ident y
+    │   ├── ref
+    |   |   └── ident y
     │   └── expression
     │       └── +
     │           ├── expression
@@ -1297,15 +1371,18 @@ top
     │           │       └── expression
     │           │           └── int 9
     │           └── expression
-    │               └── ident x
+    │               └── ref
+    |                   └── ident x
     ├── output
     │   ├── string "1"
     │   └── expression
     │       └── +
     │           ├── expression
-    │           │   └── ident x
+    │           │   └── ref
+    |           |       └── ident x
     │           └── expression
-    │               └── ident y
+    │               └── ref
+    |                   └── ident y
     ├── assign
     │   ├── ident z
     │   └── expression
@@ -1315,13 +1392,16 @@ top
     │           │       ├── expression
     │           │       │   └── int 5
     │           │       └── expression
-    │           │           └── ident x
+    │           │           └── ref
+    |           |               └── ident x
     │           └── expression
-    │               └── ident y
+    │               └── ref
+    |                   └── ident y
     └── output
         ├── string "2"
         └── expression
-            └── ident z
+            └── ref
+                └── ident z
 ```
 
 ### Pass 5: Checking References
@@ -1346,7 +1426,13 @@ In(Expression) * T(Ident)[Id] >>
       return err(id, "undefined");
     }
 
-    return Ref << id;
+    // This pass only adds errors.
+    // To say "actually don't do anything",
+    // we can return the special NoChange token, and
+    // not only will this rule have no effect, but other
+    // lower-priority rules will be considered as-if this
+    // rule didn't match.
+    return NoChange ^ "";
   }
 ```
 
@@ -1396,7 +1482,7 @@ So, in the case of `infix` we create one like this:
   {
     return {
       "infix",
-      {expressions(), multiply_divide(), add_subtract(), trim(), check_refs()},
+      {expressions(), terminals(), multiply_divide(), add_subtract(), trim(), check_refs()},
       parser(),
     };
   }
@@ -1889,6 +1975,7 @@ outputs:
 ```
 Testing x1000, seed: 3316469074
 Testing pass: expressions
+Testing pass: terminals
 Testing pass: multiply_divide
 Testing pass: add_subtract
 Testing pass: trim

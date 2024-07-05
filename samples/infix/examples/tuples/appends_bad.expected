@@ -24,11 +24,9 @@
                 (infix-tuple-candidate)
                 (infix-expression
                   (infix-tuple-candidate)
-                  (infix-expression
-                    (infix-int 1:1))
+                  (infix-int 1:1)
                   (infix-comma)
-                  (infix-expression
-                    (infix-int 1:2)))))))))
+                  (infix-int 1:2))))))))
     (infix-output
       (infix-string 12:"arithmetic")
       (infix-expression

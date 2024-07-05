@@ -20,8 +20,7 @@ namespace
 
   // clang-format off
   inline const auto wf_expressions_tokens =
-    (wf_parse_tokens - (String | Paren | Print | Ident))
-    | Ref
+    (wf_parse_tokens - (String | Paren | Print))
     | Expression
     // --- tuples extension ---
     | TupleCandidate
@@ -46,9 +45,18 @@ namespace
     ;
   // clang-format on
 
+  inline const auto wf_terminals_tokens = (wf_expressions_tokens - Ident) | Ref;
+
+  // clang-format off
+  inline const auto wf_pass_terminals =
+    wf_pass_expressions
+    | (Expression <<= wf_terminals_tokens++[1])
+    ;
+  // clang-format on
+
   // clang-format off
   inline const auto wf_pass_tuple_idx =
-    wf_pass_expressions
+    wf_pass_terminals
     | (TupleIdx <<= Expression * Expression)
     ;
   // clang-format on
@@ -69,7 +77,7 @@ namespace
     ;
   // clang-format on
 
-  inline const auto wf_tupled_tokens = wf_expressions_tokens | Tuple;
+  inline const auto wf_tupled_tokens = wf_terminals_tokens | Tuple;
 
   // clang-format off
   inline const auto wf_pass_tuple_literals =
@@ -213,6 +221,8 @@ namespace
             return Expression << parser_tuple;
           },
 
+        // --- end tuples only
+
         // This node unwraps Groups that are inside Parens, making them
         // Expression nodes.
         In(Expression) * (T(Paren) << T(Group)[Group]) >>
@@ -221,27 +231,6 @@ namespace
           //   (length 1)
           // - * which gets the children of that group
           [](Match& _) { return Expression << *_[Group]; },
-
-        // In case of int and float literals, they are trivially expressions on
-        // their own so we mark them as such without any further parsing
-        // !! but only if they're not the only thing in an expression node !!
-        // Otherwise, we create infinitely nested expressions by re-applying the
-        // rule. This pair of rules requires _something_ to be on the left or
-        // right of the literal, ensuring it's not alone.
-        In(Expression) * Any[Lhs] * T(Int, Float)[Rhs] >>
-          // Left case: Seq here splices multiple elements rather than one, so
-          // we keep Lhs unchanged and in the right place
-          [](Match& _) { return Seq << _(Lhs) << (Expression << _(Rhs)); },
-        // Right case: --End is a negative lookahead, ensuring that there is
-        // something to the right of the selected literal that isn't the end of
-        // the containing node
-        In(Expression) * T(Int, Float)[Expression] * (--End) >>
-          [](Match& _) { return Expression << _(Expression); },
-
-        // Do the same thing as above for identifiers, but it's easier because
-        // the Ref marker simplifies telling before and after states apart.
-        In(Expression) * T(Ident)[Ident] >>
-          [](Match& _) { return Expression << (Ref << _(Ident)); },
 
         // errors
 
@@ -277,6 +266,26 @@ namespace
 
         T(Group)[Group] >>
           [](Match& _) { return err(_[Group], "syntax error"); },
+      }};
+  }
+
+  PassDef terminals()
+  {
+    return {
+      "terminals",
+      wf_pass_terminals,
+      dir::bottomup | dir::once,
+      {
+        // Wrap any ints or floats into self-contained expressions.
+        // Note that this only works with dir::once - remove that and this rule
+        // will match its own output, running forever.
+        In(Expression) * T(Int, Float)[Expression] >>
+          [](Match& _) { return Expression << _(Expression); },
+
+        // Do the same thing as above for identifiers, but it's easier because
+        // the Ref marker simplifies telling before and after states apart.
+        In(Expression) * T(Ident)[Ident] >>
+          [](Match& _) { return Expression << (Ref << _(Ident)); },
       }};
   }
 
@@ -550,6 +559,7 @@ namespace infix
       "infix",
       {
         expressions(config),
+        terminals(),
         tuple_idx(config),
         multiply_divide(),
         add_subtract(),

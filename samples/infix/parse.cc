@@ -13,13 +13,13 @@ namespace infix
     p("start", // this indicates the 'mode' these rules are associated with
       {
         // Whitespace between tokens.
-        "[[:blank:]]+" >> [](auto&) {}, // no-op
+        R"([[:blank:]]+)" >> [](auto&) {}, // no-op
 
         // Equals.
-        "=" >> [](auto& m) { m.seq(Equals); },
+        R"(=)" >> [](auto& m) { m.seq(Equals); },
 
-        // Commas: might be tuple literals, function calls.
-        "," >>
+        // [tuples only] Commas: might be tuple literals, function calls.
+        R"(,)" >>
           [use_parser_tuples](auto& m) {
             if (use_parser_tuples)
             {
@@ -52,21 +52,21 @@ namespace infix
             }
           },
 
-        // Tuple indexing.
-        R"re(\.)re" >> [](auto& m) { m.add(TupleIdx); },
+        // [tuples only] Tuple indexing.
+        R"(\.)" >> [](auto& m) { m.add(TupleIdx); },
 
         // Terminator.
-        R"re(;[\n]*)re" >> [](auto& m) { m.term(terminators); },
+        R"(;[\n]*)" >> [](auto& m) { m.term(terminators); },
 
         // Parens.
-        R"re((\()[[:blank:]]*)re" >>
+        R"((\()[[:blank:]]*)" >>
           [](auto& m) {
             // we push a Paren node. Subsequent nodes will be added
             // as its children.
             m.push(Paren, 1);
           },
 
-        R"re(\))re" >>
+        R"(\))" >>
           [](auto& m) {
             // terminate the current group
             m.term(terminators);
@@ -75,38 +75,38 @@ namespace infix
           },
 
         // Float.
-        R"re([[:digit:]]+\.[[:digit:]]+(?:e[+-]?[[:digit:]]+)?\b)re" >>
+        R"([[:digit:]]+\.[[:digit:]]+(?:e[+-]?[[:digit:]]+)?\b)" >>
           [](auto& m) { m.add(Float); },
 
         // String.
-        R"re("[^"]*")re" >> [](auto& m) { m.add(String); },
+        R"("[^"]*")" >> [](auto& m) { m.add(String); },
 
         // Int.
-        R"re([[:digit:]]+\b)re" >> [](auto& m) { m.add(Int); },
+        R"([[:digit:]]+\b)" >> [](auto& m) { m.add(Int); },
 
         // Line comment.
-        R"re(//[^\n]*\n)re" >> [](auto&) {}, // another no-op
+        R"(//[^\n]*\n)" >> [](auto&) {}, // another no-op
 
         // Print.
         R"re(print\b)re" >> [](auto& m) { m.add(Print); },
 
         // Append.
-        R"re(append\b)re" >> [](auto& m) { m.add(Append); },
+        R"(append\b)" >> [](auto& m) { m.add(Append); },
 
         // Identifier.
-        R"re([_[:alpha:]][_[:alnum:]]*\b)re" >> [](auto& m) { m.add(Ident); },
+        R"([_[:alpha:]][_[:alnum:]]*\b)" >> [](auto& m) { m.add(Ident); },
 
         // Add ('+' is a reserved RegEx character)
-        R"re(\+)re" >> [](auto& m) { m.add(Add); },
+        R"(\+)" >> [](auto& m) { m.add(Add); },
 
         // Subtract
-        "-" >> [](auto& m) { m.add(Subtract); },
+        R"(-)" >> [](auto& m) { m.add(Subtract); },
 
         // Multiply ('*' is a reserved RegEx character)
         R"re(\*)re" >> [](auto& m) { m.add(Multiply); },
 
         // Divide
-        R"re(/)re" >> [](auto& m) { m.add(Divide); },
+        R"(/)" >> [](auto& m) { m.add(Divide); },
       });
 
     p.gen({
