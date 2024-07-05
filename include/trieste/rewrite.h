@@ -162,27 +162,34 @@ namespace trieste
       }
 
     public:
-      static FastPattern match_any()
+      // don't inline 2 std::set copies on every copy
+      SNMALLOC_SLOW_PATH FastPattern(const FastPattern&) = default;
+      SNMALLOC_SLOW_PATH FastPattern(FastPattern&&) = default;
+      SNMALLOC_SLOW_PATH FastPattern& operator=(const FastPattern&) = default;
+      SNMALLOC_SLOW_PATH FastPattern& operator=(FastPattern&&) = default;
+      SNMALLOC_SLOW_PATH ~FastPattern() = default;
+
+      static SNMALLOC_SLOW_PATH FastPattern match_any()
       {
         return FastPattern({}, {}, false);
       }
 
-      static FastPattern match_pred()
+      static SNMALLOC_SLOW_PATH FastPattern match_pred()
       {
         return FastPattern({}, {}, true);
       }
 
-      static FastPattern match_token(std::set<Token> token)
+      static SNMALLOC_SLOW_PATH FastPattern match_token(std::set<Token> token)
       {
         return FastPattern(token, {}, false);
       }
 
-      static FastPattern match_parent(std::set<Token> token)
+      static SNMALLOC_SLOW_PATH FastPattern match_parent(std::set<Token> token)
       {
         return FastPattern({}, token, true);
       }
 
-      static FastPattern
+      static SNMALLOC_SLOW_PATH FastPattern
       match_choice(const FastPattern& lhs, const FastPattern& rhs)
       {
         bool new_pass_through = lhs.pass_through || rhs.pass_through;
@@ -213,7 +220,7 @@ namespace trieste
         return FastPattern(new_first, new_parent, new_pass_through);
       }
 
-      static FastPattern
+      static SNMALLOC_SLOW_PATH FastPattern
       match_seq(const FastPattern& lhs, const FastPattern& rhs)
       {
         std::set<Token> new_first;
@@ -270,7 +277,7 @@ namespace trieste
         return FastPattern(new_first, new_parent, new_pass_through);
       }
 
-      static FastPattern match_opt(const FastPattern& pattern)
+      static FastPattern SNMALLOC_SLOW_PATH match_opt(const FastPattern& pattern)
       {
         if (pattern.any_first())
           return pattern;
@@ -895,6 +902,11 @@ namespace trieste
       Pattern(PatternPtr pattern_, FastPattern fast_pattern_)
       : pattern(pattern_), fast_pattern(fast_pattern_)
       {}
+      SNMALLOC_SLOW_PATH Pattern(const Pattern&) = default;
+      SNMALLOC_SLOW_PATH Pattern(Pattern&&) = default;
+      SNMALLOC_SLOW_PATH Pattern& operator=(const Pattern&) = default;
+      SNMALLOC_SLOW_PATH Pattern& operator=(Pattern&&) = default;
+      SNMALLOC_SLOW_PATH ~Pattern() = default;
 
       bool match(NodeIt& it, const Node& parent, Match& match) const
       {

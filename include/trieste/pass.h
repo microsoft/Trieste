@@ -82,6 +82,10 @@ namespace trieste
       compile_rules();
     }
 
+    SNMALLOC_SLOW_PATH PassDef(const PassDef&) = default;
+    SNMALLOC_SLOW_PATH PassDef(PassDef&&) = default;
+    SNMALLOC_SLOW_PATH ~PassDef() = default;
+
     operator Pass() const
     {
       return std::make_shared<PassDef>(std::move(*this));

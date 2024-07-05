@@ -53,10 +53,11 @@ namespace trieste
       std::string mode_;
       REMatch re_match;
       REIterator re_iterator;
+      size_t error_count_;
 
     public:
       Make(const std::string& name, const Token& token, const Source& source)
-      : re_match(10), re_iterator(source)
+      : re_match(10), re_iterator(source), error_count_(0)
       {
         node = NodeDef::create(token, {name});
         top = node;
@@ -104,6 +105,7 @@ namespace trieste
         if (!in(Group))
           push(Group);
 
+        error_count_++;
         node->push_back(make_error(re_match.at(index), msg));
       }
 
@@ -112,6 +114,7 @@ namespace trieste
         if (!in(Group))
           push(Group);
 
+        error_count_++;
         node->push_back(make_error(location, msg));
       }
 
@@ -119,6 +122,11 @@ namespace trieste
       {
         if ((type != Group) && !in(Group))
           push(Group);
+
+        if (type == Error)
+        {
+          error_count_++;
+        }
 
         node->push_back(NodeDef::create(type, re_match.at(index)));
       }
@@ -191,7 +199,13 @@ namespace trieste
 
       void invalid()
       {
+        error_count_++;
         extend(Invalid);
+      }
+
+      size_t error_count() const
+      {
+        return error_count_;
       }
 
     private:
@@ -258,8 +272,10 @@ namespace trieste
       std::function<void(const Parse&, const std::filesystem::path&, Node)>;
 
   private:
+    const size_t default_max_errors = 100;
     depth depth_;
     const wf::Wellformed& wf_ = wf::empty;
+    size_t max_errors_;
     std::filesystem::path exe;
 
     PreF prefile_;
@@ -272,13 +288,26 @@ namespace trieste
     std::map<Token, GenLocationF> gens;
 
   public:
-    Parse(depth depth) : depth_(depth) {}
+    Parse(depth depth) : depth_(depth), max_errors_(default_max_errors) {}
 
-    Parse(depth depth, const wf::Wellformed& wf) : depth_(depth), wf_(wf) {}
+    Parse(depth depth, const wf::Wellformed& wf)
+    : depth_(depth), wf_(wf), max_errors_(default_max_errors)
+    {}
 
     const wf::Wellformed& wf() const
     {
       return wf_;
+    }
+
+    size_t max_errors() const
+    {
+      return max_errors_;
+    }
+
+    Parse& max_errors(size_t n)
+    {
+      max_errors_ = n;
+      return *this;
     }
 
     Parse& operator()(
@@ -393,61 +422,8 @@ namespace trieste
       if (prefile_ && !prefile_(*this, filename))
         return {};
 
-      Node ast;
-      if (std::filesystem::exists(filename))
-      {
-        const size_t preview_size = 4096;
-        const size_t large_file_size = 16 * preview_size;
-
-        size_t filesize =
-          static_cast<size_t>(std::filesystem::file_size(filename));
-        if (filesize > large_file_size)
-        {
-          // for larger files, we first check that they are valid
-          // be examining the first preview_size bytes
-          auto preview = SourceDef::load_bytes(filename, preview_size);
-          ast = parse_source(filename.stem().string(), File, preview);
-          size_t valid = 0;
-          size_t invalid = 0;
-          std::vector<Node> frontier{ast};
-          while (!frontier.empty())
-          {
-            Node node = frontier.back();
-            frontier.pop_back();
-
-            if (node == Invalid || node == Error)
-            {
-              invalid++;
-              continue;
-            }
-
-            if (node->empty())
-            {
-              valid++;
-            }
-            else
-            {
-              for (auto& child : *node)
-              {
-                frontier.push_back(child);
-              }
-            }
-          }
-
-          if (invalid * 4 > invalid + valid)
-          {
-            std::cerr << "High incidence of invalid nodes from parser: "
-                      << invalid << " of " << valid + invalid
-                      << " tokens in first " << preview_size << " bytes"
-                      << std::endl;
-            throw std::runtime_error(
-              "Invalid input file: " + filename.string());
-          }
-        }
-
-        auto source = SourceDef::load(filename);
-        ast = parse_source(filename.stem().string(), File, source);
-      }
+      auto source = SourceDef::load(filename);
+      auto ast = parse_source(filename.stem().string(), File, source);
 
       if (postfile_ && ast)
         postfile_(*this, filename, ast);
@@ -470,7 +446,7 @@ namespace trieste
 
       auto mode = make.mode_ = find->first;
 
-      while (!make.re_iterator.empty())
+      while (!make.re_iterator.empty() && make.error_count() < max_errors_)
       {
         bool matched = false;
 
@@ -499,6 +475,12 @@ namespace trieste
           make.invalid();
           make.re_iterator.skip();
         }
+      }
+
+      if (make.error_count() >= max_errors_)
+      {
+        logging::Error() << "Too many errors (" << make.error_count() << " > "
+                         << max_errors_ << ") when parsing " << name;
       }
 
       if (done_)
