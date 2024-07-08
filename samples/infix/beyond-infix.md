@@ -40,7 +40,7 @@ const auto wf =
   | (Expression <<= (Tuple | TupleIdx | TupleAppend | Add | Subtract | Multiply | Divide | Ref | Float | Int))
   | (Tuple <<= Expression++)
   | (TupleIdx <<= Expression * Expression)
-  | (TupleAppend <<= Expression * Expression)
+  | (TupleAppend <<= Expression++)
   // ...
   ;
 ```

@@ -1,9 +1,7 @@
 #include "infix.h"
 #include "internal.h"
-#include "trieste/ast.h"
-#include "trieste/pass.h"
-#include "trieste/rewrite.h"
-#include "trieste/source.h"
+
+#include <trieste/trieste.h>
 
 namespace
 {
@@ -538,10 +536,6 @@ namespace
               // there are no symbols with this identifier
               return err(id, "undefined");
             }
-            // FIXME: how do I implement this?
-            // else if(defs.size() > 1) {
-            //   return err(id, "multiple definitions");
-            // }
 
             // we're just checking refs; we only make a change if we find an
             // error

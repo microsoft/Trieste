@@ -19,6 +19,9 @@ int main(int argc, char** argv)
   app.add_option("-m,--mode", mode, "Output mode.")
     ->transform(CLI::IsMember(modes));
 
+  infix::Config config;
+  config.install_cli(&app);
+
   try
   {
     app.parse(argc, argv);
@@ -28,8 +31,6 @@ int main(int argc, char** argv)
     return app.exit(e);
   }
 
-  // TODO: config
-  infix::Config config;
   auto reader = infix::reader(config).file(input_path);
   Destination dest =
     output_path.empty() ? DestinationDef::console() : DestinationDef::dir(".");

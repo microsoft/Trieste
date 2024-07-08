@@ -1,7 +1,6 @@
 #pragma once
 
 #include "infix.h"
-#include "trieste/token.h"
 
 namespace infix
 {
