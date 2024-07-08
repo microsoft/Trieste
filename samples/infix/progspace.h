@@ -105,14 +105,14 @@ namespace progspace
     bfs::CatString str;
     bool tuple_parens_omitted;
 
-    CSData(std::string_view str) : CSData{bfs::CatString(str)} {}
+    CSData(std::string_view str_) : CSData{bfs::CatString(str_)} {}
 
-    CSData(std::string str) : CSData{bfs::CatString(str)} {}
+    CSData(std::string str_) : CSData{bfs::CatString(str_)} {}
 
-    CSData(bfs::CatString str) : CSData{str, false} {}
+    CSData(bfs::CatString str_) : CSData{str_, false} {}
 
-    CSData(bfs::CatString str, bool tuple_parens_omitted)
-    : str{str}, tuple_parens_omitted{tuple_parens_omitted}
+    CSData(bfs::CatString str_, bool tuple_parens_omitted_)
+    : str{str_}, tuple_parens_omitted{tuple_parens_omitted_}
     {}
 
     CSData parens_omitted() const
@@ -209,13 +209,13 @@ namespace progspace
       assert(expression->size() == 2);
 
       auto binop_wrap_precedence = [&](int level) {
-        return precedence.wrap_group(level, [&](GroupPrecedence precedence) {
+        return precedence.wrap_group(level, [&](GroupPrecedence precedence_) {
           return cat_css({
             expression_strings(
-              precedence.with_assoc(true), expression->front()),
+              precedence_.with_assoc(true), expression->front()),
             CS{" " + std::string(expression->location().view()) + " "},
             expression_strings(
-              precedence.with_assoc(false), expression->back()),
+              precedence_.with_assoc(false), expression->back()),
           });
         });
       };
@@ -285,11 +285,11 @@ namespace progspace
       {
         parens_omitted = false;
       }
-      return parens_omitted.flat_map<CSData>([=](bool parens_omitted) {
+      return parens_omitted.flat_map<CSData>([=](bool parens_omitted_) {
         auto result =
           comma_sep_children(precedence.with_precedence(-3).with_assoc(false));
 
-        if (parens_omitted)
+        if (parens_omitted_)
         {
           return result.map<CSData>(
             [](CSData result) { return result.parens_omitted(); });

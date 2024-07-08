@@ -206,11 +206,11 @@ namespace bfs
 
       std::visit(
         overloaded{
-          [&](std::string_view str) { out << str; },
-          [&](const std::shared_ptr<std::string>& str) { out << *str; },
-          [&](const std::shared_ptr<std::pair<CatString, CatString>>& str) {
-            stack.push(str->second);
-            stack.push(str->first);
+          [&](std::string_view strv) { out << strv; },
+          [&](const std::shared_ptr<std::string>& strp) { out << *strp; },
+          [&](const std::shared_ptr<std::pair<CatString, CatString>>& p) {
+            stack.push(p->second);
+            stack.push(p->first);
           }},
         str.get().self);
     }
