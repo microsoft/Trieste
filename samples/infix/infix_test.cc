@@ -419,7 +419,8 @@ int main(int argc, char** argv)
                   }));
               })
             .map<TaskFn>([=](auto pair) {
-              auto [config, csdata] = pair;
+              auto config = pair.first;
+              auto csdata = pair.second;
               return [=]() -> std::optional<std::string> {
                 std::ostringstream out;
                 bool prog_contains_tuple_ops = contains_tuple_ops(calculation);

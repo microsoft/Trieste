@@ -213,8 +213,9 @@ namespace
             Node parser_tuple = ParserTuple;
             for (const auto& child : _[Group])
             {
-              parser_tuple->push_back(
-                Expression << std::span(child->begin(), child->end()));
+              // the * on *child make << add all its children, rather than child
+              // itself
+              parser_tuple->push_back(Expression << *child);
             }
             return Expression << parser_tuple;
           },

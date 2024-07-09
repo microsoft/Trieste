@@ -91,10 +91,9 @@ namespace progspace
           auto env_post = env;
           env_post.insert(name);
           return valid_assignment(env, name, depth)
-            .template map<std::pair<trieste::Node, Env>>(
-              [=](auto assign) {
-                return std::pair{calculation->clone() << assign, env_post};
-              });
+            .template map<std::pair<trieste::Node, Env>>([=](auto assign) {
+              return std::pair{calculation->clone() << assign, env_post};
+            });
         });
     }
     return assigns.map<trieste::Node>([](auto pair) { return pair.first; });
