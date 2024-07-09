@@ -24,7 +24,17 @@ int main(int argc, char** argv)
     bool tuple_parens_omitted;
     std::string str;
 
-    bool operator==(const StringTestExpected&) const = default;
+    // in C++20 this can be defaulted; kept like this for C++17 compat
+    bool operator==(const StringTestExpected& other) const
+    {
+      return tuple_parens_omitted == other.tuple_parens_omitted &&
+        str == other.str;
+    }
+
+    bool operator!=(const StringTestExpected& other) const
+    {
+      return !(*this == other);
+    }
 
     inline explicit operator std::string() const
     {
@@ -52,93 +62,91 @@ int main(int argc, char** argv)
 
   using namespace infix;
 
-  std::vector<StringTest> string_tests =
+  std::vector<StringTest> string_tests = {
     {
+      Calculation
+        << (Assign << (Ident ^ "foo")
+                   << (Expression
+                       << ((Add ^ "+")
+                           << (Expression << (Int ^ "0"))
+                           << (Expression
+                               << ((Add ^ "+")
+                                   << (Expression << (Int ^ "1"))
+                                   << (Expression << (Int ^ "2"))))))),
       {
-        Calculation
-          << (Assign << (Ident ^ "foo")
-                     << (Expression
-                         << ((Add ^ "+")
-                             << (Expression << (Int ^ "0"))
-                             << (Expression
-                                 << ((Add ^ "+")
-                                     << (Expression << (Int ^ "1"))
-                                     << (Expression << (Int ^ "2"))))))),
+        // {
+        //   .tuple_parens_omitted = false,
+        //   .str = "foo = 0 + 1 + 2;",
+        // },
         {
-            // {
-            //   .tuple_parens_omitted = false,
-            //   .str = "foo = 0 + 1 + 2;",
-            // },
-            {
-              false,
-              "foo = 0 + (1 + 2);",
-            },
-            // {
-            //   .tuple_parens_omitted = false,
-            //   .str = "foo = (0 + 1 + 2);",
-            // },
-            {
-              false,
-              "foo = (0 + (1 + 2));",
-            },
-          },
-      },
-      {
-        Calculation
-          << (Assign << (Ident ^ "foo")
-                     << (Expression
-                         << ((Add ^ "+")
-                             << (Expression
-                                 << ((Add ^ "+")
-                                     << (Expression << (Int ^ "0"))
-                                     << (Expression << (Int ^ "1"))))
-                             << (Expression << (Int ^ "2"))))),
+          false,
+          "foo = 0 + (1 + 2);",
+        },
+        // {
+        //   .tuple_parens_omitted = false,
+        //   .str = "foo = (0 + 1 + 2);",
+        // },
         {
-            {
-              false,
-              "foo = 0 + 1 + 2;",
-            },
-            {
-              false,
-              "foo = (0 + 1) + 2;",
-            },
-            {
-              false,
-              "foo = (0 + 1 + 2);",
-            },
-            {
-              false,
-              "foo = ((0 + 1) + 2);",
-            },
+          false,
+          "foo = (0 + (1 + 2));",
         },
       },
+    },
+    {
+      Calculation
+        << (Assign << (Ident ^ "foo")
+                   << (Expression
+                       << ((Add ^ "+")
+                           << (Expression
+                               << ((Add ^ "+") << (Expression << (Int ^ "0"))
+                                               << (Expression << (Int ^ "1"))))
+                           << (Expression << (Int ^ "2"))))),
       {
-        Calculation
-          << (Assign << (Ident ^ "foo")
-                     << (Expression
-                         << (Tuple << (Expression << (Int ^ "1"))
-                                   << (Expression << (Int ^ "2"))
-                                   << (Expression << (Int ^ "3"))))),
         {
-          {
-            true,
-            "foo = 1, 2, 3;",
-          },
-          {
-            true,
-            "foo = 1, 2, 3,;",
-          },
-          {
-            false,
-            "foo = (1, 2, 3);",
-          },
-          {
-            false,
-            "foo = (1, 2, 3,);",
-          },
+          false,
+          "foo = 0 + 1 + 2;",
+        },
+        {
+          false,
+          "foo = (0 + 1) + 2;",
+        },
+        {
+          false,
+          "foo = (0 + 1 + 2);",
+        },
+        {
+          false,
+          "foo = ((0 + 1) + 2);",
         },
       },
-    };
+    },
+    {
+      Calculation
+        << (Assign << (Ident ^ "foo")
+                   << (Expression
+                       << (Tuple << (Expression << (Int ^ "1"))
+                                 << (Expression << (Int ^ "2"))
+                                 << (Expression << (Int ^ "3"))))),
+      {
+        {
+          true,
+          "foo = 1, 2, 3;",
+        },
+        {
+          true,
+          "foo = 1, 2, 3,;",
+        },
+        {
+          false,
+          "foo = (1, 2, 3);",
+        },
+        {
+          false,
+          "foo = (1, 2, 3,);",
+        },
+      },
+    },
+  };
 
   for (const auto& test : string_tests)
   {
