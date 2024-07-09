@@ -14,7 +14,7 @@ int main(int argc, char** argv)
   {
     app.parse(argc, argv);
   }
-  catch (CLI::ParseError e)
+  catch (const CLI::ParseError& e)
   {
     app.exit(e);
   }

@@ -19,9 +19,9 @@ namespace
       auto [smaller, current] = list_of_up_to_acc(fn, count - 1);
       return {
         smaller.concat(current),
-        fn().flat_map<bfs::CatString>([current](auto suffix) {
+        fn().flat_map<bfs::CatString>([=](auto suffix) {
           return current.map<bfs::CatString>(
-            [suffix](auto elem) { return elem.concat(suffix); });
+            [=](auto elem) { return elem.concat(suffix); });
         }),
       };
     }
