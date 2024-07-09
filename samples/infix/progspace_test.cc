@@ -55,7 +55,7 @@ int main(int argc, char** argv)
   std::vector<StringTest> string_tests =
     {
       {
-        .input = Calculation
+        Calculation
           << (Assign << (Ident ^ "foo")
                      << (Expression
                          << ((Add ^ "+")
@@ -64,28 +64,27 @@ int main(int argc, char** argv)
                                  << ((Add ^ "+")
                                      << (Expression << (Int ^ "1"))
                                      << (Expression << (Int ^ "2"))))))),
-        .expected =
-          {
+        {
             // {
             //   .tuple_parens_omitted = false,
             //   .str = "foo = 0 + 1 + 2;",
             // },
             {
-              .tuple_parens_omitted = false,
-              .str = "foo = 0 + (1 + 2);",
+              false,
+              "foo = 0 + (1 + 2);",
             },
             // {
             //   .tuple_parens_omitted = false,
             //   .str = "foo = (0 + 1 + 2);",
             // },
             {
-              .tuple_parens_omitted = false,
-              .str = "foo = (0 + (1 + 2));",
+              false,
+              "foo = (0 + (1 + 2));",
             },
           },
       },
       {
-        .input = Calculation
+        Calculation
           << (Assign << (Ident ^ "foo")
                      << (Expression
                          << ((Add ^ "+")
@@ -94,52 +93,50 @@ int main(int argc, char** argv)
                                      << (Expression << (Int ^ "0"))
                                      << (Expression << (Int ^ "1"))))
                              << (Expression << (Int ^ "2"))))),
-        .expected =
-          {
+        {
             {
-              .tuple_parens_omitted = false,
-              .str = "foo = 0 + 1 + 2;",
+              false,
+              "foo = 0 + 1 + 2;",
             },
             {
-              .tuple_parens_omitted = false,
-              .str = "foo = (0 + 1) + 2;",
+              false,
+              "foo = (0 + 1) + 2;",
             },
             {
-              .tuple_parens_omitted = false,
-              .str = "foo = (0 + 1 + 2);",
+              false,
+              "foo = (0 + 1 + 2);",
             },
             {
-              .tuple_parens_omitted = false,
-              .str = "foo = ((0 + 1) + 2);",
+              false,
+              "foo = ((0 + 1) + 2);",
             },
-          },
+        },
       },
       {
-        .input = Calculation
+        Calculation
           << (Assign << (Ident ^ "foo")
                      << (Expression
                          << (Tuple << (Expression << (Int ^ "1"))
                                    << (Expression << (Int ^ "2"))
                                    << (Expression << (Int ^ "3"))))),
-        .expected =
+        {
           {
-            {
-              .tuple_parens_omitted = true,
-              .str = "foo = 1, 2, 3;",
-            },
-            {
-              .tuple_parens_omitted = true,
-              .str = "foo = 1, 2, 3,;",
-            },
-            {
-              .tuple_parens_omitted = false,
-              .str = "foo = (1, 2, 3);",
-            },
-            {
-              .tuple_parens_omitted = false,
-              .str = "foo = (1, 2, 3,);",
-            },
+            true,
+            "foo = 1, 2, 3;",
           },
+          {
+            true,
+            "foo = 1, 2, 3,;",
+          },
+          {
+            false,
+            "foo = (1, 2, 3);",
+          },
+          {
+            false,
+            "foo = (1, 2, 3,);",
+          },
+        },
       },
     };
 
@@ -150,8 +147,8 @@ int main(int argc, char** argv)
     for (auto render : progspace::calculation_strings(test.input))
     {
       actual.push_back({
-        .tuple_parens_omitted = render.tuple_parens_omitted,
-        .str = render.str.str(),
+        render.tuple_parens_omitted,
+        render.str.str(),
       });
     }
 

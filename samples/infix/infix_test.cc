@@ -16,6 +16,7 @@
 #include <queue>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 
 namespace
@@ -135,7 +136,8 @@ int main(int argc, char** argv)
             assert(expected_reader);
             auto last_posn = expected_reader.tellg();
             while (std::getline(expected_reader, first_line) &&
-                   first_line.starts_with("//!"))
+                   // note: behaves like starts_with, but works in C++17
+                   std::string_view(first_line).substr(0, 3) == "//!")
             {
               first_lines.push_back(first_line);
               last_posn =
@@ -387,33 +389,33 @@ int main(int argc, char** argv)
                   bfs::Result<std::pair<infix::Config, progspace::CSData>>;
                 return RR({
                             infix::Config{
-                              .use_parser_tuples = false,
-                              .enable_tuples = false,
-                              .tuples_require_parens = false,
+                              false,
+                              false,
+                              false,
                             },
                             csdata,
                           })
                   .concat(RR({
                     infix::Config{
-                      .use_parser_tuples = false,
-                      .enable_tuples = true,
-                      .tuples_require_parens = false,
+                      false,
+                      true,
+                      false,
                     },
                     csdata,
                   }))
                   .concat(RR({
                     infix::Config{
-                      .use_parser_tuples = false,
-                      .enable_tuples = true,
-                      .tuples_require_parens = true,
+                      false,
+                      true,
+                      true,
                     },
                     csdata,
                   }))
                   .concat(RR({
                     infix::Config{
-                      .use_parser_tuples = true,
-                      .enable_tuples = true,
-                      .tuples_require_parens = true,
+                      true,
+                      true,
+                      true,
                     },
                     csdata,
                   }));

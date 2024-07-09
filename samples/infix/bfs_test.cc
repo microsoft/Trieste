@@ -16,7 +16,8 @@ namespace
     }
     else
     {
-      auto [smaller, current] = list_of_up_to_acc(fn, count - 1);
+      bfs::Result<bfs::CatString> smaller, current;
+      std::tie(smaller, current) = list_of_up_to_acc(fn, count - 1);
       return {
         smaller.concat(current),
         fn().flat_map<bfs::CatString>([=](auto suffix) {
