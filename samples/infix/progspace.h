@@ -87,7 +87,10 @@ namespace progspace
       auto name = valid_names[i];
       assigns = assigns.flat_map<std::pair<trieste::Node, Env>>(
         [depth, name](auto pair) {
-          auto [calculation, env] = pair;
+          // could have used destructuring assignment, but this works poorly
+          // with lambda captures on some builds
+          auto calculation = pair.first;
+          auto env = pair.second;
           auto env_post = env;
           env_post.insert(name);
           return valid_assignment(env, name, depth)

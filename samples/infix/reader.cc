@@ -1,5 +1,6 @@
 #include "infix.h"
 #include "internal.h"
+#include "trieste/ast.h"
 
 #include <trieste/trieste.h>
 
@@ -213,9 +214,12 @@ namespace
             Node parser_tuple = ParserTuple;
             for (const auto& child : _[Group])
             {
-              // the * on *child make << add all its children, rather than child
-              // itself
-              parser_tuple->push_back(Expression << *child);
+              // Use NodeRange to make Expression use all of the child's
+              // children, rather than just append the child. If you're on C++20
+              // or above, you can directly use std::span here, or write *child
+              // which behaves like a range.
+              parser_tuple->push_back(
+                Expression << NodeRange{child->begin(), child->end()});
             }
             return Expression << parser_tuple;
           },
