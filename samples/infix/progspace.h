@@ -239,7 +239,7 @@ namespace progspace
     }
 
     // code for both tuple literals and append(...)
-    auto comma_sep_children = [=](GroupPrecedence precedence) {
+    auto comma_sep_children = [=](GroupPrecedence precedence_) {
       auto result = CS{""sv};
       bool first = true;
       for (auto child : *expression)
@@ -253,7 +253,7 @@ namespace progspace
           result = cat_cs(result, CS{", "sv});
         }
 
-        result = cat_cs(result, expression_strings(precedence, child));
+        result = cat_cs(result, expression_strings(precedence_, child));
       }
 
       if (expression->size() < 2)
@@ -292,7 +292,7 @@ namespace progspace
         if (parens_omitted_)
         {
           return result.map<CSData>(
-            [](CSData result) { return result.parens_omitted(); });
+            [](CSData result_) { return result_.parens_omitted(); });
         }
         else
         {
