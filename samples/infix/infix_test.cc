@@ -3,6 +3,8 @@
 #include "progspace.h"
 #include "test_util.h"
 #include "trieste/fuzzer.h"
+#include "trieste/reader.h"
+#include "trieste/rewriter.h"
 #include "trieste/token.h"
 #include "trieste/writer.h"
 
@@ -12,6 +14,7 @@
 #include <fstream>
 #include <future>
 #include <initializer_list>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <sstream>
@@ -303,16 +306,28 @@ int main(int argc, char** argv)
   {
     fuzz_config.sanity();
     trieste::Fuzzer fuzzer;
+    // the fuzzer holds references to these objects (depending on its
+    // configuration) we should keep them alive for program duration, rather
+    // than drop them once we've constructed the fuzzer (as might be natural by
+    // passing them directly to the fuzzer constructor)
+    std::unique_ptr<trieste::Rewriter> rewriter_keepalive;
+    std::unique_ptr<trieste::Reader> reader_keepalive;
     if (*fuzz_reader)
     {
       std::cout << "Fuzzing reader..." << std::endl;
-      fuzzer = trieste::Fuzzer(infix::reader(fuzz_config));
+      reader_keepalive =
+        std::make_unique<trieste::Reader>(infix::reader(fuzz_config));
+      fuzzer = trieste::Fuzzer(*reader_keepalive);
     }
     else if (*fuzz_calculate)
     {
       std::cout << "Fuzzing calculate..." << std::endl;
+      reader_keepalive =
+        std::make_unique<trieste::Reader>(infix::reader(fuzz_config));
+      rewriter_keepalive =
+        std::make_unique<trieste::Rewriter>(infix::calculate());
       fuzzer = trieste::Fuzzer(
-        infix::calculate(), infix::reader(fuzz_config).parser().generators());
+        *rewriter_keepalive, reader_keepalive->parser().generators());
     }
     else
     {
