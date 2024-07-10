@@ -133,7 +133,7 @@ namespace
     // situation can be avoided with more careful capturing / ensuring the
     // captures type is just Config, but it might be simpler to just generate 2
     // capture-less lambdas.
-    const auto enable_if_parens_no_parser_tuples =
+    bool (*enable_if_parens_no_parser_tuples)(NodeRange&) =
       config.tuples_require_parens && !config.use_parser_tuples ?
       [](NodeRange&) { return true; } :
       [](NodeRange&) { return false; };
@@ -353,7 +353,7 @@ namespace
 
   PassDef tuple_literals(const Config& config)
   {
-    const auto enable_if_no_parens = config.enable_tuples &&
+    bool (*enable_if_no_parens)(NodeRange&) = config.enable_tuples &&
         !config.tuples_require_parens && !config.use_parser_tuples ?
       [](NodeRange&) { return true; } :
       [](NodeRange&) { return false; };

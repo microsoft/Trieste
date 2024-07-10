@@ -281,7 +281,7 @@ namespace progspace
         ((-3 >= precedence.curr_precedence && precedence.allow_assoc) ||
          (-3 > precedence.curr_precedence)))
       {
-        parens_omitted = bfs::Result(true).concat(false);
+        parens_omitted = bfs::Result<bool>(true).concat(false);
       }
       else
       {

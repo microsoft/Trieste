@@ -306,10 +306,12 @@ int main(int argc, char** argv)
   {
     fuzz_config.sanity();
     trieste::Fuzzer fuzzer;
-    // the fuzzer holds references to these objects (depending on its
-    // configuration) we should keep them alive for program duration, rather
+    // The fuzzer holds references to these objects (depending on its
+    // configuration). We should keep them alive for program duration, rather
     // than drop them once we've constructed the fuzzer (as might be natural by
-    // passing them directly to the fuzzer constructor)
+    // passing them directly to the fuzzer constructor).
+    // (!) Just passing them to the fuzzer constructor only works if the fuzzer
+    // itself has temporary lifetime.
     std::unique_ptr<trieste::Rewriter> rewriter_keepalive;
     std::unique_ptr<trieste::Reader> reader_keepalive;
     if (*fuzz_reader)
