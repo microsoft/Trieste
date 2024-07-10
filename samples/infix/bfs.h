@@ -118,12 +118,12 @@ namespace bfs
       }
     }
 
-    inline Result<T> concat(Result<T> rhs) const
+    inline Result<T> or_(Result<T> rhs) const
     {
-      return concat([=]() { return rhs; });
+      return or_fn([=]() { return rhs; });
     }
 
-    inline Result<T> concat(std::function<Result<T>()> rhs_fn) const
+    inline Result<T> or_fn(std::function<Result<T>()> rhs_fn) const
     {
       if (!cell)
       {
@@ -132,7 +132,7 @@ namespace bfs
       return {
         cell->value,
         std::make_shared<std::function<Result<T>()>>(
-          [=, *this]() { return (*cell->next)().concat(rhs_fn); }),
+          [=, *this]() { return (*cell->next)().or_fn(rhs_fn); }),
       };
     }
 
@@ -154,7 +154,7 @@ namespace bfs
       if (res)
       {
         // we have one head element; defer everything else
-        return res.concat([=]() { return current.flat_map(fn); });
+        return res.or_fn([=]() { return current.flat_map(fn); });
       }
       else
       {

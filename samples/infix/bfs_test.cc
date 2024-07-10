@@ -19,7 +19,7 @@ namespace
       bfs::Result<bfs::CatString> smaller, current;
       std::tie(smaller, current) = list_of_up_to_acc(fn, count - 1);
       return {
-        smaller.concat(current),
+        smaller.or_(current),
         fn().flat_map<bfs::CatString>([=](auto suffix) {
           return current.map<bfs::CatString>(
             [=](auto elem) { return elem.concat(suffix); });
@@ -31,14 +31,14 @@ namespace
   R list_of_up_to(std::function<R()> fn, int count)
   {
     auto [smaller, current] = list_of_up_to_acc(fn, count);
-    return smaller.concat(current);
+    return smaller.or_(current);
   }
 }
 
 // FIXME: this isn't really a test, just a quick check things make sense
 int main()
 {
-  R combinations = list_of_up_to([]() { return R("^"sv).concat(R("!"sv)); }, 3);
+  R combinations = list_of_up_to([]() { return R("^"sv).or_(R("!"sv)); }, 3);
 
   for (auto elem : combinations)
   {

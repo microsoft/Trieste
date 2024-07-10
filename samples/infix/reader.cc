@@ -301,16 +301,14 @@ namespace
 
   PassDef tuple_idx(const Config& config)
   {
-    auto enable_if_no_tuples = config.enable_tuples ?
-      [](NodeRange&) { return false; } :
-      [](NodeRange&) { return true; };
+    Toggle enable_if_no_tuples = !config.enable_tuples ? ToggleYes : ToggleNo;
 
     return {
       "tuple_idx",
       wf_pass_tuple_idx,
       dir::bottomup,
       {
-        T(TupleIdx)[Op](*enable_if_no_tuples) >>
+        T(TupleIdx)[Op](enable_if_no_tuples) >>
           [](Match& _) { return err(_(Op), "Tuples are disabled."); },
 
         In(Expression) *

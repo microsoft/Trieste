@@ -19,45 +19,43 @@ namespace progspace
     if (depth == 0)
     {
       return R(Expression << (Int ^ "1"))
-        .concat([env]() {
+        .or_fn([env]() {
           R ref{};
           for (auto name : env)
           {
-            ref = ref.concat(
+            ref = ref.or_fn(
               [name]() { return R(Expression << (Ref << (Ident ^ name))); });
           }
           return ref;
         })
-        .concat([]() { return R(Expression << (Tuple ^ "")); })
-        .concat([]() { return R(Expression << (Append ^ "")); });
+        .or_fn([]() { return R(Expression << (Tuple ^ "")); })
+        .or_fn([]() { return R(Expression << (Append ^ "")); });
     }
     else
     {
       auto sub_expr = valid_expression(env, depth - 1);
       return (sub_expr.flat_map<trieste::Node>([sub_expr](auto lhs) {
         return R(Expression << (Tuple << lhs))
-          .concat(R(Expression << (Append << lhs->clone())))
-          .concat([sub_expr, lhs]() {
+          .or_(R(Expression << (Append << lhs->clone())))
+          .or_fn([sub_expr, lhs]() {
             return sub_expr.flat_map<trieste::Node>([lhs](auto rhs) {
               // note: we add fake locations to binops, because the
               // writer assumes their location is also their lexical
               // representation
               return R(Expression
                        << ((Add ^ "+") << lhs->clone() << rhs->clone()))
-                .concat(
+                .or_(
                   R(Expression
                     << ((Subtract ^ "-") << lhs->clone() << rhs->clone())))
-                .concat(
+                .or_(
                   R(Expression
                     << ((Multiply ^ "*") << lhs->clone() << rhs->clone())))
-                .concat(
+                .or_(
                   R(Expression
                     << ((Divide ^ "/") << lhs->clone() << rhs->clone())))
-                .concat(
-                  R(Expression << (Tuple << lhs->clone() << rhs->clone())))
-                .concat(
-                  R(Expression << (Append << lhs->clone() << rhs->clone())))
-                .concat(
+                .or_(R(Expression << (Tuple << lhs->clone() << rhs->clone())))
+                .or_(R(Expression << (Append << lhs->clone() << rhs->clone())))
+                .or_(
                   R(Expression
                     << ((TupleIdx ^ ".") << lhs->clone() << rhs->clone())));
             });
@@ -179,8 +177,7 @@ namespace progspace
         (precedence >= curr_precedence && allow_assoc) ||
         (precedence > curr_precedence))
       {
-        return fn(with_precedence(precedence).with_assoc(false))
-          .concat(grouped);
+        return fn(with_precedence(precedence).with_assoc(false)).or_(grouped);
       }
       else
       {
@@ -242,7 +239,7 @@ namespace progspace
 
     // code for both tuple literals and append(...)
     auto comma_sep_children = [=](GroupPrecedence precedence_) {
-      auto result = CS{""sv};
+      CS result{""sv};
       bool first = true;
       for (auto child : *expression)
       {
@@ -266,7 +263,7 @@ namespace progspace
       {
         // optional trailing comma (except sizes 0 and 1, where it is
         // mandatory)
-        result = result.concat([=]() { return cat_cs(result, CS{","sv}); });
+        result = result.or_fn([=]() { return cat_cs(result, CS{","sv}); });
       }
       return result;
     };
@@ -281,7 +278,7 @@ namespace progspace
         ((-3 >= precedence.curr_precedence && precedence.allow_assoc) ||
          (-3 > precedence.curr_precedence)))
       {
-        parens_omitted = bfs::Result<bool>(true).concat(false);
+        parens_omitted = bfs::Result(true).or_(false);
       }
       else
       {
