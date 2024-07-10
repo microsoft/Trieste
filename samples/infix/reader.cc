@@ -9,7 +9,25 @@ namespace
   using namespace trieste::wf::ops;
   using namespace infix;
 
-  using Toggle = bool (*)(NodeRange&);
+  // These definitions help turn rules on and off.
+  // We could use lambdas, but that caused problems with
+  // Visual Studio C++ in C++17 mode.
+  // In any case, beware that the pattern(action) syntax
+  // will take a reference to what you give it.
+  // It's possible it will reference a local copy of a pointer
+  // to a global; user the address sanitizer to be sure that's not
+  // happening.
+  using Toggle = bool (&)(NodeRange&);
+
+  inline bool ToggleYes(NodeRange&)
+  {
+    return true;
+  }
+
+  inline bool ToggleNo(NodeRange&)
+  {
+    return false;
+  }
 
   // | is used to create a Choice between all the elements
   // this indicates that literals can be an Int or a Float
@@ -128,22 +146,9 @@ namespace
   {
     // How to restrict a rule to only if tuples require parens and aren't
     // handled in the parser.
-
-    // Note that if we captured config "by value", then we would copy the const
-    // Config&. This does bad things, in that we will be storing a reference to
-    // a temporary object, not the actual config value, on the pass object. The
-    // situation can be avoided with more careful capturing / ensuring the
-    // captures type is just Config, but it might be simpler to just generate 2
-    // capture-less lambdas.
-    const Toggle enable_if_parens_no_parser_tuples =
-      config.tuples_require_parens && !config.use_parser_tuples ?
-      static_cast<Toggle>([](NodeRange&) { return true; }) :
-      static_cast<Toggle>([](NodeRange&) { return false; });
-    // Double caution: you have to use *enable_if_parens_no_parser_tuples (with
-    // the dereference!) or the pass will capture a reference to this function
-    // pointer, which is basically just the address of the above var on the
-    // stack. That will, of course, cause undefined behavior that does not spark
-    // joy.
+    Toggle enable_if_parens_no_parser_tuples =
+      config.tuples_require_parens && !config.use_parser_tuples ? ToggleYes :
+                                                                  ToggleNo;
 
     return {
       "expressions",
@@ -194,7 +199,7 @@ namespace
         // We need this if tuples require parens, and we are not handling tuples
         // in the parser.
         (In(Expression) * (T(Paren)[Paren] << T(Group)[Group]))(
-          *enable_if_parens_no_parser_tuples) >>
+          enable_if_parens_no_parser_tuples) >>
           [](Match& _) {
             return Expression << (TupleCandidate ^ _(Paren)) << *_[Group];
           },
@@ -355,16 +360,16 @@ namespace
 
   PassDef tuple_literals(const Config& config)
   {
-    const Toggle enable_if_no_parens = config.enable_tuples &&
+    Toggle enable_if_no_parens = config.enable_tuples &&
         !config.tuples_require_parens && !config.use_parser_tuples ?
-      static_cast<Toggle>([](NodeRange&) { return true; }) :
-      static_cast<Toggle>([](NodeRange&) { return false; });
+      ToggleYes :
+      ToggleNo;
     return {
       "tuple_literals",
       wf_pass_tuple_literals,
       dir::topdown,
       {
-        // --- if parens are required to tuple parsing, there will be
+        // --- if parens are required for tuple parsing, there will be
         // --- TupleCandidate tokens and these rules will run.
         // --- if not, see next section
 
@@ -431,26 +436,25 @@ namespace
         // x = , + ,; // semantically bad but syntactically ok
         // ```
         // etc...
-        T(Expression) << (T(Comma)[Comma] * End)(*enable_if_no_parens) >>
+        T(Expression) << (T(Comma)[Comma] * End)(enable_if_no_parens) >>
           [](Match& _) { return Expression << (Tuple ^ _(Comma)); },
         // 2 expressions comma-separated makes a tuple
         In(Expression) *
             (T(Expression)[Lhs] * T(Comma) *
-             T(Expression)[Rhs])(*enable_if_no_parens) >>
+             T(Expression)[Rhs])(enable_if_no_parens) >>
           [](Match& _) { return (Tuple << _(Lhs) << _(Rhs)); },
         // a tuple, a comma, and an expression makes a longer tuple
         In(Expression) *
             (T(Tuple)[Lhs] * T(Comma) *
-             T(Expression)[Rhs])(*enable_if_no_parens) >>
+             T(Expression)[Rhs])(enable_if_no_parens) >>
           [](Match& _) { return _(Lhs) << _(Rhs); },
         // the one-element tuple uses , as a postfix operator
         In(Expression) *
-            (T(Expression)[Expression] * T(Comma) *
-             End)(*enable_if_no_parens) >>
+            (T(Expression)[Expression] * T(Comma) * End)(enable_if_no_parens) >>
           [](Match& _) { return Tuple << _(Expression); },
         // one trailing comma at the end of a tuple is allowed (but not more)
         T(Expression) << (T(Tuple)[Tuple] * T(Comma) * End)(
-          *enable_if_no_parens) >>
+          enable_if_no_parens) >>
           [](Match& _) { return Expression << _(Tuple); },
 
         // --- if the parser is trying to read tuples directly, extract them
