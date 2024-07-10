@@ -61,7 +61,98 @@ One such feature is removing the requirement that functions are defined before t
 For more of a challenge, consider that with this feature it becomes possible to write recursive, or even mutually recursive, functions.
 Either detect and reject that case as an error, or try implementing recursive function evaluation.
 
+TODO: config arguments, and the risk of keeping references to temporaries.
+Copying the config object is often fine, especially if it's just a few boolean flags.
+Same goes for other things that go inside the pass objects - there can be subtle differences between correct and incorrect code due to taking references to locals without realizing.
+From personal experience, a pattern constructor silently taking a reference to a local pointer that referred to a static storage function, rather than copying the pointer, caused problems at least once.
+If in doubt, remember to enable AddressSanitizer or equivalent to check that your pass hasn't been constructed with some bad pointers somewhere.
+
 ## Tuples in Infix
+
+To start with, what counts as a tuple?
+It's an immutable data structure that holds 0 or more ordered elements of any type (for some notion of type).
+There are a few ways to write them, but they usually involve separating the elements with commas (`,`).
+They are often written surrounded by parentheses, as in `(a, b, c)`, but some languages (like Python) make the parentheses optional, meaning that `a, b, c` on its own is a valid tuple.
+Some languages allow trailing commas at the end of a tuple, as in `(a, b, c,)`, which can be helpful when writing multiline literals.
+The empty tuple and one-element tuple are almost universally edge cases, where you need to write something like `(,)` for an empty tuple.
+A one-element tuple must then be written `(x,)`, with a mandatory trailing comma to disambiguate from `(x)`, which just means `x` instead with no tuple.
+
+This section documents how Trieste can be used to implement tuples that have this syntax, with both mandatory and optional parentheses.
+Two of our methods make minimal additions to the parser and express the majority of their logic as additional rewrite rules.
+We also discuss a third method, which front-loads much of the parsing workload onto the parser, trading in some language design flexibility for simpler reader rules.
+
+### Extending the AST
+
+A neat thing about Trieste is that, regardless of how tuples are lexically written, all versions of tuples we discuss have the same AST.
+To start with, we only introduce tuple literals -- we will consider how to extract elements from a tuple and append tuples to one another later.
+
+For just tuple literals, the AST needs two key extensions: a new token type, and extending the set of possible expressions.
+
+The token definition is like any other, with no special flags.
+```cpp
+inline const auto Tuple = TokenDef("infix-tuple");
+```
+
+The AST can be extended in 2 lines, adding tuples as a type of expression, and specifying that tuple literals can have 0 or more expressions as children:
+```cpp
+const auto wf =
+  // ...
+  | (Expression <<= (Tuple | Add | Subtract | Multiply | Divide | Ref | Float | Int))
+  | (Tuple <<= Expression++)
+```
+
+We will come back to this definition when adding the other two tuple primitives, but all similar changes will follow the same formula.
+
+### The Simplest Parser Modification
+
+TODO: adding the comma to the parser as one action, and to the parser tokens
+
+### Tuples as Low-precedence N-ary Operators
+
+TODO: if we view tuples as a low-precedence operator, we get to parse all the nested sub-expressions, then find any commas that would form a tuple after the fact.
+TODO: point out the ((x, y), z) problem... unlike other operators, the way we define this, parentheses can affect semantics!
+
+TODO: the single comma on its own becomes a nullary tuple, but only if it's on its own. `(,)` still works.
+
+### Tuples as a Special Kind of Group
+
+TODO: problem is that it might not be easy to tell if a group has commas in it or not.
+TODO: we can mark all groups with a "tuple candidate" node, do our operator parsing, and then group things up by shifting commas into tuples
+
+TODO: we could actually hand-write a rule that looks for commas directly
+
+### Parser Tuples
+
+TODO: how to make the parser read the tuples with .seq
+
+TODO: notice that .seq always allows a trailing instance of the separator. This surprisingly allows our .seq based assignment to accept `x = y =` with no way to work around it.
+
+### Evaluating a Tuple Expression
+
+TODO: use Expression --> Literal as "pseudo-types" to track whether something has evaluated
+
+TODO: a previous version of this tutorial used int and float nodes directly, rather than using a Literal prefix.
+This is more compact for a very simple language, but it doesn't scale since it essentially makes you write out all possible nodes a value can be.
+It is more scalable to describe a broad category, like our "literal" token, which allows us to generically identify evaluated and unevaluated terms even if the language changes to some extent.
+
+TODO: how to represent (as WF) the intermediate state where we can have "stuck expressions", so we can catch errors. Yes, errors may well end up in a second pass if you're relying on fixpoints.
+
+### Appending and Indexing
+
+TODO: appending is a pseudo-function; our lang doesn't have functions so we special-case it with a keyword, like language builtings often are
+TODO: indexing is a highest-precedence binop (excercise to reader, highlight gotchas)
+
+TODO: for evaluation, these operations do not add any new literal types; they should all disappear in a fully evaluated program
+
+### Error Discipline, Fuzzing, and Test Cases
+
+TODO: fuzz testing is useful to check that your program doesn't outright crash, but it is easy to pass WF if your code emits `Error` or something valid-looking, even if it doesn't make sense.
+
+TODO: explain the principles behind the `.expected` tests, why they matter, and some general guidance on how to write/maintain them. Consider also storing test collections as data, like JSON or YAML (which has good multiline tring embeds).
+
+TODO: what do I even do with BFS?
+
+--- older notes
 
 Notes:
 - it's possible to get lost combining tuple and call parsing
