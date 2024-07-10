@@ -1,0 +1,32 @@
+//! --expect-fail calculate
+//! --enable-tuples --expect-fail calculate
+//! --enable-tuples --tuples-require-parens --expect-fail calculate
+//! --enable-tuples --tuples-require-parens --use-parser-tuples --expect-fail calculate
+(top
+  {}
+  (infix-calculation
+    {
+      x = infix-assign}
+    (error
+      (errormsg 14:Invalid assign)
+      (errorast
+        (infix-equals
+          (group
+            (infix-ident 1:x))
+          (group
+            (infix-int 1:5))
+          (group
+            (infix-int 1:6)))))
+    (infix-assign
+      (infix-ident 1:x)
+      (infix-expression
+        (infix-int 1:1)))
+    (error
+      (errormsg 14:Invalid assign)
+      (errorast
+        (infix-equals
+          (group
+            (infix-ident 1:x))
+          (group)
+          (group
+            (infix-int 1:1)))))))

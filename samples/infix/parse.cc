@@ -85,6 +85,8 @@ namespace infix
         R"([[:digit:]]+\b)" >> [](auto& m) { m.add(Int); },
 
         // Line comment.
+        // Note: care is taken to handle all 3 possible line endings: \n, \r,
+        // \r\n
         R"(//[^\n\r]*(\r\n?|\n))" >> [](auto&) {}, // another no-op
 
         // Print.

@@ -169,7 +169,7 @@ namespace
         // an Assign node that has two children: the Ident and the
         // an Expression, which will take the children of the Group.
         In(Calculation) *
-            (T(Equals) << ((T(Group) << T(Ident)[Id]) * T(Group)[Rhs])) >>
+            (T(Equals) << ((T(Group) << T(Ident)[Id]) * T(Group)[Rhs] * End)) >>
           [](Match& _) { return Assign << _(Id) << (Expression << *_[Rhs]); },
 
         // This rule selects a Group that matches the Output pattern
