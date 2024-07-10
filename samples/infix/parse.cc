@@ -56,7 +56,7 @@ namespace infix
         R"(\.)" >> [](auto& m) { m.add(TupleIdx); },
 
         // Terminator.
-        R"(;[\n]*)" >> [](auto& m) { m.term(terminators); },
+        R"(;[\r\n]*)" >> [](auto& m) { m.term(terminators); },
 
         // Parens.
         R"((\()[[:blank:]]*)" >>
@@ -85,7 +85,7 @@ namespace infix
         R"([[:digit:]]+\b)" >> [](auto& m) { m.add(Int); },
 
         // Line comment.
-        R"(//[^\n]*\n)" >> [](auto&) {}, // another no-op
+        R"(//[^\n\r]*(\r\n?|\n))" >> [](auto&) {}, // another no-op
 
         // Print.
         R"re(print\b)re" >> [](auto& m) { m.add(Print); },
