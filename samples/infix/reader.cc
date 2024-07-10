@@ -9,6 +9,8 @@ namespace
   using namespace trieste::wf::ops;
   using namespace infix;
 
+  using Toggle = bool (*)(NodeRange&);
+
   // | is used to create a Choice between all the elements
   // this indicates that literals can be an Int or a Float
 
@@ -133,10 +135,10 @@ namespace
     // situation can be avoided with more careful capturing / ensuring the
     // captures type is just Config, but it might be simpler to just generate 2
     // capture-less lambdas.
-    bool (*enable_if_parens_no_parser_tuples)(NodeRange&) =
+    const Toggle enable_if_parens_no_parser_tuples =
       config.tuples_require_parens && !config.use_parser_tuples ?
-      [](NodeRange&) { return true; } :
-      [](NodeRange&) { return false; };
+      static_cast<Toggle>([](NodeRange&) { return true; }) :
+      static_cast<Toggle>([](NodeRange&) { return false; });
     // Double caution: you have to use *enable_if_parens_no_parser_tuples (with
     // the dereference!) or the pass will capture a reference to this function
     // pointer, which is basically just the address of the above var on the
@@ -353,10 +355,10 @@ namespace
 
   PassDef tuple_literals(const Config& config)
   {
-    bool (*enable_if_no_parens)(NodeRange&) = config.enable_tuples &&
+    const Toggle enable_if_no_parens = config.enable_tuples &&
         !config.tuples_require_parens && !config.use_parser_tuples ?
-      [](NodeRange&) { return true; } :
-      [](NodeRange&) { return false; };
+      static_cast<Toggle>([](NodeRange&) { return true; }) :
+      static_cast<Toggle>([](NodeRange&) { return false; });
     return {
       "tuple_literals",
       wf_pass_tuple_literals,
