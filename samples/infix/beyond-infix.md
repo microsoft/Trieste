@@ -102,10 +102,37 @@ const auto wf =
 ```
 
 We will come back to this definition when adding the other two tuple primitives, but all similar changes will follow the same formula.
+More importantly, this shows how little difference many lexical-level or syntax sugar-level changes can make to a Trieste based language's main AST, since a lot of nuance can be removed when reading the language, before reaching the main AST.
 
 ### The Simplest Parser Modification
 
-TODO: adding the comma to the parser as one action, and to the parser tokens
+Lexically speaking, the simplest way to extend the parser for reading tuples is to add a comma token that directly corresponds to the `,` character.
+
+The token definition is standard for Trieste:
+```cpp
+inline const auto Comma = TokenDef("infix-comma");
+```
+
+Unlike tokens used in the public interface for Infix, however, this token can be kept as internal since it will be eliminated and replaced by either `Error` or `Tuple` expressions by the reader.
+
+Then, we can allow the parser to generate `Comma` tokens when it sees a lexical comma:
+```cpp
+R"(,)" >> [](auto& m) {
+  m.add(Comma);
+},
+```
+
+This action follows the same template as the arithmetic operators already in the language.
+No context or complex logic is used here; subequent passes will make sense of what these commas mean.
+
+As an aside on adding more token types, we find that defining more token types with specific syntactic meaning leads to clearer programs.
+In principle, it would be possible to re-use the `Tuple` token and not introduce an additional definition, but this would make the implementation's behavior less clear.
+Not only might commas be used outside of tuples (imagine adding C-style function calls with comma-separated arguments to Infix!), but re-using a token weakens Trieste's patterns, fuzzing, and well-formedness facilities.
+
+Changing something from one token type to another is easily monitored using well-formedness definitions, and can be easily detected using patterns.
+Using the same token type to mean multiple things, especially when it means one thing in the input of a pass and another in the pass's output, opens us up to confusing situations.
+It might hide a rule not applying at all when it should (unchanged AST satisfies output WF), and it can make it easier for a rule to apply to its own output in an infinite loop (pattern does not exclude rule output).
+While not always possible, making the intended difference clear by changing a token type can help avoid these cases.
 
 ### Tuples as Low-precedence N-ary Operators
 
