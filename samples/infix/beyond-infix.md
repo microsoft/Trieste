@@ -136,10 +136,80 @@ While not always possible, making the intended difference clear by changing a to
 
 ### Tuples as Low-precedence N-ary Operators
 
-TODO: if we view tuples as a low-precedence operator, we get to parse all the nested sub-expressions, then find any commas that would form a tuple after the fact.
-TODO: point out the ((x, y), z) problem... unlike other operators, the way we define this, parentheses can affect semantics!
+Compared to how Infix already works, the simplest way of parsing tuples, assuming we do not want to require parentheses around a tuple expression, is to treat `,` as a lowest-precedence infix operator.
+That is, `x + y, y * z` becomes grouped as `(x + y) , (y * z)`.
+Because of the meaning of parentheses as a grouping mechanism, `(x, y)` will always work if `x, y` works, meaning that this technique parses a strict superset of tuples that require parentheses.
 
-TODO: the single comma on its own becomes a nullary tuple, but only if it's on its own. `(,)` still works.
+This technique is not without its share of interesting semantics and edge cases however, the most prominent being the meaning of `x, y, z`: the expression should parse as a 3-element tuple, but if we just recognize `,` as a binary operator like `+` or `-`, we might parse `((x, y), z)` instead.
+That is why this section title mentions "N-ary Operators".
+Instead of just parsing `(expr) , (expr)` in one step, we must recognize all commas in the same expression as describing the same tuple, one which becomes larger and larger the more commas our expression contains.
+We also need to deal with the special exception, the unary tuple, where a trailing comma is mandatory because only `x,` is a tuple, not `x`.
+
+To do this, write a collection of recursive rules that leverage the fact that nested sub-expressions must have already been parsed into single nodes of type `Expression`.
+This includes parenthesized groups, meaning that if the programmer actually writes `(x, y), z`, then the outermost expression will contain `(expr x , y) , z`, which "hides" the comma in the parentheses from consideration.
+By adding parentheses, it remains possible to write nested tuples, rather than having all tuples unconditionally flatten themselves into one large tuple literal.
+
+Here are the cases we use to parse tuples in this style, with rules numbered 1-5:
+```cpp
+// (1) nullary tuple, just a `,` on its own
+T(Expression) << (T(Comma)[Comma] * End) >>
+  [](Match& _) { return Expression << (Tuple ^ _(Comma)); },
+// (2) two expressions comma-separated makes a tuple
+In(Expression) *
+    (T(Expression)[Lhs] * T(Comma) * T(Expression)[Rhs]) >>
+  [](Match& _) { return (Tuple << _(Lhs) << _(Rhs)); },
+// (3) a tuple, a comma, and an expression makes a longer tuple
+In(Expression) *
+    (T(Tuple)[Lhs] * T(Comma) * T(Expression)[Rhs]) >>
+  [](Match& _) { return _(Lhs) << _(Rhs); },
+// (4) the one-element tuple uses , as a postfix operator
+T(Expression) <<
+    (T(Expression)[Expression] * T(Comma) * End) >>
+  [](Match& _) { return Expression << (Tuple << _(Expression)); },
+// (5) one trailing comma at the end of a tuple is allowed (but not more)
+T(Expression) << (T(Tuple)[Tuple] * T(Comma) * End) >>
+  [](Match& _) { return Expression << _(Tuple); },
+```
+
+Crucially, note that several rules apply to the results of other rules, especially rule 3.
+This pass makes use of Trieste's rewrite-until-done semantics.
+
+To give an example of how these rules apply, consider how our first example, `x, y, z`, is parsed:
+- Start: `(expr x) , (expr y) , (expr z)`
+- Rule 2 --> `(tuple (expr x) (expr y)) , (expr z)`
+- Rule 3 --> `(tuple (expr x) (expr y) (expr z))`
+
+For the same example with a trailing comma, we need rule 5 to account for that:
+- Same as above --> `(tuple (expr x) (expr y) (expr z)) ,`
+- Rule 5 --> `(tuple (expr x) (expr y) (expr z))`
+
+Note that rule 5 can only apply once, ensuring that we do not accept nonsense expressions like `x, y,,,,,` with too many trailing commas.
+We use the `End` pattern to indicate that we only accept the extra comma if it is the last token in the expression; if there was another comma after it, the pattern will not match and the extra comma should be caught by an error handling catch-all pattern.
+
+Rules 1 and 4 handle cases where rule 2 cannot match: since rule 2 catches tuples of length 2 and above by separating 2 expressions with a comma, rule 1 catches tuples of length 0, and rule 4 catches tuples of length 1.
+Rule 1 uses `End` again, and avoids `In` to ensure we catch only expressions with a single `,`.
+Remember that the key difference between `In` and `<<` is that `In` (a) does not become part of the pattern and (b) does not require the pattern match to start at the beginning of the specified node.
+Using `<<` lets us specifically talk about the entire contents of a node, starting at the beginning.
+Similarly, rule 4 deals with unary tuples where, unlike rule 5, there cannot be an under-construction tuple to match because that requires at least 2 elements.
+
+To show rule 1 in action, consider the expression `,`, to which no rules except 1 apply:
+- Start: `,`
+- Rule 1 --> `(tuple)`
+
+To show rule 4 in action, consider the expression `x ,`, where `x` is not a tuple so rule 5 does not apply:
+- Start `x ,`
+- Rule 4 --> `(tuple x)`
+
+Remember also that, because this pass goes after all the arithmetic operator passes, we can deal with nested arithmetic as well.
+For the expression `x + y * 2 , x - y`, we get:
+- Start: `(expr (x + (y * 2))) , (expr x - y)` (already parsed `+`, `-`, `*`, etc... `,` is treated as an unknown operator by those passes)
+- Rule 2 --> `(tuple (expr (x + (y * 2))) (expr x - y))`
+
+**Exercise to the reader:**
+can you rewrite this pass with fewer rules?
+If you could find a way to consolidate rule 2 into rule 4, then things might be simpler... but you might run into trouble dealing with trailing commas in the end.
+Remember that you can always add new token types, like `UnderConstructionTuple`, to disambiguate cases like this where multiple otherwise-identical situations end up with an over-general name like `Tuple`.
+You can always use the testing infrastructure in this repository to validate your work.
 
 ### Tuples as a Special Kind of Group
 

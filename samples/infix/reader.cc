@@ -431,9 +431,12 @@ namespace
         // ```
         // x = ,;
         // x = (,);
-        // x = , + ,; // semantically bad but syntactically ok
         // ```
-        // etc...
+        // and forbids this, which would have to be written `(,) + (,)` to
+        // parse:
+        // ```
+        // x = , + ,;
+        // ```
         T(Expression) << (T(Comma)[Comma] * End)(enable_if_no_parens) >>
           [](Match& _) { return Expression << (Tuple ^ _(Comma)); },
         // 2 expressions comma-separated makes a tuple
