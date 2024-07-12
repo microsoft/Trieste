@@ -215,7 +215,7 @@ For the expression `x + y * 2 , x - y`, we get:
 - Start: `(expr (x + (y * 2))) , (expr x - y)` (already parsed `+`, `-`, `*`, etc... `,` is treated as an unknown operator by those passes)
 - Rule 2 --> `(tuple (expr (x + (y * 2))) (expr x - y))`
 
-**Exercise to the reader:**
+**Exercise for the reader:**
 can you rewrite this pass with fewer rules?
 If you could find a way to consolidate rule 2 into rule 4, then things might be simpler... but you might run into trouble dealing with trailing commas in the end.
 Remember that you can always add new token types, like `UnderConstructionTuple`, to disambiguate cases like this where multiple otherwise-identical situations end up with an over-general name like `Tuple`.
@@ -244,7 +244,7 @@ Note that we use `^` to attach the `Paren` node's position to the `TupleCandidat
 We can also accept `()` as a valid empty tuple, since we have a marker for what a tuple might be.
 This replaces the default infix behavior of rejecting `()` as invalid:
 ```cpp
-In(Expression) * (T(Paren)[Paren] << End)(enable_if_parens_no_parser_tuples) >>
+In(Expression) * (T(Paren)[Paren] << End) >>
   [](Match& _) { return Expression << (TupleCandidate ^ _(Paren)); },
 ```
 
@@ -308,12 +308,12 @@ The well-formedness definition asserts that this pass will eliminate all `TupleC
 This helps find errors in the rules, where any nodes that should have been processed but weren't will trigger a well-formedness violation.
 Tthe extra rules that don't directly match the previous section are elimination cases that delete the `TupleCandidate` prefix from a fully-formed tuple expression.
 
-**Exercise to the reader 1:**
+**Exercise for the reader 1:**
 an additional capability here is the ability to parse `()` as an empty tuple: we did not do this when treating `,` more like an operator, because we could not detect `()` later on in parsing.
 You can add this capability to the other tuple parsing strategy by making a small extension to the `expression` pass that detects empty parentheses as their own token type.
 Look at the behavior of the other two implementations for inspiration.
 
-**Exercise to the reader 2:**
+**Exercise for the reader 2:**
 another way of achieving the same result as above might be to directly match the correct tuple pattern in the `expressions` pass.
 Since we know that lexically all tuples must look like `(... , ... , ...)`, we can iterate over the range of tokens inside the `(...)` and extract the sub-ranges between `,` tokens into separate expressions.
 That is, `(a..., b..., c...)` directly becomes `(tuple (expr a...) (expr b...) (expr c...))`.
@@ -323,9 +323,183 @@ Try it out and see what you think.
 
 ### Parser Tuples
 
-TODO: how to make the parser read the tuples with .seq
+The simplest but least extensible way to support tuples in Infix is to do so directly in the parser.
+This strategy requires little work since it re-uses a feature of Infix's parser (perhaps more intuitively, "tokenizer"), but consider also that because it lives directly in the parser, it is in some ways the least extensible approach.
+There is no way to add a pre-processing pass that goes before the parser, so Trieste's rule layering techniques will not be available.
 
-TODO: notice that .seq always allows a trailing instance of the separator. This surprisingly allows our .seq based assignment to accept `x = y =` with no way to work around it.
+To add tuples to the parser, first we add a new token type, `ParserTuple`:
+```cpp
+inline const auto ParserTuple = TokenDef("infix-parser-tuple");
+```
+Like `Comma`, this token is defined as "internal" since it does not appear in a fully-parsed Infix program.
+
+The new token type is incorporated into the existing mechanism for reading parentheses:
+```cpp
+R"(,)" >>
+  [](auto& m) {
+    if (m.in(Paren) || m.group_in(Paren) || m.group_in(ParserTuple))
+    {
+      m.seq(ParserTuple);
+    }
+    else
+    {
+      m.error("Commas outside parens are illegal");
+    }
+  },
+
+// Parens. (unmodified from original, but included for context)
+R"((\()[[:blank:]]*)" >>
+  [](auto& m) {
+    // we push a Paren node. Subsequent nodes will be added
+    // as its children.
+    m.push(Paren, 1);
+  },
+
+R"(\))" >>
+  [](auto& m) {
+    // terminate the current group
+    m.term(terminators);
+    // pop back up out of the Paren
+    m.pop(Paren);
+  },
+```
+
+Note that `ParserTuple` is added to `terminators`, which lists the kinds of nodes we might be adding children to while in between a pair of parentheses:
+```cpp
+const std::initializer_list<Token> terminators = {Equals, ParserTuple};
+```
+
+As a whole, this change to the parser lets pairs of parentheses with commas in them be converted into `(Paren (ParserTuple Group...))`.
+
+The way this works hinges on the semantics of `m.seq(TokenType)`, due to which the above rules processes `(a,b,)` as follows:
+```
+// m.push(Paren, 1):
+// - add Paren node and put cursor inside
+// - location is group 1 of regex match
+(a,b,)
+^
+
+(Paren ...)
+
+---
+// cursor inside non-group, so add group and put (a) in it
+(a,b,)
+ ^
+
+(Paren (Group (a) ...))
+
+---
+// m.seq(ParserTuple):
+// - replace containing group with ParserTuple 
+// - place existing group as first child of new ParserTuple
+// - put cursor at end of ParserTuple
+(a,b,)
+  ^
+
+(Paren (ParserTuple (Group (a)) ...))
+
+---
+// cursor inside non-group (ParserTuple), so add new group
+// and put (a) in it
+(a,b,)
+   ^
+
+(Paren (ParserTuple (Group (a)) (Group (b) ...)))
+
+---
+// m.seq(ParserTuple):
+// containing group's parent is ParserTuple, so finish this
+// group and put cursor at the end of ParserTuple
+(a,b,)
+    ^
+
+(Paren (ParserTuple (Group (a)) (Group (b)) ...))
+
+---
+// m.term({..., ParserTuple}):
+// - exit current group if any (not in this case)
+// - exit ParserTuple, cursor at end of parent (Paren)
+(a,b,)
+     ^
+
+(Paren (ParserTuple (Group (a)) (Group (b))) ...)
+
+---
+// m.pop(Paren):
+// - exit current group if any (not in this case)
+// - exit Paren, cursor at end of parent
+(a,b,)
+     ^
+
+(Paren (ParserTuple (Group (a)) (Group (b))) ...)
+```
+
+There are a lot of edge cases and lazy-added groups in parser behavior, so hopefully this worked example is more informative than just a long list of possible behaviors.
+
+The explanation above does not cover the multiple error conditions written in the `,` rule, however.
+Because of the cursor-and-state-machine model in the parser, calling `m.seq(ParserTuple)` whenever we see a comma will work for valid programs, but will cause well-formedness violations on invalid programs because of how `ParserTuple` will end up "taking over" any containing group, even ones whose meaning is completely unrelated to it.
+To exclude these cases, we ensure that we only try to add a `ParserTuple` node if we are inside a `Paren`, or in a group that is a child of a `Paren`, or in a group that is a child of a `ParserTuple` (that is, we're already constructing one).
+If we are not in those cases, we reject `,` at the parser level by adding an error node instead.
+
+To get these kinds of conditionals right, it was very useful to fuzz our implementation at the level of input strings.
+It took multiple attempts and fuzzing-generated counter-examples to reach the conditional we present here.
+Fortunately, the well-formedness checks helped the fuzzing process by flagging mistakes which lead to unexpected AST shapes.
+
+**Danger:**
+notice that grouping ranges of tokens using `m.seq` will always allow a trailing separator, such as a trailing comma in our case.
+This is feature given our tuple design, but it can have unexpected consequences for other use cases.
+For example, the Infix language allows trailing `=` in assignments: `x = 1 =;` is equivalent to `x = 1;` because assignments are also implemented using `m.seq`.
+As we did above, it might be possible to avoid these undesirable smenaitcs with extra conditionals, but the more of those conditionals live in the parser, the more it may benifit readability and analyzability to express those semantics as passes and rules instead.
+
+Once we have our parser tuples in our AST, we can extract them using rewrite rules.
+Here are our commented rewrite rules from the `expressions` pass:
+```cpp
+// Special case: a ParserTuple with one empty group child is (,), which
+// we consider a valid empty tuple.
+In(Expression) *
+    (T(Paren)
+      << (T(ParserTuple)[ParserTuple] << ((T(Group) << End) * End))) >>
+  [](Match& _) { return Expression << (ParserTuple ^ _(ParserTuple)); },
+// Special case 2: a ParserTuple with no children is (), which is also a
+// valid empty tuple.
+In(Expression) * (T(Paren)[Paren] << End)(enable_if_parser_tuples) >>
+  [](Match& _) { return Expression << (ParserTuple ^ _(Paren)); },
+// This grabs any Paren whose only child is a ParserTuple, and unwraps
+// that ParserTuple's nested groups into Expression nodes so future
+// passes will parse their contents properly.
+In(Expression) *
+    (T(Paren) << (T(ParserTuple)[ParserTuple] << T(Group)++[Group]) *
+        End) >>
+  [](Match& _) {
+    Node parser_tuple = ParserTuple;
+    for (const auto& child : _[Group])
+    {
+      // Use NodeRange to make Expression use all of the child's
+      // children, rather than just append the child. If you're on C++20
+      // or above, you can directly use std::span here, or write *child
+      // which behaves like a range.
+      parser_tuple->push_back(
+        Expression << NodeRange{child->begin(), child->end()});
+    }
+    return Expression << parser_tuple;
+  },
+```
+
+While in general it would be possible to directly emit a `Tuple` token here, it would make the well-formedness definitions less clear for our multi-version Infix implementation.
+So, we keep everything under `ParserTuple` until the other rules-based implementations are adding `Tuple` tokens of their own.
+This helps our well-formedness definitions catch more errors, rather than being overly permissing and allowing `Tuple` tokens in many places.
+In a language implementation that does not deliberately re-implement the same feature multiple times however, this extra step would not be necessary.
+
+Our one additional rule to extract the tuple structure looks like this:
+```cpp
+T(Expression) << (T(ParserTuple) << T(Expression)++[Expression]) >>
+  [](Match& _) { return Expression << (Tuple << _[Expression]); },
+```
+
+**Exercise for the reader:**
+while we did not implement it, it is also possible to implement tuples that do not require parentheses in the parser.
+To do this, remove restrictions on where commas will be accepted in the parser (but not all the restrictions, or you'll have to deal with `x , = 1;`!), and alter the `expressions` pass to extract tuples from any additional cases.
+In all of those cases the tuple elements will be pre-grouped, and as long as commas have a uniform enough meaning throughout your language, the technique may be simpler to implement than the rule-based parsing strategies discussed in previous sections.
 
 ### Evaluating a Tuple Expression
 

@@ -32,7 +32,7 @@ namespace infix
               if (m.in(Paren) || m.group_in(Paren) || m.group_in(ParserTuple))
               {
                 // note: group_in is necessary because we will initially
-                // be in a state like (Paren ...) [groups are lazy, added, so
+                // be in a state like (Paren ...) [groups are lazy added, so
                 // just a comma in a Paren hits this case], at which point .add
                 // might change us to (Paren (Group ...)). So, we are either
                 // directly in a Paren, or we are in a Group in a Paren. If we
