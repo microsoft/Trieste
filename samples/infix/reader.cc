@@ -149,6 +149,8 @@ namespace
     Toggle enable_if_parens_no_parser_tuples =
       config.tuples_require_parens && !config.use_parser_tuples ? ToggleYes :
                                                                   ToggleNo;
+    Toggle enable_if_parser_tuples =
+      config.use_parser_tuples ? ToggleYes : ToggleNo;
 
     return {
       "expressions",
@@ -198,11 +200,17 @@ namespace
         // It depends on how many commas there are in it.
         // We need this if tuples require parens, and we are not handling tuples
         // in the parser.
-        (In(Expression) * (T(Paren)[Paren] << T(Group)[Group]))(
-          enable_if_parens_no_parser_tuples) >>
+        In(Expression) *
+            (T(Paren)[Paren]
+             << T(Group)[Group])(enable_if_parens_no_parser_tuples) >>
           [](Match& _) {
             return Expression << (TupleCandidate ^ _(Paren)) << *_[Group];
           },
+        // Special case: empty () is rejected without tuples, but we accept it
+        // as an empty tuple.
+        In(Expression) *
+            (T(Paren)[Paren] << End)(enable_if_parens_no_parser_tuples) >>
+          [](Match& _) { return Expression << (TupleCandidate ^ _(Paren)); },
 
         // --- tuples only, parser tuples version:
         // Special case: a ParserTuple with one empty group child is (,), which
@@ -211,6 +219,10 @@ namespace
             (T(Paren)
              << (T(ParserTuple)[ParserTuple] << ((T(Group) << End) * End))) >>
           [](Match& _) { return Expression << (ParserTuple ^ _(ParserTuple)); },
+        // Special case 2: a ParserTuple with no children is (), which is also a
+        // valid empty tuple.
+        In(Expression) * (T(Paren)[Paren] << End)(enable_if_parser_tuples) >>
+          [](Match& _) { return Expression << (ParserTuple ^ _(Paren)); },
         // This grabs any Paren whose only child is a ParserTuple, and unwraps
         // that ParserTuple's nested groups into Expression nodes so future
         // passes will parse their contents properly.

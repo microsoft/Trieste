@@ -61,11 +61,14 @@ One such feature is removing the requirement that functions are defined before t
 For more of a challenge, consider that with this feature it becomes possible to write recursive, or even mutually recursive, functions.
 Either detect and reject that case as an error, or try implementing recursive function evaluation.
 
-TODO: config arguments, and the risk of keeping references to temporaries.
-Copying the config object is often fine, especially if it's just a few boolean flags.
-Same goes for other things that go inside the pass objects - there can be subtle differences between correct and incorrect code due to taking references to locals without realizing.
-From personal experience, a pattern constructor silently taking a reference to a local pointer that referred to a static storage function, rather than copying the pointer, caused problems at least once.
-If in doubt, remember to enable AddressSanitizer or equivalent to check that your pass hasn't been constructed with some bad pointers somewhere.
+**Safety note when capturing data in passes:**
+it is quite easy to cause memory safety bugs by accidentally holding references to objects captured during pass construction, whose lifetime might be shorter than that of the pass itself.
+Make sure to copy or `shared_ptr` data into your pass, rather than holding a long-lived reference to something whose lifetime might be uncertain.
+In our example, `infix::Config` is a struct with a few booleans, so it would be fine to copy around.
+Larger objects might benefit from `shared_ptr` or similar machinery.
+Since we specifically used `infix::Config` to enable or disable rules, we opted to pass in pointers to `ToggleYes` and `ToggleNo` functions rather than capturing the config itself.
+Regardless of how you proceed, remember to use AddressSanitizer to check for problems - when developing this extension, one resource management issue only appeared during cross-platform testing.
+It was immediately reproducible locally using sanitizers, however.
 
 ## Tuples in Infix
 
@@ -173,8 +176,15 @@ T(Expression) << (T(Tuple)[Tuple] * T(Comma) * End) >>
 
 Crucially, note that several rules apply to the results of other rules, especially rule 3.
 This pass makes use of Trieste's rewrite-until-done semantics.
+The recursive nature of these rules requires special care when handling errors, because adding a catch-all for `,` nodes will flag errors mid-processing, preventing the compiler from parsing many kinds of tuple expression.
 
-To give an example of how these rules apply, consider how our first example, `x, y, z`, is parsed:
+Instead, we put the following catch-all error rule in its own pass, so that it only detects commas that could not be consumed using the patterns above:
+```cpp
+In(Expression) * T(Comma)[Comma] >>
+  [](Match& _) { return err(_(Comma), "Invalid use of comma"); },
+```
+
+To give an example of how these rules apply together, consider how our first example, `x, y, z`, is parsed:
 - Start: `(expr x) , (expr y) , (expr z)`
 - Rule 2 --> `(tuple (expr x) (expr y)) , (expr z)`
 - Rule 3 --> `(tuple (expr x) (expr y) (expr z))`
@@ -211,12 +221,105 @@ If you could find a way to consolidate rule 2 into rule 4, then things might be 
 Remember that you can always add new token types, like `UnderConstructionTuple`, to disambiguate cases like this where multiple otherwise-identical situations end up with an over-general name like `Tuple`.
 You can always use the testing infrastructure in this repository to validate your work.
 
-### Tuples as a Special Kind of Group
+### Tuples as a Special Case of Groups
 
-TODO: problem is that it might not be easy to tell if a group has commas in it or not.
-TODO: we can mark all groups with a "tuple candidate" node, do our operator parsing, and then group things up by shifting commas into tuples
+If parentheses are mandatory for tuples in your language design, then you need to be able to tell apart which expressions are inside parentheses and which are not.
+Because the rest of Infix's structure operates using `In(Expression)`, and because we want to be able to use `Expression` as a marker for nodes that are already known to be expressions (as opposed to unparsed operators and such), we wanted another way to mark an expression as "it might be a tuple".
 
-TODO: we could actually hand-write a rule that looks for commas directly
+For this, we used the marker node `TupleCandidate`.
+An expression without parentheses will translated as-is by the `expressions` pass, but for an expression with parentheses we add this `TupleCandidate` node as a marker to indicate to later passes that the expression might be a tuple expression.
+The advantage of doing this is that all the other passes treat `TupleCandidate` as an unknown unary operator (in our case, with the lowest precedence), and parse all the other operators as usual while preserving the marker.
+
+Adding the marker looks like this, replacing the original Infix `Paren` parsing rule in the `expressions` pass:
+```cpp
+(In(Expression) * (T(Paren)[Paren] << T(Group)[Group])) >>
+  [](Match& _) {
+    return Expression << (TupleCandidate ^ _(Paren)) << *_[Group];
+  },
+```
+
+This conversion does almost the same thing as the original (move the paren's group contents directly into an `Expression` node), but it adds the prefix `TupleCandidate` to mark that this expression may or may not be a tuple later on.
+Note that we use `^` to attach the `Paren` node's position to the `TupleCandidate` node, which may make debugging and error message creation easier later on.
+
+We can also accept `()` as a valid empty tuple, since we have a marker for what a tuple might be.
+This replaces the default infix behavior of rejecting `()` as invalid:
+```cpp
+In(Expression) * (T(Paren)[Paren] << End)(enable_if_parens_no_parser_tuples) >>
+  [](Match& _) { return Expression << (TupleCandidate ^ _(Paren)); },
+```
+
+After parsing the arithmetic sub-expressions using the same unmodified passes, our rules for extracting tuples look like this:
+```cpp
+// the initial 2-element tuple case
+In(Expression) * T(TupleCandidate)[TupleCandidate] *
+    T(Expression)[Lhs] * T(Comma) * T(Expression)[Rhs] >>
+  [](Match& _) {
+    return Seq << _(TupleCandidate) << (Tuple << _(Lhs) << _(Rhs));
+  },
+// tuple append case, where lhs is a tuple we partially built, and rhs
+// is an extra expression with a comma in between
+In(Expression) * T(TupleCandidate)[TupleCandidate] * T(Tuple)[Lhs] *
+    T(Comma) * T(Expression)[Rhs] >>
+  [](Match& _) {
+    return Seq << _(TupleCandidate) << (_(Lhs) << _(Rhs));
+  },
+// same as above, but if the tuple is on the other side
+In(Expression) * T(TupleCandidate)[TupleCandidate] *
+    T(Expression)[Lhs] * T(Comma) * T(Tuple)[Rhs] >>
+  [](Match& _) {
+    Node lhs = _(Lhs);
+    Node rhs = _(Rhs);
+    rhs->push_front(lhs);
+    return Seq << _(TupleCandidate) << rhs;
+  },
+// the one-element tuple, where a candidate for tuple ends in a comma,
+// e.g. (42,)
+In(Expression) * T(TupleCandidate)[TupleCandidate] *
+    T(Expression)[Expression] * T(Comma) * End >>
+  [](Match& _) { return Tuple << _(Expression); },
+// the not-a-tuple case. All things surrounded with parens might be
+// tuples, and are marked with TupleCandidate. When it's just e.g. (x),
+// it's definitely not a tuple so stop considering it.
+T(Expression)
+    << (T(TupleCandidate) * T(Expression)[Expression] * End) >>
+  [](Match& _) { return _(Expression); },
+// If a TupleCandidate has been reduced to just a tuple, then we're
+// done.
+T(Expression) << (T(TupleCandidate) * T(Tuple)[Tuple] * End) >>
+  [](Match& _) { return Expression << _(Tuple); },
+// Comma as suffix is allowed, just means the same tuple as without the
+// comma
+T(Expression)
+    << (T(TupleCandidate) * T(Tuple)[Tuple] * T(Comma) * End) >>
+  [](Match& _) { return Expression << _(Tuple); },
+// Just a comma means an empty tuple
+T(Expression) << (T(TupleCandidate) * T(Comma)[Comma] * End) >>
+  [](Match& _) { return Expression << (Tuple ^ _(Comma)); },
+// empty tuple, special case for ()
+T(Expression) << (T(TupleCandidate)[TupleCandidate] * End) >>
+  [](Match& _) { return Expression << (Tuple ^ _(TupleCandidate)); },
+```
+
+Compared to the previous section's tuple rules, a defining feature here is that every rule here is prefixed with `TupleCandidate`.
+This means that, if there is no `TupleCandidate` marker, these rules will never apply to anything.
+Using our catch-all for stray commas in the next pass, we can therefore report as errors any tuple-like constructions that are not inside parentheses.
+
+The well-formedness definition asserts that this pass will eliminate all `TupleCandidate` nodes.
+This helps find errors in the rules, where any nodes that should have been processed but weren't will trigger a well-formedness violation.
+Tthe extra rules that don't directly match the previous section are elimination cases that delete the `TupleCandidate` prefix from a fully-formed tuple expression.
+
+**Exercise to the reader 1:**
+an additional capability here is the ability to parse `()` as an empty tuple: we did not do this when treating `,` more like an operator, because we could not detect `()` later on in parsing.
+You can add this capability to the other tuple parsing strategy by making a small extension to the `expression` pass that detects empty parentheses as their own token type.
+Look at the behavior of the other two implementations for inspiration.
+
+**Exercise to the reader 2:**
+another way of achieving the same result as above might be to directly match the correct tuple pattern in the `expressions` pass.
+Since we know that lexically all tuples must look like `(... , ... , ...)`, we can iterate over the range of tokens inside the `(...)` and extract the sub-ranges between `,` tokens into separate expressions.
+That is, `(a..., b..., c...)` directly becomes `(tuple (expr a...) (expr b...) (expr c...))`.
+The advantage of this approach is that we can eliminate tuple syntax very simply by adding a for loop to the existing `()` rule in the `expressions` pass.
+The disadvantage is that this adds hard to observe/extend complication to that pass - if the lexical rules for commas get more complicated in any way, it would be wise to separate that logic out into further passes.
+Try it out and see what you think.
 
 ### Parser Tuples
 

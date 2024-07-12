@@ -1,0 +1,12 @@
+//! --enable-tuples --expect-fail calculate
+(top
+  {}
+  (infix-calculation
+    {}
+    (infix-output
+      (infix-string 4:"()")
+      (infix-expression
+        (error
+          (errormsg 13:Invalid paren)
+          (errorast
+            (infix-paren)))))))
