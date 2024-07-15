@@ -7,9 +7,9 @@ Our task at hand is to extend Infix with some more advanced concepts: multiple l
 Each of these topics explores a potential difficulty and how Trieste helps resolve it:
 - Multiple language versions: given time, any programming language will change, and with multiple versions "in the wild", implementations may have to accept more than one of them.
   Correctly implementing something like this also helps us manage the collection of language extensions we explore in this document, which is why we look into this first.
-- Tuples: a simple form of compoud data, which has interesting syntactic interactions with the existing Infix features.
+- Tuples: a simple form of compound data, which has interesting syntactic interactions with the existing Infix features.
 - Functions: a source of diverse scoping problems we can resolve in different ways using the tools provided by Trieste.
-- Destructuring assignments: introducing a new kind of definition with complex scoping rules might seems like it requires a refactor.
+- Destructuring assignments: introducing a new kind of definition with complex scoping rules might seem like it requires a refactor.
   We show how such problems can be avoided in Trieste.
 
 ## Multiple Language Versions
@@ -47,11 +47,11 @@ const auto wf =
 
 At the top, you can see the original Infix definitions untouched.
 Below, marked by `--- tuples extension ---`, you can see repeated definitions that include the added feature, tuples in this case.
-In this case, the tuples feature leaves many things alone (assignments, output, etc are not touched), but overrides the `Expression` well-formedness so that it includes the added tuple expressions.
+In this case, the tuples feature leaves many things alone (assignments, output, etc. are not touched), but overrides the `Expression` well-formedness so that it includes the added tuple expressions.
 Other definitions do similar things, partially overriding the definitions above it.
 
 A reader focusing on earlier parts of this document can safely ignore the definitions below, and read the simpler language as-is.
-Similarly, rules mentioning the ommitted constructs can be ignored.
+Similarly, rules mentioning the omitted constructs can be ignored.
 If you write programs that use only features you know, rules regarding unknown features are unreachable.
 The implementation will also reject inputs that use features they are not supposed to, and defaults to the original Infix language.
 
@@ -105,7 +105,7 @@ const auto wf =
 ```
 
 We will come back to this definition when adding the other two tuple primitives, but all similar changes will follow the same formula.
-More importantly, this shows how little difference many lexical-level or syntax sugar-level changes can make to a Trieste based language's main AST, since a lot of nuance can be removed when reading the language, before reaching the main AST.
+More importantly, this shows how little difference many lexical-level or syntax sugar-level changes can make to a Trieste based language's main AST, since a lot of nuances can be removed when reading the language, before reaching the main AST.
 
 ### The Simplest Parser Modification
 
@@ -126,11 +126,11 @@ R"(,)" >> [](auto& m) {
 ```
 
 This action follows the same template as the arithmetic operators already in the language.
-No context or complex logic is used here; subequent passes will make sense of what these commas mean.
+No context or complex logic is used here; subsequent passes will make sense of what these commas mean.
 
 As an aside on adding more token types, we find that defining more token types with specific syntactic meaning leads to clearer programs.
 In principle, it would be possible to re-use the `Tuple` token and not introduce an additional definition, but this would make the implementation's behavior less clear.
-Not only might commas be used outside of tuples (imagine adding C-style function calls with comma-separated arguments to Infix!), but re-using a token weakens Trieste's patterns, fuzzing, and well-formedness facilities.
+Not only might commas be used outside tuples (imagine adding C-style function calls with comma-separated arguments to Infix!), but re-using a token weakens Trieste's patterns, fuzzing, and well-formedness facilities.
 
 Changing something from one token type to another is easily monitored using well-formedness definitions, and can be easily detected using patterns.
 Using the same token type to mean multiple things, especially when it means one thing in the input of a pass and another in the pass's output, opens us up to confusing situations.
@@ -186,12 +186,12 @@ In(Expression) * T(Comma)[Comma] >>
 
 To give an example of how these rules apply together, consider how our first example, `x, y, z`, is parsed:
 - Start: `(expr x) , (expr y) , (expr z)`
-- Rule 2 --> `(tuple (expr x) (expr y)) , (expr z)`
-- Rule 3 --> `(tuple (expr x) (expr y) (expr z))`
+- Rule 2 ⇾ `(tuple (expr x) (expr y)) , (expr z)`
+- Rule 3 ⇾ `(tuple (expr x) (expr y) (expr z))`
 
 For the same example with a trailing comma, we need rule 5 to account for that:
-- Same as above --> `(tuple (expr x) (expr y) (expr z)) ,`
-- Rule 5 --> `(tuple (expr x) (expr y) (expr z))`
+- Same as above ⇾ `(tuple (expr x) (expr y) (expr z)) ,`
+- Rule 5 ⇾ `(tuple (expr x) (expr y) (expr z))`
 
 Note that rule 5 can only apply once, ensuring that we do not accept nonsense expressions like `x, y,,,,,` with too many trailing commas.
 We use the `End` pattern to indicate that we only accept the extra comma if it is the last token in the expression; if there was another comma after it, the pattern will not match and the extra comma should be caught by an error handling catch-all pattern.
@@ -204,16 +204,16 @@ Similarly, rule 4 deals with unary tuples where, unlike rule 5, there cannot be 
 
 To show rule 1 in action, consider the expression `,`, to which no rules except 1 apply:
 - Start: `,`
-- Rule 1 --> `(tuple)`
+- Rule 1 ⇾ `(tuple)`
 
 To show rule 4 in action, consider the expression `x ,`, where `x` is not a tuple so rule 5 does not apply:
 - Start `x ,`
-- Rule 4 --> `(tuple x)`
+- Rule 4 ⇾ `(tuple x)`
 
 Remember also that, because this pass goes after all the arithmetic operator passes, we can deal with nested arithmetic as well.
 For the expression `x + y * 2 , x - y`, we get:
 - Start: `(expr (x + (y * 2))) , (expr x - y)` (already parsed `+`, `-`, `*`, etc... `,` is treated as an unknown operator by those passes)
-- Rule 2 --> `(tuple (expr (x + (y * 2))) (expr x - y))`
+- Rule 2 ⇾ `(tuple (expr (x + (y * 2))) (expr x - y))`
 
 **Exercise for the reader:**
 can you rewrite this pass with fewer rules?
@@ -227,7 +227,7 @@ If parentheses are mandatory for tuples in your language design, then you need t
 Because the rest of Infix's structure operates using `In(Expression)`, and because we want to be able to use `Expression` as a marker for nodes that are already known to be expressions (as opposed to unparsed operators and such), we wanted another way to mark an expression as "it might be a tuple".
 
 For this, we used the marker node `TupleCandidate`.
-An expression without parentheses will translated as-is by the `expressions` pass, but for an expression with parentheses we add this `TupleCandidate` node as a marker to indicate to later passes that the expression might be a tuple expression.
+An expression without parentheses will be translated as-is by the `expressions` pass, but for an expression with parentheses we add this `TupleCandidate` node as a marker to indicate to later passes that the expression might be a tuple expression.
 The advantage of doing this is that all the other passes treat `TupleCandidate` as an unknown unary operator (in our case, with the lowest precedence), and parse all the other operators as usual while preserving the marker.
 
 Adding the marker looks like this, replacing the original Infix `Paren` parsing rule in the `expressions` pass:
@@ -238,7 +238,7 @@ Adding the marker looks like this, replacing the original Infix `Paren` parsing 
   },
 ```
 
-This conversion does almost the same thing as the original (move the paren's group contents directly into an `Expression` node), but it adds the prefix `TupleCandidate` to mark that this expression may or may not be a tuple later on.
+This conversion does almost the same thing as the original (move the parentheses' group contents directly into an `Expression` node), but it adds the prefix `TupleCandidate` to mark that this expression may or may not be a tuple later on.
 Note that we use `^` to attach the `Paren` node's position to the `TupleCandidate` node, which may make debugging and error message creation easier later on.
 
 We can also accept `()` as a valid empty tuple, since we have a marker for what a tuple might be.
@@ -306,7 +306,7 @@ Using our catch-all for stray commas in the next pass, we can therefore report a
 
 The well-formedness definition asserts that this pass will eliminate all `TupleCandidate` nodes.
 This helps find errors in the rules, where any nodes that should have been processed but weren't will trigger a well-formedness violation.
-Tthe extra rules that don't directly match the previous section are elimination cases that delete the `TupleCandidate` prefix from a fully-formed tuple expression.
+The extra rules that don't directly match the previous section are elimination cases that delete the `TupleCandidate` prefix from a fully-formed tuple expression.
 
 **Exercise for the reader 1:**
 an additional capability here is the ability to parse `()` as an empty tuple: we did not do this when treating `,` more like an operator, because we could not detect `()` later on in parsing.
@@ -371,7 +371,7 @@ const std::initializer_list<Token> terminators = {Equals, ParserTuple};
 
 As a whole, this change to the parser lets pairs of parentheses with commas in them be converted into `(Paren (ParserTuple Group...))`.
 
-The way this works hinges on the semantics of `m.seq(TokenType)`, due to which the above rules processes `(a,b,)` as follows:
+The way this works hinges on the semantics of `m.seq(TokenType)`, due to which the above rules process `(a,b,)` as follows:
 ```
 // m.push(Paren, 1):
 // - add Paren node and put cursor inside
@@ -447,9 +447,9 @@ Fortunately, the well-formedness checks helped the fuzzing process by flagging m
 
 **Danger:**
 notice that grouping ranges of tokens using `m.seq` will always allow a trailing separator, such as a trailing comma in our case.
-This is feature given our tuple design, but it can have unexpected consequences for other use cases.
+This is a feature given our tuple design, but it can have unexpected consequences for other use cases.
 For example, the Infix language allows trailing `=` in assignments: `x = 1 =;` is equivalent to `x = 1;` because assignments are also implemented using `m.seq`.
-As we did above, it might be possible to avoid these undesirable smenaitcs with extra conditionals, but the more of those conditionals live in the parser, the more it may benifit readability and analyzability to express those semantics as passes and rules instead.
+As we did above, it might be possible to avoid these undesirable semantics with extra conditionals, but the more of those conditionals live in the parser, the more it may benefit readability and analyzability to express those semantics as passes and rules instead.
 
 Once we have our parser tuples in our AST, we can extract them using rewrite rules.
 Here are our commented rewrite rules from the `expressions` pass:
@@ -487,8 +487,8 @@ In(Expression) *
 
 While in general it would be possible to directly emit a `Tuple` token here, it would make the well-formedness definitions less clear for our multi-version Infix implementation.
 So, we keep everything under `ParserTuple` until the other rules-based implementations are adding `Tuple` tokens of their own.
-This helps our well-formedness definitions catch more errors, rather than being overly permissing and allowing `Tuple` tokens in many places.
-In a language implementation that does not deliberately re-implement the same feature multiple times however, this extra step would not be necessary.
+This helps our well-formedness definitions catch more errors, rather than being overly permissive and allowing `Tuple` tokens in many places.
+In a language implementation that does not deliberately re-implement the same feature multiple times, this extra step would not be necessary.
 
 Our one additional rule to extract the tuple structure looks like this:
 ```cpp
