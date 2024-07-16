@@ -35,8 +35,11 @@ namespace
   // clang-format off
   inline const auto wf_pass_math_errs = 
     wf_pass_maths
-    | (Assign <<= Ident * Literal) 
-    | (Output <<= String * Literal) 
+    | (Assign <<= Ident * Literal)
+    | (Output <<= String * Literal)
+    // We omit operations, because they should all be gone.
+    // They are unreachable in this WF because Assign and
+    // Output only reference Literal, not Expression. 
     // --- tuples extension
     | (Tuple <<= Literal++)
     ;

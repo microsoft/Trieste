@@ -503,22 +503,237 @@ In all of those cases the tuple elements will be pre-grouped, and as long as com
 
 ### Evaluating a Tuple Expression
 
-TODO: use Expression --> Literal as "pseudo-types" to track whether something has evaluated
+TODO: remember prefix notation?
 
-TODO: a previous version of this tutorial used int and float nodes directly, rather than using a Literal prefix.
-This is more compact for a very simple language, but it doesn't scale since it essentially makes you write out all possible nodes a value can be.
-It is more scalable to describe a broad category, like our "literal" token, which allows us to generically identify evaluated and unevaluated terms even if the language changes to some extent.
+Now that we have parsed our tuples, we can process them through the rest of the Infix tooling.
+That is, we should be able to calculate the results of expressions with tuple literals in them.
 
-TODO: how to represent (as WF) the intermediate state where we can have "stuck expressions", so we can catch errors. Yes, errors may well end up in a second pass if you're relying on fixpoints.
+Here are some examples of what we aim to handle:
+```
+print "arity 0" (,);
+print "arity 1" (1,);
+print "arity 1 op" (2-1,);
+print "arity 2" (1, 2);
+print "arity 2 trailing" (1, 2,);
+print "arity 3" (1, 2, 3);
+print "arity 3 trailing" (1, 2, 3,);
+print "arity 3 op" (1, 3-1, 1+2-1);
+```
+
+We have more variants in the test folder, but remember that we've converged on a single AST by this point, so non-significant changes like adding/removing redundant commas, or omitting parentheses, make no difference at this point.
+The AST our code will be looking at past this point will be the same in any case.
+
+The first step in evaluating anything is to identify what evaluated and unevaluated terms must look like.
+In this case, we mark terms that haven't evaluated with `Expression`, as is already the case in our starting AST, and we mark terms that we consider values with the `Literal` parent node.
+We chose "literal" as the name because these values are essentially a special case of expressions which can be thought of as fully-evaluated constants.
+
+We identify "literals" as follows:
+- `Int` or `Float`
+- `Tuple` where all the elements are `Literal`
+
+Because we use the `Literal` marker to identify subtrees that satisfy conditions, we can write a well-formedness specification that matches the rules above exactly (simplified from a larger modification to out main Infix `wf`):
+```cpp
+| (Literal <<= Int | Float | Tuple)
+| (Tuple <<= Literal++)
+```
+
+**Aside:** for the more theoretical minded, what we are doing here is an implementation of small-step evaluation rules.
+
+We make a point of explaining this `Literal` rule in detail, because a previous version of this tutorial used `Int` and `Float` nodes directly, without any prefix.
+This makes determining if a tree needs evaluating very simple, since you can just ask "is it one of the two kinds of number?", but in a language with any kind of compound data, like tuples, it is no longer clear whether every subtree of a compound expression has been evaluated.
+One could write a predicate to check this, but not only would it be slow due to having to traverse the entire value every time, it would also be inconvenient to use within Trieste's pattern matching.
+
+Summarizing "is this all evaluated?" as a marker node is much more extensible in comparison.
+You could add more value types to Infix, and as long you also add rules for how these values interact with the existing language, the notion of what an "evaluated value" looks like will remain centrally defined.
+As a result, rules for container types like tuples (and other generic language features) will not have to change in order to accommodate, say, a tuple whose element is an instance of this new value type.
+
+Without any operations on tuples, the single rule for evaluating one is quite simple:
+```cpp
+T(Expression) << (T(Tuple)[Tuple] << (T(Literal)++ * End)) >>
+  [](Match& _) {
+    return Literal << _(Tuple);
+  },
+```
+
+Once all the tuple's elements are `Literal`, as opposed to `Expression`, then the tuple itself may be marked as `Literal` according to our rules.
+The main detail to point out here is that "all children are X" must be written as `T(X)++ * End`.
+The `End` pattern is important, because if we have a partially evaluated tuple where only its first two children are `Literal`, `++` will match those two _and then the pattern will succeed_.
+In that case, this rule will take some partially evaluated tuples and mark them as fully evaluated.
+To ensure that all the children match the pattern in question, not just some (possibly empty!) prefix, we must require that there are no further children we could have matched using `End`.
+
+### Not Evaluating a Tuple Expression (a.k.a. "Stuck terms")
+
+Without tuples, the only way for an Infix expression to fail was to attempt a division by 0.
+This one error could be caught as a special case of the division rule, but that trick doesn't generalize.
+
+Specifically, tuples add another mutually incompatible kind of value to the Infix language.
+As a result, we now have many error cases: one for every combination of `(1, 2) + (3, 1)`, `(1, 2) - (3, 4)`, and so forth.
+Add even more operators, like the primitive tuple operations we will discuss later on, and the number of possible error cases quickly becomes intractable.
+
+So, we can't reasonably detect every possible invalid combination of values.
+That's fine - we can just put a catch-all rule at the end, right?
+The trouble is that this rule won't "just work" if we add it to the end of our evaluation pass:
+```cpp
+T(Expression)[Expression] >>
+  [](Match& _) { return err(_(Expression), "Unevaluated expression"); },
+```
+
+If you put this rule at the bottom of the `maths` pass, you might think that it would only trigger once all other rules have failed for a given expression, catching all evaluation errors.
+You'd be right, but not in the way you want.
+The transition from `Expression` to `Literal` will propagate through the program by repeated pass evaluation, until the pass no longer causes any changes.
+If for any reason we encounter `1 + <not evaluated yet>`, then no evaluation rules will accept it, so we will reach our error case and report an error.
+It doesn't matter that maybe that sub-expression hasn't evaluated _yet_; it just matters that our pass took more than one iteration.
+
+To avoid this situation and flag errors only after the `maths` pass can no longer proceed, we can split our errors out into a second pass.
+We can keep all our errors, as well as our specialized error reporting (rules that match and give better messages for certain types of invalid expression).
+They just need to move into a new follow-up pass, `math_errs`.
+
+The tricky part is what happens to the well-formedness definition in this case:
+```cpp
+inline const auto wf_pass_maths = 
+  infix::wf
+  // The Op >>= prefix ensures the internal structure of the WF is set up properly.
+  // The disjunction cannot otherwise be nested inside *
+  // Technically it names the disjunction "Op", but we do not use that name.
+  | (Assign <<= Ident * (Op >>= Literal | Expression)) 
+  | (Output <<= String * (Op >>= Literal | Expression)) 
+  | (Literal <<= Int | Float | Tuple)
+  // all the math ops, but with both literal and expression as options
+  | (Add <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+  | (Subtract <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+  | (Multiply <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+  | (Divide <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+  | (Tuple <<= (Literal | Expression)++)
+  ;
+```
+
+Rather than a clean separation between `Literal` and `Expression`, we have to initially accept both: our `maths` pass might finish with `Expression` nodes left over almost anywhere.
+It's our `math_errs` pass that will flag errors in this case, so where our AST has `Expression`, we now have to accept both `Expression` and `Literal`.
+
+This is a problem, because Trieste does not accept `(X | Y) * Z` as a well-formedness constraint.
+We can either write `X | Y` or `X * Y`, but we can't nest them directly.
+The usual outcome is to define more token types rather than have complex, compound well-formedness logic.
+That is not desirable here, because this is one transitive step, our AST normally doesn't have these cases, and a refactor would unnecessarily disrupt far more than it would fix.
+
+In this situation, you can write `(Op >>= X | Y) * Z`.
+The internals of the well-formedness definition requires that each element of `*` has a "name", and the simple disjunction `X | Y` doesn't have one.
+We can work around this by naming `X | Y` some other token like `Op`.
+Refactoring your well-formedness definition is usually better, but for transient cases like this one, the `>>=` operator is what you need.
+
+**Exercise for the reader:**
+while it can be cleaner and more robust to have one pass for positive rules and one pass for errors, for a simple language like Infix it might be possible to make evaluation single-pass.
+Currently, `maths` is a `topdown` pass like a lot of the Infix passes, but switching it to `bottomup` might allow evaluation to run in just one iteration.
+
+To check how many iterations a pass took, you can try to instrument your passes using logging, or by building a histogram of how many times a given action executed (keep a `shared_ptr` to a pass-wide map and update it on rule execution).
+[`std::source_location`](https://en.cppreference.com/w/cpp/utility/source_location) may be of interest.
+Unfortunately, Trieste does not have built-in functionality to do this automatically as of this tutorial.
 
 ### Appending and Indexing
 
-TODO: appending is a pseudo-function; our lang doesn't have functions so we special-case it with a keyword, like language builtings often are
-TODO: indexing is a highest-precedence binop (excercise to reader, highlight gotchas)
+Once we've added the `Tuple` data type and can evaluate its literals, adding more operations on tuples is relatively straightforward.
+The operations we describe are:
+- Appending 0 or more tuples together, as in `append((1, 2), (3,))`.
+- Accessing an element of a tuple with a `.`, as in `(1, 2).1` which would evaluate to `2`.
 
-TODO: for evaluation, these operations do not add any new literal types; they should all disappear in a fully evaluated program
+#### Append Expressions
 
-### Error Discipline, Fuzzing, and Test Cases
+The `append` operation looks like a function call, but we don't need to implement general function call semantics or function values in Infix to achieve its semantics.
+We treat `append` as a built-in operator that just happens to look like a function, much like built-ins of other languages might work (Go's channel, slice, and map primitives seem to follow a similar principle).
+
+To parse `append`, we add the word "append" itself as a keyword and token type in the parser.
+Then, we recycle Infix's existing tuple parsing rules (any version) in order to transform the string `append(...)`, or the tokens `(append) (paren (group ...))`, into `(append (expression (paren ...)))`.
+This allows us to treat the `(...)` part as a tuple syntactically, re-using all the existing parsing rules:
+```cpp
+// an append operation looks like append(...); we rely on tuple parsing
+// to get the (...) part right, but we can immediately recognize
+// append with a () next to it.
+// Marking the (...) under Expression ensures normal parsing happens to
+// it later.
+In(Expression) * T(Append)[Append] * T(Paren)[Paren] >>
+  [](Match& _) {
+    return Expression << (_(Append) << (Expression << _(Paren)));
+  },
+```
+
+After all the other operations have been parsed, we can inspect the nested expression we generated above and see if it is a tuple.
+If it was actually something like `append(42)`, then the first error rule (where we assert the expression is not a tuple) will trigger.
+Otherwise, we can gather the tuple's sub-expressions as arguments to the `append` operation.
+Note the use of `_[Expression]` to make all the matched `Expression` nodes children of our `Append` node.
+
+```cpp
+T(Append)[Append] << (T(Expression) << --T(Tuple)) >>
+  [](Match& _) { return err(_(Append), "Invalid use of append"); },
+
+T(Append)
+    << (T(Expression)
+        << (T(Tuple) << (T(Expression)++[Expression] * End))) >>
+  [](Match& _) { return Append << _[Expression]; },
+```
+
+To evaluate these append operations, we must detect when all the operation's arguments are evaluated, and check that those evaluated arguments are tuples.
+Once that is ensured, we can implement the tuple append operation using mostly standard `std::vector` manipulation:
+```cpp
+T(Expression) << (T(Append) << ((T(Literal) << T(Tuple))++[Literal] * End)) >>
+  [](Match& _) {
+    Node combined_tuple = Tuple;
+    for(Node child : _[Literal]) {
+      Node sub_tuple = child->front();
+      for(Node elem : *sub_tuple) {
+        combined_tuple->push_back(elem);
+      }
+    }
+    return Literal << combined_tuple;
+  },
+```
+
+Having a precise pattern is important here, because if the rule applies then we are assuming the expression we are matching has a valid result.
+In more complex cases, if it's only possible to tell that a rule should not apply within the rule body, then you can back out by returning the `NoChange` token, which makes Trieste treat the rule as if it didn't match.
+You can see examples of this being done at other points in the Infix implementation.
+
+Looking into the rule body, it's interesting to notice the difference between `Tuple << children`, where `children` is a `std::vector<Node>`, and `push_back` directly into a `Tuple` node.
+We use the second option here because it directly grows the `Tuple` node's internal array, whereas the first option builds a separate vector and then copies it into a new `Tuple`'s internal vector, essentially building the underlying array twice.
+While it may look the same, `Literal << combined_tuple` is different because it makes a `Literal` node whose single child is `combined_tuple`, which is a single `Node`.
+
+**Exercise for the reader:**
+this approach assumes that the append operation's parameter list will parse in the same way as a tuple.
+If instead we wanted to have a distinct parameter list concept, then we would need to describe separate parsing rules for that concept.
+We're unlikely to run into this with just an append operation, but when adding more operations, or general purpose functions, it could become important.
+In that case, it might be interesting to add [spread syntax](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Spread_syntax) to Infix.
+Then, tuple values could be expanded into append (or any other) operations' parameter lists.
+
+As we have mentioned before, when generalizing something it is often a good idea to make a new token that represents that concept.
+If parameter lists become a common feature of your language, then a `ParameterList` node with general-purpose rules will likely be more effective than just copy-pasting the tuple parsing rules and making changes.
+Just because Trieste doesn't have higher-order rules in a direct sense doesn't mean that you can't make something similar out of token definitions, well-formedness definitions, and generalized rules/passes.
+
+#### Indexing Expressions
+
+Since we chose to consider `.` as the new highest-precedence operator in Infix, most of its implementation is very similar to the binary operators that already exist, from parsing to error handling.
+
+Its evaluation rule shows another error case like dividing by 0 - when the index is out of range:
+```cpp
+T(Expression) << (T(TupleIdx)[TupleIdx] << (T(Literal) << T(Tuple)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+  [](Match& _) {
+    Node lhs = _(Lhs);
+    Node rhs = _(Rhs);
+    int rhs_val = get_int(rhs);
+
+    if(rhs_val < 0 || size_t(rhs_val) >= lhs->size()) {
+      return NoChange ^ ""; // error, see next pass
+    }
+    
+    return lhs->at(rhs_val);
+  },
+```
+
+Since we need to know the exact value of the left-hand argument before knowing if the right-hand index is in range, we have to use the `NoChange` token to back out from within the rule body if the indexing operation won't work.
+Returning this token causes Trieste to act as-if the rule did not apply at all, and the pass will continue searching for other matching patterns.
+Because there is no other way to evaluate an expression like that, we will eventually reach the `math_errs` pass and raise an error due to the invalid tuple indexing expression.
+
+**Exercise for the reader:** we use the `.` syntax from Rust for accessing tuple members.
+It would also be possible to use Python-like indexing as in `(1, 2)[1]`.
+Try altering the parsing rules so that Infix accepts that syntax instead.
+
+### Fuzzing, and Test Cases
 
 TODO: fuzz testing is useful to check that your program doesn't outright crash, but it is easy to pass WF if your code emits `Error` or something valid-looking, even if it doesn't make sense.
 
