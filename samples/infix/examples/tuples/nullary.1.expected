@@ -1,12 +1,6 @@
-//! --enable-tuples --expect-fail calculate
-(top
-  {}
-  (infix-calculation
-    {}
-    (infix-output
-      (infix-string 4:"()")
-      (infix-expression
-        (error
-          (errormsg 13:Invalid paren)
-          (errorast
-            (infix-paren)))))))
+//! --enable-tuples expect_parse_fail
+//! expect_parse_fail
+Invalid paren
+-- nullary.infix:0:11
+print "()" ();
+           ~

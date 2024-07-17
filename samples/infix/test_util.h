@@ -1,5 +1,6 @@
 #pragma once
 
+#include <locale>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -18,6 +19,14 @@ namespace
     }
 
     return lines;
+  }
+
+  inline void trim_trailing_whitespace(std::string& str)
+  {
+    while (!str.empty() && std::isspace(str.back(), std::locale("")))
+    {
+      str.pop_back();
+    }
   }
 
   inline void diffy_print(

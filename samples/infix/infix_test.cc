@@ -32,6 +32,8 @@ namespace
   }
 }
 
+using namespace std::string_view_literals;
+
 int main(int argc, char** argv)
 {
   CLI::App app;
@@ -164,6 +166,50 @@ int main(int argc, char** argv)
             expected_output = buffer.str();
           }
 
+          // If a line ends with helper, then replace that with substitution in
+          // substitutions. Some patterns have all the same options and then
+          // many different run modes, so this helps keep test configs short.
+          auto substitute_helper =
+            [&](
+              std::string_view helper,
+              std::initializer_list<std::string_view> substitutions) -> void {
+            std::vector<std::string> first_lines_remade;
+
+            for (const auto& first_line : first_lines)
+            {
+              std::size_t start_pos = first_line.size() - helper.size();
+              if (
+                first_line.size() >= helper.size() &&
+                std::string_view(first_line).substr(start_pos, helper.size()) ==
+                  helper)
+              {
+                for (auto substitution : substitutions)
+                {
+                  auto prefix = first_line.substr(0, start_pos);
+                  prefix += substitution;
+                  first_lines_remade.push_back(std::move(prefix));
+                }
+              }
+              else
+              {
+                first_lines_remade.push_back(first_line);
+              }
+            }
+
+            first_lines = std::move(first_lines_remade);
+          };
+
+          // So far the only helper is parse failures, which should affect
+          // everything.
+          substitute_helper(
+            "expect_parse_fail"sv,
+            {
+              "--expect-fail parse_only",
+              "--expect-fail calculate",
+              "--expect-fail infix",
+              "--expect-fail postfix",
+            });
+
           for (auto first_line : first_lines)
           {
             std::cout << "Testing file " << entry.path() << ", expected "
@@ -173,7 +219,8 @@ int main(int argc, char** argv)
             // config for current run
             infix::Config config;
             bool expect_fail = false;
-            auto proc_options = {"parse_only", "calculate"};
+            auto proc_options = {
+              "parse_only"sv, "calculate"sv, "infix"sv, "postfix"sv};
             std::string selected_proc;
 
             {
@@ -227,29 +274,94 @@ int main(int argc, char** argv)
                             .debug_path(debug_path ? *debug_path / "read" : "");
 
             trieste::ProcessResult result;
+            std::string actual_str;
             if (selected_proc == "parse_only")
             {
               result = reader.read();
+
+              std::ostringstream result_to_str;
+              result_to_str << result.ast;
+              actual_str = result_to_str.str();
             }
             else if (selected_proc == "calculate")
             {
+              auto dest = trieste::DestinationDef::synthetic();
               result = reader >>
                 infix::calculate()
                   .wf_check_enabled(true)
                   .debug_enabled(bool(debug_path))
-                  .debug_path(debug_path ? *debug_path / "calculate" : "");
+                  .debug_path(debug_path ? *debug_path / "calculate" : "") >>
+                infix::calculate_output_writer().destination(dest);
+
+              if (result.ok)
+              {
+                actual_str = dest->files().at("./calculate_output");
+              }
+            }
+            else if (selected_proc == "infix")
+            {
+              auto dest = trieste::DestinationDef::synthetic();
+              result = reader >> infix::writer().destination(dest);
+
+              if (result.ok)
+              {
+                actual_str = dest->files().at("./infix");
+              }
+            }
+            else if (selected_proc == "postfix")
+            {
+              auto dest = trieste::DestinationDef::synthetic();
+              result = reader >> infix::postfix_writer().destination(dest);
+
+              if (result.ok)
+              {
+                actual_str = dest->files().at("./postfix");
+              }
             }
             else
             {
               assert(false);
             }
 
-            std::string actual_str;
+            // If we failed, we actually care about the error list, not the
+            // exact AST we got stuck in. This is also more stable across tuple
+            // implementations and saves us from making more .expect files.
+            if (!result.ok)
             {
-              std::ostringstream result_to_str;
-              result_to_str << result.ast;
-              actual_str = result_to_str.str();
+              std::ostringstream out;
+
+              for (const auto& err : result.errors)
+              {
+                // Taken from result.print_errors, but adapted for terting as
+                // opposed to end-used interaction. The max report cap is gone,
+                // and we insert a filename that is not dependent on where the
+                // Trieste source tree is located.
+                for (const auto& child : *err)
+                {
+                  if (child == trieste::ErrorMsg)
+                    out << child->location().view() << std::endl;
+                  else
+                  {
+                    auto [line, col] = child->location().linecol();
+                    assert(
+                      std::filesystem::canonical(entry.path()) ==
+                      std::filesystem::canonical(
+                        child->location().source->origin()));
+
+                    out << "-- " << entry.path().filename().string() << ":"
+                        << line << ":" << col << std::endl
+                        << child->location().str() << std::endl;
+                  }
+                }
+              }
+
+              actual_str = out.str();
             }
+
+            // Clean up trailing whitespace, which is often the source of
+            // spurious test failures.
+            trim_trailing_whitespace(expected_output);
+            trim_trailing_whitespace(actual_str);
 
             bool ok = true;
             if (actual_str != expected_output)

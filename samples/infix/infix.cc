@@ -44,23 +44,8 @@ int main(int argc, char** argv)
     ProcessResult result;
     if (mode == "calculate")
     {
-      result = reader >> infix::calculate();
-      if (!result.ok)
-      {
-        logging::Error err;
-        result.print_errors(err);
-        return 1;
-      }
-
-      Node calc = result.ast->front();
-      for (const Node& output : *calc)
-      {
-        auto str = output->front()->location().view();
-        auto val = output->back()->location().view();
-        std::cout << str << " " << val << std::endl;
-      }
-
-      return 0;
+      result = reader >> infix::calculate() >>
+        infix::calculate_output_writer(output_path).destination(dest);
     }
     if (mode == "infix")
     {

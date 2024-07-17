@@ -729,6 +729,24 @@ Because there is no other way to evaluate an expression like that, we will event
 It would also be possible to use Python-like indexing as in `(1, 2)[1]`.
 Try altering the parsing rules so that Infix accepts that syntax instead.
 
+### Writing Tuples
+
+One of Infix's original purposes was to demonstrate Trieste's writers, and the ability to format Infix expressions in different ways.
+Our addition of tuples to the language does not affect these output stages in very interesting ways, except where we changed the data representation.
+
+Here are the only changes that required much thought:
+- The addition of `Literal` tagging means that we need to adjust the kind of data our writer will accept when rendering results of the `calculate` rewriter.
+  We solved this by making two versions of the writer's well-formedness constraints, but then sharing all the underlying code.
+  Since `Expression` and `Literal` are only different by those two nodes, we coded our writer methods to strip either parent node and then process the contents identically.
+- New node types like `Append` and `Tuple` that are not binary operators needed special handling.
+  For infix notation output, we just mirrored the input syntax.
+  For postfix notation, we found that variadic postfix operators (like both of our additions) end up being ambiguous without special syntax.
+  Without a system that uses parentheses as delimiters (although it seems those delimiters are exactly how some Forth-family languages handle tuples), it's not clear how many values `1 2 3 tuple` should leave on the stack.
+
+  To fix this, we added an extra "argument" to our postfix syntax for tuple literals and append operations, which counted how many arguments each operator should expect.
+  That is, our example above could be marked `1 2 3 3 tuple` to mean a 3-element tuple, or `1 2 3 1 tuple` to mean a 1-element tuple with `1` and `2` left over on the stack.
+  This was mostly for logical consistency and somewhat arbitrary, since we don't re-process the postfix syntax anywhere, but if someone built a Forth-like language as an exercise, our chosen syntax should not cause any problems beyond being difficult to write for humans.
+
 ### Quick Note on Scoping
 
 While we don't make significant changes to Infix's scoping behavior, there were some surprising things not mentioned in the original explanation of Infix's variable lookup behavior.
@@ -745,7 +763,7 @@ The original Infix tutorial covers how to use the fuzzer in order to validate th
 
 There are weaknesses to Trieste's built-in fuzzing method, however.
 Any fuzzing tool can only determine whether the program under test's behavior was good or bad based on what it can expect.
-For Trieste-based fuzzing, this means that if your rules don't violate well-formedness and your error cases have good coverage, you will pass fuzzing even if you implementation is otherwise completely wrong.
+For Trieste-based fuzzing, this means that if your rules don't violate well-formedness and your error cases have good coverage, you will pass fuzzing even if your implementation is otherwise completely wrong.
 For instance, one iteration of the tuples code passed extensive fuzzing, but it also flagged spurious errors on most tuple expressions because of a bug in how the parsing rules interacted (one rule would half parse the tuple, then another would mark that as an error).
 Since error reporting is a valid outcome for a Trieste pass that will not be flagged by fuzzing, we need more precise testing as well.
 
@@ -856,7 +874,7 @@ For a bounded recursion, the footprint of a `Result` can be bounded by recursion
 
 In a similar vein, we do not want to recursively concatenate `std::string` instances when constructing our input strings.
 To solve this, we implemented `bfs::CatString`, a simplification of [`Chain`](https://typelevel.org/cats/datatypes/chain.html) from the Scala ecosystem's Cats library.
-While our minimum-viable C++ implementation lacks some of the original's performance optimizations, the core design is maintained: concatenating `CatString` has O(1) time complexity because it just builds a tuple of the inputs.
+While our minimum-viable C++ implementation lacks some of the original's performance optimizations, the core design is maintained: concatenating `CatString` has O(1) time complexity because it just builds a tuple of `std::shared_ptr` to its inputs.
 `CatString` is essentially a tree of string fragments and control nodes, which can be flattened into a single string (or any `std::ostream` sink) in one on-demand O(n) iteration.
 By discarding unnecessary operations like indexing and contiguous storage, we no longer need to think about string concatenation cost.
 That is how we can write naive recursive string concatenations in combination with `bfs::Result` to build large families of strings with minimal overhead.

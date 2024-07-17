@@ -43,7 +43,7 @@ namespace infix
               }
               else
               {
-                m.error("Commas outside parens are illegal");
+                m.error("Invalid use of comma");
               }
             }
             else

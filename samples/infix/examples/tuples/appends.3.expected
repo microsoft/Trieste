@@ -1,0 +1,7 @@
+//! --enable-tuples --tuples-require-parens postfix
+//! --enable-tuples --tuples-require-parens --use-parser-tuples postfix
+//! --enable-tuples postfix
+"empty and empty" 0 tuple 0 tuple 2 append print
+"empty append" 0 append print
+"unary append" 0 tuple 1 append print
+"nested appends" 1 2 2 tuple 3 1 tuple 4 1 tuple 2 append 2 append print

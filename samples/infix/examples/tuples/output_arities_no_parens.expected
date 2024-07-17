@@ -78,6 +78,6 @@
                   (infix-expression
                     (infix-int 1:1))
                   (infix-expression
-                    (infix-int 1:2))))
+                    (infix-int 1:4))))
               (infix-expression
-                (infix-int 1:1)))))))))
+                (infix-int 1:2)))))))))

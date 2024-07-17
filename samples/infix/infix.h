@@ -57,9 +57,6 @@ namespace infix
   inline const auto Output = TokenDef("infix-output");
   inline const auto Ref = TokenDef("infix-ref");
 
-  inline const auto FnArguments = TokenDef("infix-fnarguments", flag::lookup);
-  inline const auto FnBody = TokenDef("infix-fnbody");
-
   inline const auto Tuple = TokenDef("infix-tuple");
   inline const auto TupleIdx = TokenDef("infix-tupleidx");
   inline const auto Append = TokenDef("infix-append");
@@ -67,8 +64,8 @@ namespace infix
   inline const auto Subtract = TokenDef("infix-subtract");
   inline const auto Multiply = TokenDef("infix-multiply");
   inline const auto Divide = TokenDef("infix-divide");
+
   inline const auto Literal = TokenDef("infix-literal");
-  inline const auto FnCall = TokenDef("infix-fncall");
 
   inline const auto Id = TokenDef("infix-id");
   inline const auto Op = TokenDef("infix-op");
@@ -92,15 +89,6 @@ namespace infix
     | (Tuple <<= Expression++)
     | (TupleIdx <<= Expression * Expression)
     | (Append <<= Expression++)
-    // --- functions extension --- (TODO)
-    // | (Calculation <<= (Assign | Output | FnDef)++)
-    // | (FnDef <<= Ident * FnArguments * FnBody)
-    // | (FnArguments <<= Ident++)
-    // | (FnBody <<= (Assign | Output)++)
-    // | (Expression <<= (FnCall | Tuple | TupleIdx | TupleAppend | Add | Subtract | Multiply | Divide | Ref | Float | Int))
-    // | (FnCall <<= Expression * Expression)
-    // --- patterns extension ---
-    // TODO: I don't feel like predicting this far ahead right now. With 2 versions laid out I think I have the idea.
     ;
   // clang-format off
 
@@ -108,4 +96,5 @@ namespace infix
   Writer writer(const std::filesystem::path& path = "infix");
   Writer postfix_writer(const std::filesystem::path& path = "postfix");
   Rewriter calculate();
+  Writer calculate_output_writer(const std::filesystem::path& path = "calculate_output");
 }

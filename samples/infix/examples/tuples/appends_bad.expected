@@ -1,41 +1,22 @@
-//! --expect-fail --enable-tuples --tuples-require-parens calculate
-(top
-  {}
-  (infix-calculation
-    {}
-    (infix-output
-      (infix-string 9:"no args")
-      (infix-expression
-        (error
-          (errormsg 14:Invalid append)
-          (errorast
-            (infix-append)))))
-    (infix-output
-      (infix-string 11:"duplicate")
-      (infix-expression
-        (error
-          (errormsg 14:Invalid append)
-          (errorast
-            (infix-append)))
-        (infix-expression
-          (infix-append
-            (infix-expression
-              (infix-expression
-                (infix-tuple-candidate)
-                (infix-expression
-                  (infix-tuple-candidate)
-                  (infix-int 1:1)
-                  (infix-comma)
-                  (infix-int 1:2))))))))
-    (infix-output
-      (infix-string 12:"arithmetic")
-      (infix-expression
-        (error
-          (errormsg 14:Invalid append)
-          (errorast
-            (infix-append)))
-        (infix-add)
-        (error
-          (errormsg 14:Invalid append)
-          (errorast
-            (infix-append)))))))
+//! --enable-tuples --tuples-require-parens expect_parse_fail
+//! --enable-tuples --tuples-require-parens --use-parser-tuples expect_parse_fail
+//! --enable-tuples expect_parse_fail
+Invalid append
+-- appends_bad.infix:0:16
+print "no args" append;
+                ~~~~~~
+
+Invalid append
+-- appends_bad.infix:1:18
+print "duplicate" append append((1, 2));
+                  ~~~~~~
+
+Invalid append
+-- appends_bad.infix:2:19
+print "arithmetic" append + append;
+                   ~~~~~~
+
+Invalid append
+-- appends_bad.infix:2:28
+print "arithmetic" append + append;
+                            ~~~~~~

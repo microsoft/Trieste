@@ -1,90 +1,9 @@
-//! --expect-fail --enable-tuples --tuples-require-parens --use-parser-tuples parse_only
-(top
-  {}
-  (file
-    (group
-      (infix-print)
-      (infix-string 9:"arity 0")
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast)))
-    (group
-      (infix-print)
-      (infix-string 9:"arity 1")
-      (infix-int 1:1)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast)))
-    (group
-      (infix-print)
-      (infix-string 12:"arity 1 op")
-      (infix-int 1:2)
-      (infix-subtract)
-      (infix-int 1:1)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast)))
-    (group
-      (infix-print)
-      (infix-string 9:"arity 2")
-      (infix-int 1:1)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast))
-      (infix-int 1:2))
-    (group
-      (infix-print)
-      (infix-string 18:"arity 2 trailing")
-      (infix-int 1:1)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast))
-      (infix-int 1:2)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast)))
-    (group
-      (infix-print)
-      (infix-string 9:"arity 3")
-      (infix-int 1:1)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast))
-      (infix-int 1:2)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast))
-      (infix-int 1:3))
-    (group
-      (infix-print)
-      (infix-string 18:"arity 3 trailing")
-      (infix-int 1:1)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast))
-      (infix-int 1:2)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast))
-      (infix-int 1:3)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast)))
-    (group
-      (infix-print)
-      (infix-string 12:"arity 3 op")
-      (infix-int 1:1)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast))
-      (infix-int 1:3)
-      (infix-subtract)
-      (infix-int 1:1)
-      (error
-        (errormsg 33:Commas outside parens are illegal)
-        (errorast))
-      (infix-int 1:1)
-      (infix-add)
-      (infix-int 1:2)
-      (infix-subtract)
-      (infix-int 1:1))))
+//! --enable-tuples calculate
+arity 0 <- (,)
+arity 1 <- (1,)
+arity 1 op <- (1,)
+arity 2 <- (1, 2,)
+arity 2 trailing <- (1, 2,)
+arity 3 <- (1, 2, 3,)
+arity 3 trailing <- (1, 2, 3,)
+arity 3 op <- (1, 2, 3,)

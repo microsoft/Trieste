@@ -1,0 +1,7 @@
+//! --enable-tuples --tuples-require-parens infix
+//! --enable-tuples --tuples-require-parens --use-parser-tuples infix
+//! --enable-tuples infix
+print "empty and empty" append((,), (,),);
+print "empty append" append(,);
+print "unary append" append((,),);
+print "nested appends" append((1, 2,), append((3,), (4,),),);

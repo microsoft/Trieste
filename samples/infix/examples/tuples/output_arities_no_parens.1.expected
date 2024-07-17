@@ -1,127 +1,67 @@
-//! --expect-fail --enable-tuples --tuples-require-parens parse_only
-(top
-  {}
-  (infix-calculation
-    {}
-    (infix-output
-      (infix-string 9:"arity 0")
-      (infix-expression
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))))
-    (infix-output
-      (infix-string 9:"arity 1")
-      (infix-expression
-        (infix-expression
-          (infix-int 1:1))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))))
-    (infix-output
-      (infix-string 12:"arity 1 op")
-      (infix-expression
-        (infix-expression
-          (infix-subtract
-            (infix-expression
-              (infix-int 1:2))
-            (infix-expression
-              (infix-int 1:1))))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))))
-    (infix-output
-      (infix-string 9:"arity 2")
-      (infix-expression
-        (infix-expression
-          (infix-int 1:1))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))
-        (infix-expression
-          (infix-int 1:2))))
-    (infix-output
-      (infix-string 18:"arity 2 trailing")
-      (infix-expression
-        (infix-expression
-          (infix-int 1:1))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))
-        (infix-expression
-          (infix-int 1:2))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))))
-    (infix-output
-      (infix-string 9:"arity 3")
-      (infix-expression
-        (infix-expression
-          (infix-int 1:1))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))
-        (infix-expression
-          (infix-int 1:2))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))
-        (infix-expression
-          (infix-int 1:3))))
-    (infix-output
-      (infix-string 18:"arity 3 trailing")
-      (infix-expression
-        (infix-expression
-          (infix-int 1:1))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))
-        (infix-expression
-          (infix-int 1:2))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))
-        (infix-expression
-          (infix-int 1:3))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))))
-    (infix-output
-      (infix-string 12:"arity 3 op")
-      (infix-expression
-        (infix-expression
-          (infix-int 1:1))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))
-        (infix-expression
-          (infix-subtract
-            (infix-expression
-              (infix-int 1:3))
-            (infix-expression
-              (infix-int 1:1))))
-        (error
-          (errormsg 20:Invalid use of comma)
-          (errorast
-            (infix-comma)))
-        (infix-expression
-          (infix-subtract
-            (infix-expression
-              (infix-add
-                (infix-expression
-                  (infix-int 1:1))
-                (infix-expression
-                  (infix-int 1:2))))
-            (infix-expression
-              (infix-int 1:1))))))))
+//! --enable-tuples --tuples-require-parens expect_parse_fail
+//! --enable-tuples --tuples-require-parens --use-parser-tuples expect_parse_fail
+//! expect_parse_fail
+Invalid use of comma
+-- output_arities_no_parens.infix:0:16
+print "arity 0" ,;
+                ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:1:17
+print "arity 1" 1,;
+                 ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:2:22
+print "arity 1 op" 2-1,;
+                      ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:3:17
+print "arity 2" 1, 2;
+                 ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:4:26
+print "arity 2 trailing" 1, 2,;
+                          ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:4:29
+print "arity 2 trailing" 1, 2,;
+                             ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:5:17
+print "arity 3" 1, 2, 3;
+                 ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:5:20
+print "arity 3" 1, 2, 3;
+                    ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:6:26
+print "arity 3 trailing" 1, 2, 3,;
+                          ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:6:29
+print "arity 3 trailing" 1, 2, 3,;
+                             ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:6:32
+print "arity 3 trailing" 1, 2, 3,;
+                                ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:7:20
+print "arity 3 op" 1, 3-1, 1+4-2;
+                    ~
+
+Invalid use of comma
+-- output_arities_no_parens.infix:7:25
+print "arity 3 op" 1, 3-1, 1+4-2;
+                         ~

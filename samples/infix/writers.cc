@@ -2,6 +2,7 @@
 #include "internal.h"
 #include "trieste/pass.h"
 #include "trieste/token.h"
+#include "trieste/wf.h"
 
 #include <string>
 
@@ -282,18 +283,30 @@ namespace
   }
 
   // clang-format off
-  const auto wf_to_file =
+  const auto wf_infix_to_file =
     infix::wf
     | (Top <<= File)
     | (File <<= Path * Calculation)
     ;
   // clang-format on
 
-  PassDef to_file(const std::filesystem::path& path)
+  // clang-format off
+  const auto wf_output_to_file =
+    wf_pass_cleanup
+    | (Top <<= File)
+    | (File <<= Path * Calculation)
+    ;
+  // clang-format on
+
+  // There are 2 versions of this function.
+  // One deals in `Expression`, and the other deals in `Literal`.
+  // The rule is exactly the same and the function isn't public, so we just take
+  // the wf we mean to have as a parameter.
+  PassDef to_file(const wf::Wellformed& wf, const std::filesystem::path& path)
   {
     return {
       "to_file",
-      wf_to_file,
+      wf,
       dir::bottomup | dir::once,
       {
         In(Top) * T(Calculation)[Calculation] >>
@@ -306,6 +319,12 @@ namespace
   bool write_infix(std::ostream& os, Node node)
   {
     if (node == Expression)
+    {
+      node = node->front();
+    }
+
+    // all we need to handle literal outputs alongside expressions
+    if (node == Literal)
     {
       node = node->front();
     }
@@ -475,7 +494,7 @@ namespace
       return false;
     }
 
-    if (node->in({Add, Subtract, Multiply, Divide}))
+    if (node->in({Add, Subtract, Multiply, Divide, TupleIdx}))
     {
       if (write_postfix(os, node->front()))
       {
@@ -490,6 +509,42 @@ namespace
       }
 
       os << " " << node->location().view();
+
+      return false;
+    }
+
+    // These 2 outputs below are a postfix encoding of variadic operations,
+    // where the number of arguments is written explicitly nearest the operator.
+    // I'm pretty sure Forth or its successors don't work like that...
+    // not very practical, but it gets the message across for demonstation
+    // purposes.
+
+    if (node == Append)
+    {
+      for (const auto& elem : *node)
+      {
+        if (write_postfix(os, elem))
+        {
+          return true;
+        }
+        os << " ";
+      }
+      os << node->size() << " append";
+
+      return false;
+    }
+
+    if (node == Tuple)
+    {
+      for (const auto& elem : *node)
+      {
+        if (write_postfix(os, elem))
+        {
+          return true;
+        }
+        os << " ";
+      }
+      os << node->size() << " tuple";
 
       return false;
     }
@@ -563,7 +618,10 @@ namespace infix
   Writer writer(const std::filesystem::path& path)
   {
     return {
-      "infix", {to_file(path)}, infix::wf, [](std::ostream& os, Node contents) {
+      "infix",
+      {to_file(wf_infix_to_file, path)},
+      infix::wf,
+      [](std::ostream& os, Node contents) {
         return write_infix(os, contents);
       }};
   }
@@ -572,10 +630,36 @@ namespace infix
   {
     return {
       "postfix",
-      {to_file(path)},
+      {to_file(wf_infix_to_file, path)},
       infix::wf,
       [](std::ostream& os, Node contents) {
         return write_postfix(os, contents);
+      }};
+  }
+
+  Writer calculate_output_writer(const std::filesystem::path& path)
+  {
+    return {
+      "calculate_output",
+      {to_file(wf_output_to_file, path)},
+      wf_pass_cleanup,
+      [](std::ostream& os, Node contents) {
+        assert(contents == Calculation);
+        for (const auto& output : *contents)
+        {
+          assert(output == Output);
+          assert(output->size() == 2);
+          auto name = output->front();
+          auto val = output->back();
+
+          os << name->location().view() << " <- ";
+          if (write_infix(os, val))
+          {
+            return true;
+          }
+          os << std::endl;
+        }
+        return false;
       }};
   }
 }

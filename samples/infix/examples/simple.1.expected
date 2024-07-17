@@ -2,15 +2,5 @@
 //! --enable-tuples calculate
 //! --enable-tuples --tuples-require-parens calculate
 //! --enable-tuples --tuples-require-parens --use-parser-tuples calculate
-(top
-  {}
-  (infix-calculation
-    {}
-    (infix-output
-      (infix-string 1:x)
-      (infix-literal
-        (infix-int 1:5)))
-    (infix-output
-      (infix-string 6:1 + 10)
-      (infix-literal
-        (infix-int 2:11)))))
+x <- 5
+1 + 10 <- 11
