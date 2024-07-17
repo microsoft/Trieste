@@ -3,14 +3,12 @@
 The Infix language is a useful introduction to Trieste, but by its very nature as an introductory tutorial, it cannot cover more advanced concepts.
 This extended tutorial covers those less-documented Trieste features, while chronicling key aspects of editing an existing Trieste-based language implementation.
 
-Our task at hand is to extend Infix with some more advanced concepts: multiple language versions, tuples, functions (both user-defined and built-in), and destructuring assignments.
+Our task at hand is to extend Infix with some more advanced concepts: multiple language versions and tuples.
 Each of these topics explores a potential difficulty and how Trieste helps resolve it:
 - Multiple language versions: given time, any programming language will change, and with multiple versions "in the wild", implementations may have to accept more than one of them.
   Correctly implementing something like this also helps us manage the collection of language extensions we explore in this document, which is why we look into this first.
 - Tuples: a simple form of compound data, which has interesting syntactic interactions with the existing Infix features.
-- Functions: a source of diverse scoping problems we can resolve in different ways using the tools provided by Trieste.
-- Destructuring assignments: introducing a new kind of definition with complex scoping rules might seem like it requires a refactor.
-  We show how such problems can be avoided in Trieste.
+  We will enumerate 3 primary ways one would implement tuples into Infix, and use them as a motivating example for a variety of design and testing topics.
 
 ## Multiple Language Versions
 
@@ -462,7 +460,7 @@ In(Expression) *
   [](Match& _) { return Expression << (ParserTuple ^ _(ParserTuple)); },
 // Special case 2: a ParserTuple with no children is (), which is also a
 // valid empty tuple.
-In(Expression) * (T(Paren)[Paren] << End)(enable_if_parser_tuples) >>
+In(Expression) * (T(Paren)[Paren] << End) >>
   [](Match& _) { return Expression << (ParserTuple ^ _(Paren)); },
 // This grabs any Paren whose only child is a ParserTuple, and unwraps
 // that ParserTuple's nested groups into Expression nodes so future
@@ -503,8 +501,6 @@ In all of those cases the tuple elements will be pre-grouped, and as long as com
 
 ### Evaluating a Tuple Expression
 
-TODO: remember prefix notation?
-
 Now that we have parsed our tuples, we can process them through the rest of the Infix tooling.
 That is, we should be able to calculate the results of expressions with tuple literals in them.
 
@@ -520,12 +516,12 @@ print "arity 3 trailing" (1, 2, 3,);
 print "arity 3 op" (1, 3-1, 1+2-1);
 ```
 
-We have more variants in the test folder, but remember that we've converged on a single AST by this point, so non-significant changes like adding/removing redundant commas, or omitting parentheses, make no difference at this point.
-The AST our code will be looking at past this point will be the same in any case.
+We have more variants in the test folder, but remember that we've converged on a single AST by this point, so non-significant changes like adding/removing redundant commas, or omitting parentheses, should make no difference.
+The AST we will be looking at past this point will be the same.
 
 The first step in evaluating anything is to identify what evaluated and unevaluated terms must look like.
 In this case, we mark terms that haven't evaluated with `Expression`, as is already the case in our starting AST, and we mark terms that we consider values with the `Literal` parent node.
-We chose "literal" as the name because these values are essentially a special case of expressions which can be thought of as fully-evaluated constants.
+We chose "literal" as the name because these values match expressions which can be thought of as fully-evaluated constants.
 
 We identify "literals" as follows:
 - `Int` or `Float`
@@ -733,40 +729,134 @@ Because there is no other way to evaluate an expression like that, we will event
 It would also be possible to use Python-like indexing as in `(1, 2)[1]`.
 Try altering the parsing rules so that Infix accepts that syntax instead.
 
-### Fuzzing, and Test Cases
+### Quick Note on Scoping
 
-TODO: fuzz testing is useful to check that your program doesn't outright crash, but it is easy to pass WF if your code emits `Error` or something valid-looking, even if it doesn't make sense.
+While we don't make significant changes to Infix's scoping behavior, there were some surprising things not mentioned in the original explanation of Infix's variable lookup behavior.
+- There is no error node for a variable redefinition.
+  Failing because of a name redefinition is a well-formedness error, and this is one of few cases where this is the only way such a problem can be reported.
+  This redefinition error occurs whenever `flags::shadowing` is enabled and the same name appears multiple times in the same symbol table, and the well-formedness check happens before any rule could possibly call `lookup` or `lookdown` to handle the situation in any other way.
+- If your language has non-traditional scoping behavior, you can still use symbol tables, but you may want to avoid `flags::defbeforeuse` and `flags::shadowing` as they have the non-customizable error behavior mentioned above.
+  It is however still possible to get any given result if you write your own lookup helpers around the main lookup method, and write your own resolver to disambiguate between or flag errors regarding all the definitions the less-constrained built-in lookup will find.
 
-TODO: explain the principles behind the `.expected` tests, why they matter, and some general guidance on how to write/maintain them. Consider also storing test collections as data, like JSON or YAML (which has good multiline tring embeds).
+### Fuzzing and Test Cases
 
-TODO: what do I even do with BFS?
+One of Trieste's selling points is its automatic support for fuzz testing your rules, using the well-formedness definitions as a basis for both generating input ASTs, and as a way of validating a pass's responses to those inputs.
+The original Infix tutorial covers how to use the fuzzer in order to validate that your rules actually cover your inputs, and that is a good start in validating a language implementation written with Trieste.
 
---- older notes
+There are weaknesses to Trieste's built-in fuzzing method, however.
+Any fuzzing tool can only determine whether the program under test's behavior was good or bad based on what it can expect.
+For Trieste-based fuzzing, this means that if your rules don't violate well-formedness and your error cases have good coverage, you will pass fuzzing even if you implementation is otherwise completely wrong.
+For instance, one iteration of the tuples code passed extensive fuzzing, but it also flagged spurious errors on most tuple expressions because of a bug in how the parsing rules interacted (one rule would half parse the tuple, then another would mark that as an error).
+Since error reporting is a valid outcome for a Trieste pass that will not be flagged by fuzzing, we need more precise testing as well.
 
-Notes:
-- it's possible to get lost combining tuple and call parsing
-- "stuck terms" and the original version of the code; explain that you can do sometimes error handling in 1 pass but it doesn't really scale once you have many ways to fail (TODO: edits to the original tutorial, where there is only one way to have an evaluation succeed and cause an error (e.g. `1 / (1-1)`))
-- p.s. and splitting one pass into 2 can cause `String * (Foo >>= Literal | Expression)` because one term becomes a `|`. Warn people for now, plot design improvements later.
+To avoid this kind of situation, you need both fuzzing (to make sure your compiler's edge cases behave decently), _and_ individual test cases.
+Almost all known Trieste based projects, like the in-tree JSON and YAML parsers, or the [rego-cpp](https://github.com/microsoft/rego-cpp) implementation, have extensive test suites in addition to the Trieste based fuzzing.
+You can use any of their test runners as inspiration, or you can look at Infix's.
+Generally, if there is such a thing, the test suite from your target language's reference implementation is a good start - all the implementations of existing languages we mention here do this.
 
-Ideas:
-- `(a, b, ...)` (note: do in parser, or have a `,` token and resolve with a pass)
-- `a, b, ...` (note: interpret `,` as a binop? trouble with distinguishing tuples of tuples vs wider tuples?)
-- consider more exotic delimiters? (`<<>>` from TLA+, or something)
-- append, fst, snd type builtins (without explicit fns?)
-- how might one implement a "prelude"? (omni-present collection of definitions that are implicitly available everywhere)
+If your language is new, however, testing is a little more difficult because there is no original reference implementation, and there is no body of existing code to use as a source of truth.
+We initially developed Infix's test runner to be the minimum viable test runner for the example folder, but it quickly grew in response to our additional needs when building a new language.
+The final result has 3 modes, which we will briefly motivate while offering pointers on how to explore them.
+You can find each mode under a different branch of a large if-statement in the test runner's main function.
+We recommend reading the [CLI11](https://cliutils.github.io/CLI11/book/) documentation in order to understand how the command-line argument handling for all our executables works.
 
-## n Ways to Design Functions
+#### *dir, the Directory Based Tester
 
-Ideas:
-- call as name + syntactic tuple? e.g. `fn(a, b, ...)`
-- what if the parameter position of a function call is special, e.g., named parameters or special markers?
-- only currying? `fn a b ...` (function application becomes an invisible operator, which is interesting)
-- first or second-class? How much does it cost to switch? (first class trivially subsumes second class, but we have to reject more programs... going second class to first class requires a fun desugaring, which you can just about do with tuples)
-- lazy params (don't start with this one, but it's a nasty stress test to add it as a feature... rip off Scala's trick if we do, probably)
+The first test runner we built uses `std::filesystem::recursive_directory_iterator` to scan a target directory for files ending in `.infix` which have a corresponding sibling file whose extension is `.expected`.
+Because Infix offers many modes of operation, and we want to test them all, each `.expected` file will list one or more headers starting with `//!` that indicate under which configurations the rest of the file contents should be output by running Infix on the input file.
+Because parsing behavior is of specific interest, some tests are marked as `parse_only` and list the parsed AST as expected output, and some tests are marked as `calculate` and list the intended evaluation result as expected output.
 
-## Pattern Languages Lite: Destructuring Assignments
+If adapting or recreating this tool for your own use, notice that printing a Trieste AST to a string and constructing diff-like representations takes rather little code.
+Most of our test runner consists of extracting the intended configuration from the files, which can also be done using JSON, YAML, or other tooling.
+This includes the Trieste-provided implementations of these two mark-up languages.
+You can also store your entire test suites in YAML, like many of the other test runners we mention in this section.
 
-Ideas:
-- Pattern in assignment, and possibly function argument position, to match and extract values from tuples, however we did tuple syntax.
-- Discuss the magic `_` everyone uses.
-- Can we use values (literals at least) in pattern position, as a kind of assertion? How expensive is that to change?
+One important thing to notice is how we handle a `trieste::ProcessResult`:
+- `result.ast` is the final result AST if `result.ok`, or the last AST before failure.
+- `result.errors` is the list of errors reported by the transformation, if any.
+- `result.ok` can be false even if there are no errors, because well-formedness violations do not appear in `result.errors`.
+  `result.errors.size() == 0 && !result.ok` is a shorthand for detecting well-formedness violations.
+
+Another crucial detail is `debug_path` and associated options, which dump all the intermediate pass results into a folder of your choosing.
+We used this extensively in this project, and the folder's structure essentially shows a fully-elaborated trace through the ASTs generated by different passes, as well as the inputs used.
+It can even be useful to just run a Trieste system on an input without looking at its source code, then look at the ASTs it generates.
+Combined with well-formedness definitions and some well-chosen examples, this utility makes understanding a Trieste transformation's behavior much more accessible than it would be otherwise.
+
+#### *fuzz, the Extended Fuzz Test Launcher
+
+While the `infix_trieste` executable exists, using `trieste::Driver` to wrap `infix::reader` and automatically generate a command-line executable, it has some key limitations:
+- It is difficult to handle multiple language configurations, since Infix's configuration options are parameters used to modify its pass definitions, and the Trieste driver takes an already-constructed pass as a parameter before parsing command-line arguments.
+- The driver can either fuzz a Reader, a Writer, or a Rewriter.
+  It cannot fuzz multiple at once, and it does not support switching between them.
+
+To address these limitations, we opted to write our own command-line that is tailored to our development process for the Infix language.
+The `trieste::Fuzzer` object, while not providing a full command-line interface, is flexible and easy to work with so our fuzzer interface did not take much work.
+We limited configuration to the options we needed, and gave default arguments that matched the most common cases for Infix's development process.
+
+From a usability perspective, because our fuzz test wrapper is coded directly in our test runner and embeds all our defaults and development process assumptions, it was easier to use it than the default Trieste driver.
+While the fuzz test driver is an easy starting point for a simple language implementation, more customized tooling pays for itself quickly in only slightly larger development efforts.
+
+**Danger:** make sure to print `fuzzer.start_seed()`, like the default driver does, or your seed number won't be logged, and you don't be able to reproduce fuzz test failures!
+
+#### *bfs, the Exhaustive Breadth-first Tester
+
+Our third testing method, and perhaps the most non-standard, is the breadth-first AST enumeration testing.
+This is an experimental testing mode, whose implementation we provide as-is in [`bfs.h`](./bfs.h) and [`progspace.h`](./progspace.h).
+It may eventually be incorporated into Trieste's fuzz-tester, but it is more than just "breadth-first AST generation".
+These notes explain what it is, and when you might want to use something like this.
+
+In between fuzz testing, where we generate a collection of random ASTs to stress our implementation, and test cases, which assert the behavior of specific examples, there lies a blind spot.
+It is possible that a small, simple example is never written as a test case, and that it takes a long time for fuzz testing to reach it.
+Alternatively, fuzz testing may be reaching the example, but a resulting wrong behavior might pass the fuzz test's sanity checks, all the while we still don't have an explicit test case that exposes the edge case.
+It is also worth noting that Trieste's fuzz testing doesn't exercise the string-level parser code, so any non-trivial rules there may contain bugs that need string-level inputs to catch.
+
+This is concerning, because if we haven't thought of this hypothetical example already, and the fuzz tester can't help us, then we're just waiting for a user to find it.
+For an experimental language with few (or no, for Infix) users, we might want to quickly build up a body of test code and expected outputs, such that we are more confident that our language (or our tutorial, for Infix) does not contain any oversights we simply did not have the imagination to find.
+This is where breadth-first testing comes in.
+
+Our breadth-first testing setup consists of 3 components:
+- A generator that can produce a finite, tractable space of example ASTs.
+  For instance, with Infix we cover all expressions consisting of literals `0`, `0.0`, empty tuples, and `foo` (where `foo = 1;`), and all combinations of compound expressions up to depth N (in our case 2, up to examples with 2 levels of operators like `(1 + 2) - (3 - 4)`).
+- A mapping from any AST we generated to a comprehensive set of input strings recognized by each Infix configuration.
+  Consider that with the option `--enable-tuples` the Infix language will parse `(1,2)`, `1,2`, `1,2,`, and `(1,2,)` as the same tuple.
+  Other options will only accept some of these variants.
+  It can be extremely tedious to enumerate a representative set of tuple string representations that cover all the parsing cases, as well as possible interactions between different expressions.
+- An assertion that checks whether a given AST can be re-parsed from all of its string representations under consideration.
+
+The first item could be derived from well-formedness constraints, but the other 2 must be written by hand to some extent due to their dependency on the specific behavior of the target language.
+Combining these components, we were able to exhaustively search approximately 3 million AST-configuration combinations for any potential parsing bugs, and eliminate any bugs we found.
+The downside is that the full execution took about 1.5hrs on a 4-core Intel i7 CPU, including the significant benefits of simple parallelism we added using `std::async`.
+The technique is not suitable for inclusion in regular test suites, so it is best run periodically to check for bugs that would not have been caught otherwise.
+
+The rest of this section discusses how we implemented our generators, our support library's functional programming-derived design, and some key performance optimizations that make this technique tractable.
+
+The [`bfs.h`](./bfs.h) library supports hand-constructing the first 2 components by providing a `bfs::Result<T>` type that lazily implements the standard concept of a non-determinism monad.
+This means that a `Result<T>` represents a lazy sequence of 0 or more `T`.
+When a function returns a `Result<T>`, that result can be combined with another `Result<U>` in order to produce a `Result<V>` which represents all possible combinations of `T`s and `U`s that could be combined to produce a `V`.
+Essentially, all combinations of `Result` form a cross-product of possible outputs, allowing us to treat "all possible values" as a single value.
+
+To manipulate these aggregate possibilities, `bfs::Result` provides a collection of standard methods, many of which are part of the monadic interface common in functional programming:
+- `Result()`: construct a result with 0 elements.
+- `Result(T)`: constructs a result with one element.
+- `Result<T>::map(std::function<U(T)> fn) -> Result<U>`: calls `fn` on every `T` to produce a `U`, which forms the elements of the returned `Result<U>`.
+- `Result<T>::flat_map(std::function<Result<U>(T)> fn) -> Result<U>`: calls `fn` on every `T` to produce a `Result<U>`, each of which is aggregated into an overall `Result<U>` that combines all the of `fn`'s output's in sequence.
+- `Result<T>::or_(Result<T> other) -> Result<T>`: produces a new `Result<T>` whose elements are all `T` in `this`, and all `T` in `other`.
+
+Algebraically, these methods are sufficient to recursively construct and combine instances of `bfs::Result` to produce essentially any sequence of "all possible `T`".
+See how we use them for our AST and string construction in [`progspace.h`](./progspace.h).
+For more information on this kind of technique, search online for "non-determinism monad" or "list monad" - there are many tutorials and blog posts suitable for a diverse set of programming backgrounds.
+
+Of course, implementing `bfs::Result` as a `std::vector` will quickly create containers with hundreds, thousands, or in our experience, millions of elements.
+Worse, combining those results will cause repeated iteration as bigger vectors are recursively rebuilt.
+That is why `bfs::Result` acts more like an iterator: it stores the data needed to generate all possible outputs, but only does so partially and on demand.
+`bfs::Result::iterator` _is_ an iterator, allowing `Result` to be used in a range-for loop.
+Iterating over a `Result` will construct and access each element in turn, using usually constant space and time throughout the loop's execution.
+We say "usually", because the depth of the original recursive construction of the `Result` and the number of combinators will proportionally increase memory consumption as well as execution time.
+For a bounded recursion, the footprint of a `Result` can be bounded by recursion depth, so for our intended usage it will be effectively constant.
+
+In a similar vein, we do not want to recursively concatenate `std::string` instances when constructing our input strings.
+To solve this, we implemented `bfs::CatString`, a simplification of [`Chain`](https://typelevel.org/cats/datatypes/chain.html) from the Scala ecosystem's Cats library.
+While our minimum-viable C++ implementation lacks some of the original's performance optimizations, the core design is maintained: concatenating `CatString` has O(1) time complexity because it just builds a tuple of the inputs.
+`CatString` is essentially a tree of string fragments and control nodes, which can be flattened into a single string (or any `std::ostream` sink) in one on-demand O(n) iteration.
+By discarding unnecessary operations like indexing and contiguous storage, we no longer need to think about string concatenation cost.
+That is how we can write naive recursive string concatenations in combination with `bfs::Result` to build large families of strings with minimal overhead.

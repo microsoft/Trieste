@@ -35,7 +35,7 @@ namespace
   }
 }
 
-// FIXME: this isn't really a test, just a quick check things make sense
+// this isn't really a test, just a quick check things make sense
 int main()
 {
   R combinations = list_of_up_to([]() { return R("^"sv).or_(R("!"sv)); }, 3);

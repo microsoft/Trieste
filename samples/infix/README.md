@@ -48,6 +48,8 @@ flowchart TD
 Over the course of this tutorial, we will show how we can use Trieste to
 transform the input program iteratively to the final AST shown.
 
+For more advanced concepts and Trieste usage, look at the companion [Beyond Infix](./beyond-infix.md) tutorial.
+
 ## The `infix` Language
 
 In order to keep the focus on Trieste as a system we will work with a
