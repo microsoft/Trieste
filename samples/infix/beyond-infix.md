@@ -738,7 +738,7 @@ While we don't make significant changes to Infix's scoping behavior, there were 
 - If your language has non-traditional scoping behavior, you can still use symbol tables, but you may want to avoid `flags::defbeforeuse` and `flags::shadowing` as they have the non-customizable error behavior mentioned above.
   It is however still possible to get any given result if you write your own lookup helpers around the main lookup method, and write your own resolver to disambiguate between or flag errors regarding all the definitions the less-constrained built-in lookup will find.
 
-### Fuzzing and Test Cases
+## Fuzzing and Test Cases
 
 One of Trieste's selling points is its automatic support for fuzz testing your rules, using the well-formedness definitions as a basis for both generating input ASTs, and as a way of validating a pass's responses to those inputs.
 The original Infix tutorial covers how to use the fuzzer in order to validate that your rules actually cover your inputs, and that is a good start in validating a language implementation written with Trieste.
@@ -750,7 +750,7 @@ For instance, one iteration of the tuples code passed extensive fuzzing, but it 
 Since error reporting is a valid outcome for a Trieste pass that will not be flagged by fuzzing, we need more precise testing as well.
 
 To avoid this kind of situation, you need both fuzzing (to make sure your compiler's edge cases behave decently), _and_ individual test cases.
-Almost all known Trieste based projects, like the in-tree JSON and YAML parsers, or the [rego-cpp](https://github.com/microsoft/rego-cpp) implementation, have extensive test suites in addition to the Trieste based fuzzing.
+Almost all known Trieste based projects, like the in-tree JSON and YAML parsers, or the C++ [Rego](https://github.com/microsoft/rego-cpp) implementation, have extensive test suites in addition to the Trieste based fuzzing.
 You can use any of their test runners as inspiration, or you can look at Infix's.
 Generally, if there is such a thing, the test suite from your target language's reference implementation is a good start - all the implementations of existing languages we mention here do this.
 
@@ -760,7 +760,7 @@ The final result has 3 modes, which we will briefly motivate while offering poin
 You can find each mode under a different branch of a large if-statement in the test runner's main function.
 We recommend reading the [CLI11](https://cliutils.github.io/CLI11/book/) documentation in order to understand how the command-line argument handling for all our executables works.
 
-#### *dir, the Directory Based Tester
+### *dir, the Directory Based Tester
 
 The first test runner we built uses `std::filesystem::recursive_directory_iterator` to scan a target directory for files ending in `.infix` which have a corresponding sibling file whose extension is `.expected`.
 Because Infix offers many modes of operation, and we want to test them all, each `.expected` file will list one or more headers starting with `//!` that indicate under which configurations the rest of the file contents should be output by running Infix on the input file.
@@ -782,7 +782,7 @@ We used this extensively in this project, and the folder's structure essentially
 It can even be useful to just run a Trieste system on an input without looking at its source code, then look at the ASTs it generates.
 Combined with well-formedness definitions and some well-chosen examples, this utility makes understanding a Trieste transformation's behavior much more accessible than it would be otherwise.
 
-#### *fuzz, the Extended Fuzz Test Launcher
+### *fuzz, the Extended Fuzz Test Launcher
 
 While the `infix_trieste` executable exists, using `trieste::Driver` to wrap `infix::reader` and automatically generate a command-line executable, it has some key limitations:
 - It is difficult to handle multiple language configurations, since Infix's configuration options are parameters used to modify its pass definitions, and the Trieste driver takes an already-constructed pass as a parameter before parsing command-line arguments.
@@ -798,7 +798,7 @@ While the fuzz test driver is an easy starting point for a simple language imple
 
 **Danger:** make sure to print `fuzzer.start_seed()`, like the default driver does, or your seed number won't be logged, and you don't be able to reproduce fuzz test failures!
 
-#### *bfs, the Exhaustive Breadth-first Tester
+### *bfs, the Exhaustive Breadth-first Tester
 
 Our third testing method, and perhaps the most non-standard, is the breadth-first AST enumeration testing.
 This is an experimental testing mode, whose implementation we provide as-is in [`bfs.h`](./bfs.h) and [`progspace.h`](./progspace.h).
