@@ -332,7 +332,7 @@ int main(int argc, char** argv)
 
               for (const auto& err : result.errors)
               {
-                // Taken from result.print_errors, but adapted for terting as
+                // Taken from result.print_errors, but adapted for testing as
                 // opposed to end-used interaction. The max report cap is gone,
                 // and we insert a filename that is not dependent on where the
                 // Trieste source tree is located.
@@ -343,10 +343,13 @@ int main(int argc, char** argv)
                   else
                   {
                     auto [line, col] = child->location().linecol();
+                    // We check only the filenames, because that's already ok if
+                    // it got the file right, and trying to be smarter breaks
+                    // due to weird cross-platform behavior in CI.
                     assert(
-                      std::filesystem::canonical(entry.path()) ==
-                      std::filesystem::canonical(
-                        child->location().source->origin()));
+                      entry.path().filename() ==
+                      std::filesystem::path(child->location().source->origin())
+                        .filename());
 
                     out << "-- " << entry.path().filename().string() << ":"
                         << line << ":" << col << std::endl

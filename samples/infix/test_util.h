@@ -23,7 +23,8 @@ namespace
 
   inline void trim_trailing_whitespace(std::string& str)
   {
-    while (!str.empty() && std::isspace(str.back(), std::locale("")))
+    while (!str.empty() &&
+           (str.back() == ' ' || str.back() == '\n' || str.back() == '\r'))
     {
       str.pop_back();
     }
