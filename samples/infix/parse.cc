@@ -13,7 +13,7 @@ namespace infix
     p("start", // this indicates the 'mode' these rules are associated with
       {
         // Whitespace between tokens.
-        R"([[:blank:]]+)" >> [](auto&) {}, // no-op
+        R"(\s+)" >> [](auto&) {}, // no-op
 
         // Equals.
         R"(=)" >> [](auto& m) { m.seq(Equals); },
@@ -56,14 +56,14 @@ namespace infix
         R"(\.)" >> [](auto& m) { m.add(TupleIdx); },
 
         // Terminator.
-        R"(;[\r\n]*)" >> [](auto& m) { m.term(terminators); },
+        R"(;)" >> [](auto& m) { m.term(terminators); },
 
         // Parens.
-        R"((\()[[:blank:]]*)" >>
+        R"(\()" >>
           [](auto& m) {
             // we push a Paren node. Subsequent nodes will be added
             // as its children.
-            m.push(Paren, 1);
+            m.push(Paren);
           },
 
         R"(\))" >>

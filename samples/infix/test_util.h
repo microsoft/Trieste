@@ -1,6 +1,5 @@
 #pragma once
 
-#include <locale>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -9,13 +8,49 @@ namespace
 {
   inline std::vector<std::string> split_lines(const std::string& str)
   {
+    // You would think this could be implemented more simply with something like
+    // std::getline(), but that function doesn't actually get "lines". It
+    // approximates lines using a single separator, defaulting to "\n", and
+    // would break down when using DOS line endings, for example. This
+    // implementation should correctly deconstruct a string printed using
+    // std::endl on any platform.
+    using namespace std::string_view_literals;
     std::vector<std::string> lines;
 
     std::istringstream in(str);
     std::string line;
-    while (std::getline(in, line))
+
+    std::size_t cursor = 0;
+
+    auto try_match = [&](std::string_view part) -> bool {
+      if (std::string_view(str).substr(cursor, part.size()) == part)
+      {
+        cursor += part.size();
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    };
+
+    while (cursor < str.size())
     {
-      lines.push_back(line);
+      if (try_match("\r\n"sv) || try_match("\n"sv) || try_match("\r"sv))
+      {
+        lines.emplace_back(std::move(line));
+        line.clear();
+      }
+      else
+      {
+        line += str.at(cursor);
+        ++cursor;
+      }
+    }
+
+    if (!line.empty())
+    {
+      lines.emplace_back(std::move(line));
     }
 
     return lines;

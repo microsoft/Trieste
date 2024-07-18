@@ -26,7 +26,7 @@ namespace trieste
   private:
     std::string origin_;
     std::string contents;
-    std::vector<size_t> lines;
+    std::vector<std::pair<size_t, size_t>> lines;
 
   public:
     static Source load(const std::filesystem::path& file)
@@ -71,14 +71,30 @@ namespace trieste
 
     std::pair<size_t, size_t> linecol(size_t pos) const
     {
-      // Lines and columns are 0-indexed.
-      auto it = std::lower_bound(lines.begin(), lines.end(), pos);
+      // If we have no lines, contents is an empty string.
+      // Realistically this case will only happen for pos == 0.
+      if (lines.empty())
+      {
+        return {0, pos};
+      }
 
-      auto line = it - lines.begin();
-      auto col = pos;
+      // Find the first line that begins _after_ pos, and then backtrack one
+      // element if we need to. We can't write this directly because "last
+      // element for which condition was false" is not an stdlib primitive.
+      auto it = std::find_if_not(
+        lines.begin(), lines.end(), [&](std::pair<size_t, size_t> elem) {
+          return elem.first <= pos;
+        });
+      // If we're at the beginning already, or we couldn't find a line after
+      // pos, then our current line should be fine. If lines is constructed
+      // correctly, pos is on either the only line or the last line.
+      if (it == lines.end() || (it != lines.begin() && it->first > pos))
+      {
+        --it;
+      }
 
-      if (it != lines.begin())
-        col -= *(it - 1) + 1;
+      size_t line = it - lines.begin();
+      size_t col = pos - it->first;
 
       return {line, col};
     }
@@ -86,31 +102,51 @@ namespace trieste
     std::pair<size_t, size_t> linepos(size_t line) const
     {
       // Lines are 0-indexed.
-      if (line > lines.size())
+      if (line >= lines.size())
         return {std::string::npos, 0};
 
-      size_t start = 0;
-      auto end = contents.size();
-
-      if (line > 0)
-        start = lines[line - 1] + 1;
-
-      if (line < lines.size())
-        end = lines[line];
-
-      return {start, end - start};
+      return lines[line]; // already in {start, size} format
     }
 
   private:
     void find_lines()
     {
-      // Find the lines.
-      auto pos = contents.find('\n');
+      using namespace std::string_view_literals;
+      // Find the lines (accounting for cross-platform line ending issues).
+      // We store the size of the line to support linepos(line), so people can
+      // print exactly the line and not fragments of \r\n.
+      size_t cursor = 0;
+      auto try_match = [&](std::string_view part) -> bool {
+        if (std::string_view(contents).substr(cursor, part.size()) == part)
+        {
+          cursor += part.size();
+          return true;
+        }
+        else
+        {
+          return false;
+        }
+      };
 
-      while (pos != std::string::npos)
+      size_t line_start = 0;
+      while (cursor < contents.size())
       {
-        lines.push_back(pos);
-        pos = contents.find('\n', pos + 1);
+        size_t last_pos = cursor;
+        if (try_match("\r\n"sv) || try_match("\n"sv) || try_match("\r"sv))
+        {
+          lines.emplace_back(line_start, last_pos - line_start);
+          line_start = cursor;
+        }
+        else
+        {
+          ++cursor;
+        }
+      }
+
+      // Trailing content without a new line at the end
+      if (line_start < contents.size())
+      {
+        lines.emplace_back(line_start, contents.size() - line_start);
       }
     }
   };
