@@ -747,7 +747,7 @@ Here are the only changes that required much thought:
   That is, our example above could be marked `1 2 3 3 tuple` to mean a 3-element tuple, or `1 2 3 1 tuple` to mean a 1-element tuple with `1` and `2` left over on the stack.
   This was mostly for logical consistency and somewhat arbitrary, since we don't re-process the postfix syntax anywhere, but if someone built a Forth-like language as an exercise, our chosen syntax should not cause any problems beyond being difficult to write for humans.
 
-### Quick Note on Scoping
+### Notes on Scoping
 
 While we don't make significant changes to Infix's scoping behavior, there were some surprising things not mentioned in the original explanation of Infix's variable lookup behavior.
 - There is no error node for a variable redefinition.
@@ -755,6 +755,69 @@ While we don't make significant changes to Infix's scoping behavior, there were 
   This redefinition error occurs whenever `flags::shadowing` is enabled and the same name appears multiple times in the same symbol table, and the well-formedness check happens before any rule could possibly call `lookup` or `lookdown` to handle the situation in any other way.
 - If your language has non-traditional scoping behavior, you can still use symbol tables, but you may want to avoid `flags::defbeforeuse` and `flags::shadowing` as they have the non-customizable error behavior mentioned above.
   It is however still possible to get any given result if you write your own lookup helpers around the main lookup method, and write your own resolver to disambiguate between or flag errors regarding all the definitions the less-constrained built-in lookup will find.
+
+### Notes on Pattern Behavior
+
+Here are some stories that came up during development, but the outcome was ultimately scrapped.
+They have their own educational merit however, so we discuss them here.
+
+#### Rule Priority Inversion
+
+Confusingly, it is possible for a rule further down the list to override a rule above it.
+What you need to achieve this is `dir::bottomup`, and two rules we call "upper" and "lower" for higher and lower priority, respectively.
+The lower rule needs a pattern that matches a subtree of what the upper rule matches.
+
+For example, consider an upper rule that matches `(a (b))` and lower rule that matches `(b)`.
+When processing a tree bottom-up, we will first consider the tree `(b)`.
+The upper rule will reject, since the top node isn't `(a)`.
+The lower rule will accept, because the tree as presented to it is a perfect match.
+
+In this scenario, you can write rules that look like `(a (b))` has priority, and then be surprised when the lower rule rewrites the tree to `(a (b2))`, causing the upper rule to never trigger at all.
+You might see this with low-priority but very general error handling rules, which could lead to the nonsensical (considering the upper rule) situation `(a (error))`.
+There's no fundamental solution to this, just be aware of the possibility, and it can save you some debugging.
+
+Separating things into multiple passes, like we did for the `maths` and `math_errs` passes, can be a starting point if this kind of situation causes trouble.
+
+#### Sibling Trouble
+
+Another thing we added and then removed was how to write patterns that match _only if the target has siblings_.
+Consider this example, where we want to match an `Int` or `Float` node, but only if it has siblings (rationale in comment):
+```cpp
+// In case of int and float literals, they are trivially expressions on
+// their own so we mark them as such without any further parsing
+// !! but only if they're not the only thing in an expression node !!
+// Otherwise, we create infinitely nested expressions by re-applying the
+// rule. This pair of rules requires _something_ to be on the left or
+// right of the literal, ensuring it's not alone.
+
+// Right case: --End is a negative lookahead, ensuring that there is
+// something to the right of the selected literal that isn't the end of
+// the containing node
+In(Expression) * T(Int, Float)[Expression] * (--End) >>
+  [](Match& _) { return Expression << _(Expression); },
+// Left case: Seq here splices multiple elements rather than one, so
+// we keep Lhs unchanged and in the right place
+In(Expression) * Any[Lhs] * T(Int, Float)[Rhs] >>
+  [](Match& _) { return Seq << _(Lhs) << (Expression << _(Rhs)); },
+```
+
+We can achieve this result in 2 cases.
+The first option is simplest: we match the node, and then add a negative lookahead for the `End` pattern.
+If `End` succeeds, meaning there are no siblings to the right of the node we matched, then we don't match.
+This effectively requires our match to have one or more siblings on the right, and can be added to any pattern with no disruption.
+
+The tricky case is the second one, which has to detect that there is some sibling to the left of the node we matched.
+Trieste doesn't have a lookbehind pattern, so instead we just match any preceding element.
+That gives us a follow-up problem however: our rewrite will also replace that node we didn't want to touch.
+Normally a rewrite is many-to-one when it comes to siblings - multiple siblings are matched and replaced with one single node.
+This tracks with how the rule body must return a single node, so what to do if we really need to return two siblings?
+
+This is where the built-in node `Seq` comes in.
+Trieste's rewrite system handles this node specially, and rather than inserting the single node `(seq (lhs) (rhs))` as a pattern substitution, it inserts each of `Seq`'s children next to each other.
+This is Trieste's work-around for not being able to directly write multiple sibling nodes.
+
+All that said, we ultimately moved these rules to the `terminals` pass as a separate `dir::bottomup | dir::once` pass, meaning that we could safely just match `T(Int, Float)` without using more advanced patterns, since the problem was not having `dir::once`.
+More, simpler passes are an ideal outcome, but if that isn't possible then here is an example of the more advanced pattern writing you might need.
 
 ## Fuzzing and Test Cases
 
