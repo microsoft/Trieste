@@ -37,6 +37,8 @@ using namespace std::string_view_literals;
 int main(int argc, char** argv)
 {
   CLI::App app;
+  app.require_subcommand(1); // not giving a subcommand is an error
+
   std::filesystem::path test_dir;
   std::optional<std::filesystem::path> debug_path;
   // dir mode, scan a directory and check all examples
@@ -273,6 +275,14 @@ int main(int argc, char** argv)
                             .debug_enabled(bool(debug_path))
                             .debug_path(debug_path ? *debug_path / "read" : "");
 
+            // Tricky point: std::filesystem::path uses platform-specific
+            // separators, even in this context where we only care about
+            // Trieste's synthetic in-memory output. So, we need to build our
+            // paths relative to "." using operator/ specifically. If we just
+            // write "./calculate_output", this code will fail on Windows
+            // because the key we're looking up becomes ".\calculate_output"
+            // instead. For convenience, we use this synth_root as a base.
+            std::filesystem::path synth_root = ".";
             trieste::ProcessResult result;
             std::string actual_str;
             if (selected_proc == "parse_only")
@@ -295,7 +305,7 @@ int main(int argc, char** argv)
 
               if (result.ok)
               {
-                actual_str = dest->files().at("./calculate_output");
+                actual_str = dest->file(synth_root / "calculate_output");
               }
             }
             else if (selected_proc == "infix")
@@ -305,7 +315,7 @@ int main(int argc, char** argv)
 
               if (result.ok)
               {
-                actual_str = dest->files().at("./infix");
+                actual_str = dest->file(synth_root / "infix");
               }
             }
             else if (selected_proc == "postfix")
@@ -315,7 +325,7 @@ int main(int argc, char** argv)
 
               if (result.ok)
               {
-                actual_str = dest->files().at("./postfix");
+                actual_str = dest->file(synth_root / "postfix");
               }
             }
             else
