@@ -81,8 +81,11 @@ namespace trieste
       // Find the first line that begins _after_ pos, and then backtrack one
       // element if we need to. We can't write this directly because "last
       // element for which condition was false" is not an stdlib primitive.
-      auto it = std::find_if_not(
-        lines.begin(), lines.end(), [&](std::pair<size_t, size_t> elem) {
+      auto it = std::lower_bound(
+        lines.begin(),
+        lines.end(),
+        pos,
+        [&](std::pair<size_t, size_t> elem, size_t pos) {
           return elem.first <= pos;
         });
       // If we're at the beginning already, or we couldn't find a line after
@@ -94,7 +97,7 @@ namespace trieste
         --it;
       }
 
-      size_t line = it - lines.begin();
+      size_t line = std::distance(lines.begin(), it);
       size_t col = pos - it->first;
 
       return {line, col};
