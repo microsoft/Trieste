@@ -376,6 +376,11 @@ int main(int argc, char** argv)
             trim_trailing_whitespace(expected_output);
             trim_trailing_whitespace(actual_str);
 
+            // FIXME: work around location handling error that leaks \r
+            // characters on Windows platform:
+            expected_output = normalize_line_endings(expected_output);
+            actual_str = normalize_line_endings(actual_str);
+
             bool ok = true;
             if (actual_str != expected_output)
             {

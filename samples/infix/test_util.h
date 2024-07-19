@@ -56,6 +56,21 @@ namespace
     return lines;
   }
 
+  inline std::string join_lines(const std::vector<std::string>& lines)
+  {
+    std::ostringstream out;
+    for (const auto& line : lines)
+    {
+      out << line << std::endl;
+    }
+    return out.str();
+  }
+
+  inline std::string normalize_line_endings(const std::string& str)
+  {
+    return join_lines(split_lines(str));
+  }
+
   inline void trim_trailing_whitespace(std::string& str)
   {
     while (!str.empty() &&
