@@ -423,7 +423,10 @@ namespace trieste
           auto current = node->at(i)->location().view();
           auto next = node->at(i + 1)->location().view();
           os << escape_chars(current, escape);
-          if (!std::isspace(current.front()) && !std::isspace(next.front()))
+          // an empty string view does not start with a space
+          if (
+            (current.empty() || !std::isspace(current.front())) &&
+            (next.empty() || !std::isspace(next.front())))
           {
             os << " ";
           }
