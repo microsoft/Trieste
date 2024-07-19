@@ -87,7 +87,8 @@ namespace trieste
         });
       // If we're at the beginning already, or we couldn't find a line after
       // pos, then our current line should be fine. If lines is constructed
-      // correctly, pos is on either the only line or the last line.
+      // correctly, it is on either the only line or the last line (and pos is
+      // on that line or beyond all lines).
       if (it == lines.end() || (it != lines.begin() && it->first > pos))
       {
         --it;
@@ -101,9 +102,23 @@ namespace trieste
 
     std::pair<size_t, size_t> linepos(size_t line) const
     {
-      // Lines are 0-indexed.
+      // Special case: for out of range lines, index them at the end of our
+      // string and give them length 0. This will cause minimally-ugly
+      // misbehavior if there's an out of range error. Also, this gracefully
+      // handles the technically out of range situation where we ask for line 0
+      // of an empty string, which is what linecol(0) will give its caller in
+      // that case.
+
+      // Change note: this used to return std::string::npos when line was out of
+      // range by more than 1, but callers weren't checking for it so that case
+      // just caused things like .subtr(max_long) in practice. Best return an
+      // empty line with max idx, which will cause blank outputs. Otherwise,
+      // actually assert(line <= lines.size()) to crash here and not half way
+      // down the calling function.
       if (line >= lines.size())
-        return {std::string::npos, 0};
+      {
+        return {contents.size(), 0};
+      }
 
       return lines[line]; // already in {start, size} format
     }
