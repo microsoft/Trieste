@@ -85,8 +85,8 @@ namespace trieste
         lines.begin(),
         lines.end(),
         pos,
-        [&](std::pair<size_t, size_t> elem, size_t pos) {
-          return elem.first <= pos;
+        [](std::pair<size_t, size_t> elem, size_t pos_) {
+          return elem.first <= pos_;
         });
       // If we're at the beginning already, or we couldn't find a line after
       // pos, then our current line should be fine. If lines is constructed
