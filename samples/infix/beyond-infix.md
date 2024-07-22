@@ -59,14 +59,14 @@ One such feature is removing the requirement that functions are defined before t
 For more of a challenge, consider that with this feature it becomes possible to write recursive, or even mutually recursive, functions.
 Either detect and reject that case as an error, or try implementing recursive function evaluation.
 
-**Safety note when capturing data in passes:**
-it is quite easy to cause memory safety bugs by accidentally holding references to objects captured during pass construction, whose lifetime might be shorter than that of the pass itself.
-Make sure to copy or `shared_ptr` data into your pass, rather than holding a long-lived reference to something whose lifetime might be uncertain.
-In our example, `infix::Config` is a struct with a few booleans, so it would be fine to copy around.
-Larger objects might benefit from `shared_ptr` or similar machinery.
-Since we specifically used `infix::Config` to enable or disable rules, we opted to pass in pointers to `ToggleYes` and `ToggleNo` functions rather than capturing the config itself.
-Regardless of how you proceed, remember to use AddressSanitizer to check for problems - when developing this extension, one resource management issue only appeared during cross-platform testing.
-It was immediately reproducible locally using sanitizers, however.
+> [!CAUTION]
+> When capturing data in passes, it is quite easy to cause memory safety bugs by accidentally holding references to objects captured during pass construction, whose lifetime might be shorter than that of the pass itself.
+> Make sure to copy or `shared_ptr` data into your pass, rather than holding a long-lived reference to something whose lifetime might be uncertain.
+> In our example, `infix::Config` is a struct with a few booleans, so it would be fine to copy around.
+> Larger objects might benefit from `shared_ptr` or similar machinery.
+> Since we specifically used `infix::Config` to enable or disable rules, we opted to pass in pointers to `ToggleYes` and `ToggleNo` functions rather than capturing the config itself.
+> Regardless of how you proceed, remember to use AddressSanitizer to check for problems - when developing this extension, one resource management issue only appeared during cross-platform testing.
+> It was immediately reproducible locally using sanitizers, however.
 
 ## Tuples in Infix
 
@@ -443,11 +443,11 @@ To get these kinds of conditionals right, it was very useful to fuzz our impleme
 It took multiple attempts and fuzzing-generated counter-examples to reach the conditional we present here.
 Fortunately, the well-formedness checks helped the fuzzing process by flagging mistakes which lead to unexpected AST shapes.
 
-**Danger:**
-notice that grouping ranges of tokens using `m.seq` will always allow a trailing separator, such as a trailing comma in our case.
-This is a feature given our tuple design, but it can have unexpected consequences for other use cases.
-For example, the Infix language allows trailing `=` in assignments: `x = 1 =;` is equivalent to `x = 1;` because assignments are also implemented using `m.seq`.
-As we did above, it might be possible to avoid these undesirable semantics with extra conditionals, but the more of those conditionals live in the parser, the more it may benefit readability and analyzability to express those semantics as passes and rules instead.
+> [!CAUTION]
+> Notice that grouping ranges of tokens using `m.seq` will always allow a trailing separator, such as a trailing comma in our case.
+> This is a feature given our tuple design, but it can have unexpected consequences for other use cases.
+> For example, the Infix language allows trailing `=` in assignments: `x = 1 =;` is equivalent to `x = 1;` because assignments are also implemented using `m.seq`.
+> As we did above, it might be possible to avoid these undesirable semantics with extra conditionals, but the more of those conditionals live in the parser, the more it may benefit readability and analyzability to express those semantics as passes and rules instead.
 
 Once we have our parser tuples in our AST, we can extract them using rewrite rules.
 Here are our commented rewrite rules from the `expressions` pass:
@@ -533,7 +533,8 @@ Because we use the `Literal` marker to identify subtrees that satisfy conditions
 | (Tuple <<= Literal++)
 ```
 
-**Aside:** for the more theoretical minded, what we are doing here is an implementation of small-step evaluation rules.
+> [!NOTE]
+> For the more theoretical minded, what we are doing here is an implementation of small-step evaluation rules.
 
 We make a point of explaining this `Literal` rule in detail, because a previous version of this tutorial used `Int` and `Float` nodes directly, without any prefix.
 This makes determining if a tree needs evaluating very simple, since you can just ask "is it one of the two kinds of number?", but in a language with any kind of compound data, like tuples, it is no longer clear whether every subtree of a compound expression has been evaluated.
@@ -877,7 +878,8 @@ We limited configuration to the options we needed, and gave default arguments th
 From a usability perspective, because our fuzz test wrapper is coded directly in our test runner and embeds all our defaults and development process assumptions, it was easier to use it than the default Trieste driver.
 While the fuzz test driver is an easy starting point for a simple language implementation, more customized tooling pays for itself quickly in only slightly larger development efforts.
 
-**Danger:** make sure to print `fuzzer.start_seed()`, like the default driver does, or your seed number won't be logged, and you don't be able to reproduce fuzz test failures!
+> [!CAUTION]
+> Make sure to print `fuzzer.start_seed()`, like the default driver does, or your seed number won't be logged, and you won't be able to reproduce fuzz test failures!
 
 ### *bfs, the Exhaustive Breadth-first Tester
 

@@ -161,28 +161,19 @@ rules:
 p("start", // this indicates the 'mode' these rules are associated with
   {
     // Whitespace between tokens.
-    R"([[:blank:]]+)" >> [](auto&) {}, // no-op
-
-    // Line comment.
-    R"(//[^\n]*\n)" >> [](auto&) {}, // another no-op
-
-    // Int.
-    R"([[:digit:]]+\b)" >> [](auto& m) { m.add(Int); },
-    
-    // String. s
-    R"("[^"]*")" >> [](auto& m) { m.add(String); },
-
-    // Print.
-    R"(print\b)" >> [](auto& m) { m.add(Print); },
-
-    // Add ('+' is a reserved RegEx character)
-    R"(\+)" >> [](auto& m) { m.add(Add); },
+    R"(\s+)" >> [](auto&) {}, // no-op
 
     // Equals.
     R"(=)" >> [](auto& m) { m.seq(Equals); },
 
+    // [tuples only] Commas: might be tuple literals, function calls.
+    R"(,)" >> [](auto& m) { m.add(Comma); },
+
+    // [tuples only] Tuple indexing.
+    R"(\.)" >> [](auto& m) { m.add(TupleIdx); },
+
     // Terminator.
-    R"(;[\n]*)" >> [](auto& m) { m.term({Equals}); },
+    R"(;)" >> [](auto& m) { m.term(terminators); },
 
     // ...
   });
@@ -426,7 +417,7 @@ graph TD;
 </td></tr>
 </table>
 
-Note that the `term` command, triggered by the semi-colon, ends the
+Note that the `term` command, triggered by the semicolon, ends the
 `Group` node. In addition to the `add` and `term` functions operating on tokens
 we have seen this far, we will look at the effects of the functions `push`, `pop`
 and `seq` while parsing. 
@@ -439,18 +430,14 @@ parenthesis. How do we handle parentheses when we are parsing? Let's
 look at the rules:
 
 ``` c++
-auto indent = std::make_shared<std::vector<size_t>>();
-
-/* ... */
-
 // Parens.
-R"((\\()[[:blank:]]*)" >> [indent](auto& m) {
+R"(\()" >> [](auto& m) {
   // we push a Paren node. Subsequent nodes will be added
   // as its children.
-  m.push(Paren, 1);
+  m.push(Paren);
 },
 
-R"(\\))" >>
+R"(\))" >>
   [indent](auto& m) {
     // terminate the current group
     m.term();
@@ -644,7 +631,7 @@ Let's look at the rule definitions again in detail:
 R"(=)" >> [](auto& m) { m.seq(Equals); },
 
 // Terminator.
-R"(;[\n]*)" >> [](auto& m) { m.term({Equals}); },
+R"(;)" >> [](auto& m) { m.term({Equals}); },
 ```
 
 These rules, for parsing assignments, are different from the other parsing rules for
@@ -1039,13 +1026,13 @@ We can then wrap our captured token in an expression, as in `Expression << _(Exp
 
 Similarly, in our language all identifiers in an expression count as leaf sub-expressions, so we also look up `In(Expression) * T(Ident)[Ident]` and wrap it as `Expression << _(Ident)`.
 
-**Danger!**
-But wait... if you look at the patterns and what we're replacing closely, doesn't our expression-wrapped int also count as "an int token in an expression"?
-Marking this pass as either `dir::topdown` or `dir::bottomup` will both cause the pass to run forever, creating infinitely nested chains of `(expr (expr ... (int)))`.
-In this case, the practical solution is to include the tag `dir::once` to ensure that, once every int and float has been wrapped in an expression, we don't check back to see if any more wrapping needs doing.
-This works here, because we can always wrap a single token in one step.
+> [!CAUTION]
+> But wait... if you look at the patterns and what we're replacing closely, doesn't our expression-wrapped int also count as "an int token in an expression"?
+> Marking this pass as either `dir::topdown` or `dir::bottomup` will both cause the pass to run forever, creating infinitely nested chains of `(expr (expr ... (int)))`.
+> In this case, the practical solution is to include the tag `dir::once` to ensure that, once every int and float has been wrapped in an expression, we don't check back to see if any more wrapping needs doing.
+> This works here, because we can always wrap a single token in one step.
 
-If you need to tackle the more complex case of looking for "an int token that has at least one sibling on either side", then look in the [box of tricks](./tricks.md) for a pattern you can use.
+If you need to tackle the more complex case of looking for "an int token that has at least one sibling on either side", then look in the [./beyond-infix](advanced tutorial) for some pattern writing techniques.
 
 ### Passes 3 and 4: Operator precedence
 
