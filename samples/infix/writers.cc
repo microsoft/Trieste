@@ -88,75 +88,81 @@ namespace
 
   PassDef maths()
   {
-    // TODO: revert this or no? Might be a bit technical for intro tutorial; I just wanted to see what it looked like.
-    auto coerce_num_types = [](Match& _, auto int_op, auto double_op) -> Node {
-      auto opt_to_result = [](auto num_opt, const TokenDef& tok) -> Node {
-        if(num_opt) {
-          // ^ here means to create a new node of Token type Int with the
-          // provided string as its location (which means its "value").
-          return tok ^ std::to_string(*num_opt);
-        } else {
-          return NoChange ^ "";
-        }
-      };
-
-      Node lhs = _(Lhs);
-      Node rhs = _(Rhs);
-      if(lhs == Int && rhs == Int) {
-        return opt_to_result(
-          int_op(get_int(lhs), get_int(rhs)),
-          Int);
-      } else {
-        return opt_to_result(
-          double_op(get_double(lhs), get_double(rhs)),
-          Float);
-      }
-    };
-
     return {
       "maths",
       wf_pass_maths,
       dir::topdown,
       {
+        T(Add) << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+          [](Match& _) {
+            auto lhs = get_int(_(Lhs));
+            auto rhs = get_int(_(Rhs));
+
+            // ^ here means to create a new node of Token type Int with the
+            // provided string as its location (which means its "value").
+            return Int ^ std::to_string(lhs + rhs);
+          },
+
         T(Add) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
-          [coerce_num_types](Match& _) {
-            return coerce_num_types(_, [](int lhs, int rhs) {
-              return std::optional{lhs + rhs};
-            }, [](double lhs, double rhs) {
-              return std::optional{lhs + rhs};
-            });
+          [](Match& _) {
+            auto lhs = get_double(_(Lhs));
+            auto rhs = get_double(_(Rhs));
+
+            return Float ^ std::to_string(lhs + rhs);
           },
 
-        T(Subtract)
-            << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
-          [coerce_num_types](Match& _) {
-            return coerce_num_types(_, [](int lhs, int rhs) {
-              return std::optional{lhs - rhs};
-            }, [](double lhs, double rhs) {
-              return std::optional{lhs - rhs};
-            });
+        T(Subtract) << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+          [](Match& _) {
+            auto lhs = get_int(_(Lhs));
+            auto rhs = get_int(_(Rhs));
+
+            return Int ^ std::to_string(lhs - rhs);
           },
 
-        T(Multiply)
-            << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
-          [coerce_num_types](Match& _) {
-            return coerce_num_types(_, [](int lhs, int rhs) {
-              return std::optional{lhs * rhs};
-            }, [](double lhs, double rhs) {
-              return std::optional{lhs * rhs};
-            });
+        T(Subtract) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
+          [](Match& _) {
+            auto lhs = get_double(_(Lhs));
+            auto rhs = get_double(_(Rhs));
+
+            return Float ^ std::to_string(lhs - rhs);
           },
 
-        T(Divide)
-            << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
-          [coerce_num_types](Match& _) {
-            return coerce_num_types(_, [](int lhs, int rhs) -> std::optional<int> {
-              if(rhs == 0) return std::nullopt;
-              return std::optional{lhs / rhs};
-            }, [](double lhs, double rhs) -> std::optional<double> {
-              if(rhs == 0.0) return std::nullopt;
-              return std::optional{lhs / rhs};
-            });
+        T(Multiply) << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+          [](Match& _) {
+            auto lhs = get_int(_(Lhs));
+            auto rhs = get_int(_(Rhs));
+
+            return Int ^ std::to_string(lhs * rhs);
+          },
+
+        T(Multiply) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
+          [](Match& _) {
+            auto lhs = get_double(_(Lhs));
+            auto rhs = get_double(_(Rhs));
+
+            return Float ^ std::to_string(lhs * rhs);
+          },
+
+        T(Divide) << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+          [](Match& _) {
+            auto lhs = get_int(_(Lhs));
+            auto rhs = get_int(_(Rhs));
+
+            if(rhs == 0) {
+              return NoChange ^ "";
+            }
+            return Int ^ std::to_string(lhs / rhs);
+          },
+
+        T(Divide) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
+          [](Match& _) {
+            auto lhs = get_double(_(Lhs));
+            auto rhs = get_double(_(Rhs));
+
+            if(rhs == 0.0) {
+              return NoChange ^ "";
+            }
+            return Float ^ std::to_string(lhs / rhs);
           },
 
         T(Expression) << (T(Ref) << T(Ident)[Id])(
