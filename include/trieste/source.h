@@ -136,6 +136,9 @@ namespace trieste
       // print exactly the line and not fragments of \r\n.
       auto try_match = [](std::string_view curr, std::string_view part)
         -> std::optional<std::string_view> {
+        // substr will always return a valid result if the index is in range.
+        // Even if part.size() is out of bounds, we will just get a truncated
+        // string_view to compare against.
         if (curr.substr(0, part.size()) == part)
         {
           return curr.substr(part.size());
