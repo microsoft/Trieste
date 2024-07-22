@@ -259,6 +259,8 @@ namespace
           },
 
         // --- catch-all: fuzz testing generates expressions that wouldn't be stuck but somehow are
+        // These expressions are things like "unevaluated 1 + 1", which can only have come from the
+        // fuzzer, because `1 + 1`'s evaluation is well defined in the previous pass.
         T(Expression)[Expression] >>
           [](Match& _) { return err(_(Expression), "Unevaluated expression"); },
       }};
