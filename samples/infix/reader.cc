@@ -485,7 +485,7 @@ namespace
     return {
       "tuple_literals_orphans",
       wf_pass_tuple_literals_orphans,
-      dir::topdown,
+      dir::bottomup | dir::once,
       {
         // if a comma remains, replace it with an error.
         // it was not able to match anything in the previous rule.
