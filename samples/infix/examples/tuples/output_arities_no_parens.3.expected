@@ -1,66 +1,65 @@
-//! --enable-tuples --tuples-require-parens expect_parse_fail
-//! --enable-tuples --tuples-require-parens --use-parser-tuples expect_parse_fail
-Invalid use of comma
+//! expect_parse_fail
+Tuples are disabled
 -- output_arities_no_parens.infix:0:16
 print "arity 0" ,;
                 ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:1:17
 print "arity 1" 1,;
                  ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:2:22
 print "arity 1 op" 2-1,;
                       ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:3:17
 print "arity 2" 1, 2;
                  ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:4:26
 print "arity 2 trailing" 1, 2,;
                           ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:4:29
 print "arity 2 trailing" 1, 2,;
                              ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:5:17
 print "arity 3" 1, 2, 3;
                  ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:5:20
 print "arity 3" 1, 2, 3;
                     ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:6:26
 print "arity 3 trailing" 1, 2, 3,;
                           ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:6:29
 print "arity 3 trailing" 1, 2, 3,;
                              ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:6:32
 print "arity 3 trailing" 1, 2, 3,;
                                 ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:7:20
 print "arity 3 op" 1, 3-1, 1+4-2;
                     ~
 
-Invalid use of comma
+Tuples are disabled
 -- output_arities_no_parens.infix:7:25
 print "arity 3 op" 1, 3-1, 1+4-2;
                          ~
