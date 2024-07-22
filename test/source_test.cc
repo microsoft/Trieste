@@ -139,24 +139,15 @@ namespace
           },
         });
         // Also, our linecol(pos = size) case shifts to the beginning of the
-        // next line, now that there is one, as opposed to us us trailing off
+        // next line, now that there is one, as opposed to us trailing off
         // the end of the last line.
         case_pre.expected_linecol.back().expected_linecol = {
           case_pre.line_idx_after, 0};
       }
 
       // cover all line break variations
-      for (auto nl : {"\r\n"sv, "\n"sv, "\r"sv})
+      for (auto nl : {"\r\n"sv, "\n"sv})
       {
-        if (!case_pre.input.empty())
-        {
-          if (nl == "\n"sv && case_pre.input.back() == '\r')
-          {
-            continue; // this is just "\r\n", and that makes one line break not
-                      // 2
-          }
-        }
-
         auto cs = case_pre;
         cs.input += nl;
         // a) chars after this line break get line number + 1

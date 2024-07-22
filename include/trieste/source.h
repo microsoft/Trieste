@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -133,31 +134,40 @@ namespace trieste
       // Find the lines (accounting for cross-platform line ending issues).
       // We store the size of the line to support linepos(line), so people can
       // print exactly the line and not fragments of \r\n.
-      size_t cursor = 0;
-      auto try_match = [&](std::string_view part) -> bool {
-        if (std::string_view(contents).substr(cursor, part.size()) == part)
+      auto try_match = [](std::string_view curr, std::string_view part)
+        -> std::optional<std::string_view> {
+        if (curr.substr(0, part.size()) == part)
         {
-          cursor += part.size();
-          return true;
+          return curr.substr(part.size());
         }
         else
         {
-          return false;
+          return std::nullopt;
         }
       };
 
       size_t line_start = 0;
-      while (cursor < contents.size())
+      std::string_view curr = contents;
+      while (!curr.empty())
       {
-        size_t last_pos = cursor;
-        if (try_match("\r\n"sv) || try_match("\n"sv) || try_match("\r"sv))
+        // match each possible line ending variant
+        auto curr_after_match = try_match(curr, "\r\n"sv);
+        if (!curr_after_match)
         {
-          lines.emplace_back(line_start, last_pos - line_start);
-          line_start = cursor;
+          curr_after_match = try_match(curr, "\n"sv);
+        }
+
+        if (curr_after_match)
+        {
+          size_t pos_before_match = curr.data() - contents.data();
+          curr = *curr_after_match;
+
+          lines.emplace_back(line_start, pos_before_match - line_start);
+          line_start = curr.data() - contents.data();
         }
         else
         {
-          ++cursor;
+          curr = curr.substr(1);
         }
       }
 
