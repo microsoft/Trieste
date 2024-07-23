@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "intrusive_ptr.h"
 #include "token.h"
 
 #include <iostream>
@@ -33,10 +34,10 @@ namespace trieste
 
   using Nodes = std::vector<Node>;
   using NodeIt = Nodes::iterator;
-  using NodeSet = std::set<Node, std::owner_less<>>;
+  using NodeSet = std::set<Node>;
 
   template<typename T>
-  using NodeMap = std::map<Node, T, std::owner_less<>>;
+  using NodeMap = std::map<Node, T>;
 
 #ifdef TRIESTE_USE_CXX17
   class NodeRange
@@ -105,7 +106,7 @@ namespace trieste
   using NodeRange = std::span<Node>;
 #endif
 
-  class SymtabDef
+  class SymtabDef final : public intrusive_refcounted<SymtabDef>
   {
     friend class NodeDef;
 
@@ -134,7 +135,7 @@ namespace trieste
     void str(std::ostream& out, size_t level);
   };
 
-  using Symtab = std::shared_ptr<SymtabDef>;
+  using Symtab = intrusive_ptr<SymtabDef>;
 
   struct Index
   {
@@ -181,7 +182,7 @@ namespace trieste
     }
   };
 
-  class NodeDef : public std::enable_shared_from_this<NodeDef>
+  class NodeDef final : public intrusive_refcounted<NodeDef>
   {
   private:
     Token type_;
@@ -195,7 +196,7 @@ namespace trieste
     : type_(type), location_(location), parent_(nullptr)
     {
       if (type_ & flag::symtab)
-        symtab_ = std::make_shared<SymtabDef>();
+        symtab_ = intrusive_ptr(new SymtabDef());
     }
 
     void add_flags()
@@ -291,12 +292,12 @@ namespace trieste
 
     static Node create(const Token& type)
     {
-      return std::shared_ptr<NodeDef>(new NodeDef(type, {nullptr, 0, 0}));
+      return intrusive_ptr{new NodeDef(type, {nullptr, 0, 0})};
     }
 
     static Node create(const Token& type, Location location)
     {
-      return std::shared_ptr<NodeDef>(new NodeDef(type, location));
+      return intrusive_ptr{new NodeDef(type, location)};
     }
 
     static Node create(const Token& type, NodeRange range)
@@ -304,8 +305,8 @@ namespace trieste
       if (range.empty())
         return create(type);
 
-      return std::shared_ptr<NodeDef>(
-        new NodeDef(type, range.front()->location_ * range.back()->location_));
+      return intrusive_ptr{
+        new NodeDef(type, range.front()->location_ * range.back()->location_)};
     }
 
     const Token& type() const
@@ -340,7 +341,7 @@ namespace trieste
       while (p)
       {
         if (p->type_.in(list))
-          return p->shared_from_this();
+          return p->intrusive_ptr_from_this();
 
         p = p->parent_;
       }
@@ -548,7 +549,7 @@ namespace trieste
 
       while (p)
       {
-        auto node = p->shared_from_this();
+        auto node = p->intrusive_ptr_from_this();
 
         if (node->symtab_)
           return node;
@@ -655,7 +656,7 @@ namespace trieste
         throw std::runtime_error("No symbol table");
 
       auto& entry = st->symtab_->symbols[loc];
-      entry.push_back(shared_from_this());
+      entry.push_back(intrusive_ptr_from_this());
 
       // If there are multiple definitions, none can be shadowing.
       return (entry.size() == 1) ||
@@ -671,7 +672,7 @@ namespace trieste
       if (!st)
         throw std::runtime_error("No symbol table");
 
-      st->symtab_->includes.emplace_back(shared_from_this());
+      st->symtab_->includes.emplace_back(intrusive_ptr_from_this());
     }
 
     Location fresh(const Location& prefix = {})
@@ -752,10 +753,10 @@ namespace trieste
 
       // If p and q are the same, then one is contained within the other.
       if (p == q)
-        return p->shared_from_this();
+        return p->intrusive_ptr_from_this();
 
       // Otherwise return the common parent.
-      return p->parent_->shared_from_this();
+      return p->parent_->intrusive_ptr_from_this();
     }
 
     bool precedes(Node node)
@@ -775,8 +776,8 @@ namespace trieste
 
       // Check that p is to the left of q.
       auto parent = p->parent_;
-      return parent->find(p->shared_from_this()) <
-        parent->find(q->shared_from_this());
+      return parent->find(p->intrusive_ptr_from_this()) <
+        parent->find(q->intrusive_ptr_from_this());
     }
 
     void str(std::ostream& out, size_t level = 0) const
@@ -846,7 +847,7 @@ namespace trieste
     template<typename Pre, typename Post = NopPost>
     SNMALLOC_FAST_PATH void traverse(Pre pre, Post post = NopPost())
     {
-      Node root = shared_from_this();
+      Node root = intrusive_ptr_from_this();
       if (!pre(root))
         return;
 
@@ -935,6 +936,8 @@ namespace trieste
       return {p, q};
     }
   };
+
+
 
   inline TokenDef::operator Node() const
   {

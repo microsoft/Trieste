@@ -6,11 +6,11 @@
 #include "debug.h"
 #include "regex.h"
 #include "token.h"
+#include "trieste/intrusive_ptr.h"
 
 #include <array>
 #include <cassert>
 #include <functional>
-#include <optional>
 #include <snmalloc/ds_core/defines.h>
 
 namespace trieste
@@ -277,7 +277,8 @@ namespace trieste
         return FastPattern(new_first, new_parent, new_pass_through);
       }
 
-      static FastPattern SNMALLOC_SLOW_PATH match_opt(const FastPattern& pattern)
+      static FastPattern SNMALLOC_SLOW_PATH
+      match_opt(const FastPattern& pattern)
       {
         if (pattern.any_first())
           return pattern;
@@ -297,9 +298,9 @@ namespace trieste
     };
 
     class PatternDef;
-    using PatternPtr = std::shared_ptr<PatternDef>;
+    using PatternPtr = intrusive_ptr<PatternDef>;
 
-    class PatternDef
+    class PatternDef : public intrusive_refcounted<PatternDef>
     {
       PatternPtr continuation{};
 
@@ -369,8 +370,6 @@ namespace trieste
       }
     };
 
-    using PatternPtr = std::shared_ptr<PatternDef>;
-
     class Cap : public PatternDef
     {
     private:
@@ -389,7 +388,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Cap>(*this);
+        return intrusive_ptr(new Cap(*this));
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -411,7 +410,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Anything>(*this);
+        return intrusive_ptr(new Anything(*this));
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -435,7 +434,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<TokenMatch>(*this);
+        return intrusive_ptr(new TokenMatch(*this));
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -477,7 +476,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<RegexMatch>(*this);
+        return intrusive_ptr(new RegexMatch(*this));
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -508,7 +507,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Opt>(*this);
+        return intrusive_ptr(new Opt(*this));
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -539,7 +538,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Rep>(*this);
+        return intrusive_ptr(new Rep(*this));
       }
 
       PatternPtr custom_rep() override
@@ -579,7 +578,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Not>(*this);
+        return intrusive_ptr(new Not(*this));
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -618,7 +617,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Choice>(*this);
+        return intrusive_ptr(new Choice(*this));
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -657,7 +656,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<InsideStar>(*this);
+        return intrusive_ptr(new InsideStar(*this));
       }
 
       PatternPtr custom_rep() override
@@ -694,14 +693,14 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Inside>(*this);
+        return intrusive_ptr(new Inside(*this));
       }
 
       PatternPtr custom_rep() override
       {
         // Rep(Inside) -> InsideStar
         if (no_continuation())
-          return std::make_shared<InsideStar<N>>(types);
+          return intrusive_ptr(new InsideStar<N>(types));
         return {};
       }
 
@@ -724,7 +723,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<First>(*this);
+        return intrusive_ptr(new First(*this));
       }
 
       PatternPtr custom_rep() override
@@ -745,7 +744,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Last>(*this);
+        return intrusive_ptr(new Last(*this));
       }
 
       PatternPtr custom_rep() override
@@ -778,7 +777,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Children>(*this);
+        return intrusive_ptr(new Children(*this));
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -812,7 +811,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Pred>(*this);
+        return intrusive_ptr(new Pred(*this));
       }
 
       PatternPtr custom_rep() override
@@ -843,7 +842,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<NegPred>(*this);
+        return intrusive_ptr(new NegPred(*this));
       }
 
       PatternPtr custom_rep() override
@@ -873,7 +872,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return std::make_shared<Action>(*this);
+        return intrusive_ptr(new Action(*this));
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -917,29 +916,30 @@ namespace trieste
       Pattern operator()(F&& action) const
       {
         return {
-          std::make_shared<Action<F>>(std::forward<F>(action), pattern),
+          intrusive_ptr(new Action<F>(std::forward<F>(action), pattern)),
           fast_pattern};
       }
 
       Pattern operator[](const Token& name) const
       {
-        return {std::make_shared<Cap>(name, pattern), fast_pattern};
+        return {intrusive_ptr(new Cap(name, pattern)), fast_pattern};
       }
 
       Pattern operator~() const
       {
         return {
-          std::make_shared<Opt>(pattern), FastPattern::match_opt(fast_pattern)};
+          intrusive_ptr(new Opt(pattern)),
+          FastPattern::match_opt(fast_pattern)};
       }
 
       Pattern operator++() const
       {
-        return {std::make_shared<Pred>(pattern), FastPattern::match_pred()};
+        return {intrusive_ptr(new Pred(pattern)), FastPattern::match_pred()};
       }
 
       Pattern operator--() const
       {
-        return {std::make_shared<NegPred>(pattern), FastPattern::match_pred()};
+        return {intrusive_ptr(new NegPred(pattern)), FastPattern::match_pred()};
       }
 
       Pattern operator++(int) const
@@ -951,12 +951,13 @@ namespace trieste
           return {result, FastPattern::match_any()};
 
         return {
-          std::make_shared<Rep>(pattern), FastPattern::match_opt(fast_pattern)};
+          intrusive_ptr(new Rep(pattern)),
+          FastPattern::match_opt(fast_pattern)};
       }
 
       Pattern operator!() const
       {
-        return {std::make_shared<Not>(pattern), FastPattern::match_pred()};
+        return {intrusive_ptr(new Not(pattern)), FastPattern::match_pred()};
       }
 
       Pattern operator*(Pattern rhs) const
@@ -977,23 +978,24 @@ namespace trieste
           tokens.insert(tokens.end(), lhs_tokens.begin(), lhs_tokens.end());
           tokens.insert(tokens.end(), rhs_tokens.begin(), rhs_tokens.end());
           return {
-            std::make_shared<TokenMatch>(tokens),
+            intrusive_ptr(new TokenMatch(tokens)),
             FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
         }
 
         if (pattern->has_captures())
           return {
-            std::make_shared<Choice<true>>(pattern, rhs.pattern),
+            intrusive_ptr(new Choice<true>(pattern, rhs.pattern)),
             FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
         else
           return {
-            std::make_shared<Choice<false>>(pattern, rhs.pattern),
+            intrusive_ptr(new Choice<false>(pattern, rhs.pattern)),
             FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
       }
 
       Pattern operator<<(Pattern rhs) const
       {
-        return {std::make_shared<Children>(pattern, rhs.pattern), fast_pattern};
+        return {
+          intrusive_ptr(new Children(pattern, rhs.pattern)), fast_pattern};
       }
 
       const std::set<Token>& get_starts() const
@@ -1040,17 +1042,17 @@ namespace trieste
   }
 
   inline const auto Any = detail::Pattern(
-    std::make_shared<detail::Anything>(), detail::FastPattern::match_any());
+    intrusive_ptr(new detail::Anything()), detail::FastPattern::match_any());
   inline const auto Start = detail::Pattern(
-    std::make_shared<detail::First>(), detail::FastPattern::match_pred());
+    intrusive_ptr(new detail::First()), detail::FastPattern::match_pred());
   inline const auto End = detail::Pattern(
-    std::make_shared<detail::Last>(), detail::FastPattern::match_pred());
+    intrusive_ptr(new detail::Last()), detail::FastPattern::match_pred());
 
   inline detail::Pattern T(const Token& type)
   {
     std::vector<Token> types = {type};
     return detail::Pattern(
-      std::make_shared<detail::TokenMatch>(types),
+      intrusive_ptr(new detail::TokenMatch(types)),
       detail::FastPattern::match_token({type}));
   }
 
@@ -1060,14 +1062,14 @@ namespace trieste
   {
     std::vector<Token> types_ = {type1, type2, types...};
     return detail::Pattern(
-      std::make_shared<detail::TokenMatch>(types_),
+      intrusive_ptr(new detail::TokenMatch(types_)),
       detail::FastPattern::match_token({type1, type2, types...}));
   }
 
   inline detail::Pattern T(const Token& type, const std::string& r)
   {
     return detail::Pattern(
-      std::make_shared<detail::RegexMatch>(type, r),
+      intrusive_ptr(new detail::RegexMatch(type, r)),
       detail::FastPattern::match_token({type}));
   }
 
@@ -1076,7 +1078,7 @@ namespace trieste
   {
     std::array<Token, 1 + sizeof...(types)> types_ = {type1, types...};
     return detail::Pattern(
-      std::make_shared<detail::Inside<1 + sizeof...(types)>>(types_),
+      intrusive_ptr(new detail::Inside<1 + sizeof...(types)>(types_)),
       detail::FastPattern::match_parent({type1, types...}));
   }
 

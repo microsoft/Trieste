@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "intrusive_ptr.h"
+
 #include <algorithm>
 #include <cassert>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <memory>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace trieste
@@ -18,10 +18,10 @@ namespace trieste
   class SourceDef;
   struct Location;
   class NodeDef;
-  using Source = std::shared_ptr<SourceDef>;
-  using Node = std::shared_ptr<NodeDef>;
+  using Source = intrusive_ptr<SourceDef>;
+  using Node = intrusive_ptr<NodeDef>;
 
-  class SourceDef
+  class SourceDef final : public intrusive_refcounted<SourceDef>
   {
   private:
     std::string origin_;
@@ -39,7 +39,7 @@ namespace trieste
       auto size = f.tellg();
       f.seekg(0, std::ios::beg);
 
-      auto source = std::make_shared<SourceDef>();
+      auto source = intrusive_ptr{new SourceDef()};
       source->origin_ = std::filesystem::relative(file).string();
       source->contents.resize(static_cast<std::size_t>(size));
       f.read(&source->contents[0], size);
@@ -53,7 +53,7 @@ namespace trieste
 
     static Source synthetic(const std::string& contents)
     {
-      auto source = std::make_shared<SourceDef>();
+      auto source = intrusive_ptr{new SourceDef()};
       source->contents = contents;
       source->find_lines();
       return source;
@@ -114,6 +114,8 @@ namespace trieste
       }
     }
   };
+
+  using Source = intrusive_ptr<SourceDef>;
 
   struct Location
   {

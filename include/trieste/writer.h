@@ -3,6 +3,7 @@
 #pragma once
 
 #include "passes.h"
+#include "trieste/intrusive_ptr.h"
 #include "trieste/wf.h"
 
 #include <filesystem>
@@ -10,9 +11,9 @@
 namespace trieste
 {
   class DestinationDef;
-  using Destination = std::shared_ptr<DestinationDef>;
+  using Destination = intrusive_ptr<DestinationDef>;
 
-  class DestinationDef
+  class DestinationDef : public intrusive_refcounted<DestinationDef>
   {
   private:
     enum class Mode
@@ -129,7 +130,7 @@ namespace trieste
 
     static Destination dir(const std::filesystem::path& path)
     {
-      auto d = std::make_shared<DestinationDef>();
+      auto d = intrusive_ptr(new DestinationDef());
       d->mode_ = Mode::FileSystem;
       d->path_ = path;
       return d;
@@ -137,7 +138,7 @@ namespace trieste
 
     static Destination console()
     {
-      auto d = std::make_shared<DestinationDef>();
+      auto d = intrusive_ptr(new DestinationDef());
       d->mode_ = Mode::Console;
       d->path_ = ".";
       return d;
@@ -145,7 +146,7 @@ namespace trieste
 
     static Destination synthetic()
     {
-      auto d = std::make_shared<DestinationDef>();
+      auto d = intrusive_ptr(new DestinationDef());
       d->mode_ = Mode::Synthetic;
       d->path_ = ".";
       return d;

@@ -1,11 +1,8 @@
 #include "internal.h"
-#include "trieste/pass.h"
-#include "trieste/rewrite.h"
-#include "trieste/source.h"
-#include "trieste/token.h"
 
 #include <iterator>
 #include <optional>
+#include <trieste/trieste.h>
 
 namespace
 {
@@ -1157,8 +1154,8 @@ namespace
             (T(MaybeDirective)[MaybeDirective] * ~T(NewLine) *
              End)([](auto& n) {
               Node dir = n.front();
-              Node doc = dir->parent()->parent()->shared_from_this();
-              Node stream = doc->parent()->shared_from_this();
+              Node doc = dir->parent()->parent()->intrusive_ptr_from_this();
+              Node stream = doc->parent()->intrusive_ptr_from_this();
               return stream->find(doc) < stream->end() - 1;
             }) >>
           [](Match& _) {
@@ -1866,7 +1863,7 @@ namespace
 
         In(SequenceIndent) * T(Indent, BlockIndent)[Indent]([](auto& n) {
           Node indent = n.front();
-          Node parent = indent->parent()->shared_from_this();
+          Node parent = indent->parent()->intrusive_ptr_from_this();
           return same_indent(parent, indent);
         }) >>
           [](Match& _) -> Node {
@@ -2187,7 +2184,7 @@ namespace
             (T(ValueGroup) << (T(FlowMapping, FlowSequence))[Flow])(
               [](auto& n) {
                 Node group = n.front();
-                Node item = group->parent()->shared_from_this();
+                Node item = group->parent()->intrusive_ptr_from_this();
                 Node flow = group->front();
                 std::size_t item_indent = item->location().linecol().second;
                 std::size_t flow_indent = min_indent(flow);
