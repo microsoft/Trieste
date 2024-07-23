@@ -594,31 +594,20 @@ namespace infix
 {
   Reader reader(const Config& config)
   {
-    std::vector<Pass> passes = {
-      expressions(config),
-      terminals(),
-    };
-    if (config.enable_tuples)
-    {
-      passes.push_back(tuple_idx());
-    }
-    passes.push_back(multiply_divide());
-    passes.push_back(add_subtract());
-    if (config.enable_tuples)
-    {
-      passes.push_back(tuple_literals(config));
-      passes.push_back(tuple_literals_orphans());
-    }
-    passes.push_back(trim());
-    if (config.enable_tuples)
-    {
-      passes.push_back(append_post());
-    }
-    passes.push_back(check_refs());
-
     return {
       "infix",
-      passes,
+      {
+        expressions(config),
+        terminals(),
+        tuple_idx(),
+        multiply_divide(),
+        add_subtract(),
+        tuple_literals(config),
+        tuple_literals_orphans(),
+        trim(),
+        append_post(),
+        check_refs(),
+      },
       parser(config.use_parser_tuples),
     };
   }
