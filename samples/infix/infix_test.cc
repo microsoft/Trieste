@@ -1,9 +1,6 @@
 #include "infix.h"
 #include "test_util.h"
 
-#include <trieste/trieste.h>
-#include <trieste/fuzzer.h>
-
 #include <CLI/CLI.hpp>
 #include <algorithm>
 #include <filesystem>
@@ -14,48 +11,40 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <trieste/fuzzer.h>
+#include <trieste/trieste.h>
 
 using namespace std::string_view_literals;
 
-int main(int argc, char** argv)
+// Small test interface
+struct tester
 {
-  CLI::App app;
-  app.require_subcommand(1); // not giving a subcommand is an error
+  // The CLI11 subcommand associated with this test.
+  // Set this up in the constructor.
+  // After parsing argv, bool(*subcommand) == true if this tester was selected.
+  CLI::App* subcommand = nullptr;
 
+  // Run the test. Returns 0 or non-0 like main()
+  virtual int run() const = 0;
+  virtual ~tester() = default;
+};
+
+// dir mode, scan a directory and check all examples
+struct dir_tester : public tester
+{
   std::filesystem::path test_dir;
   std::optional<std::filesystem::path> debug_path;
-  // dir mode, scan a directory and check all examples
-  auto dir = app.add_subcommand("dir");
-  dir->add_option("test-dir", test_dir, "The directory containing tests.");
-  dir->add_option(
-    "--dump-passes", debug_path, "Directory to store debug ASTs.");
 
-  infix::Config fuzz_config;
-  std::optional<uint32_t> fuzzer_start_seed = std::nullopt;
-  uint32_t fuzzer_seed_count = 100;
-  bool fuzzer_fail_fast = false;
-
-  // fuzz mode, fuzz test a given configuration
-  auto fuzz = app.add_subcommand("fuzz");
-  fuzz_config.install_cli(fuzz);
-  fuzz->add_option("--start-seed", fuzzer_start_seed, "Seed to start RNG");
-  fuzz->add_option(
-    "--seed-count", fuzzer_seed_count, "Number of fuzzing iterations");
-  fuzz->add_flag("--fail-fast", fuzzer_fail_fast, "Stop on first error");
-
-  auto fuzz_reader = fuzz->add_subcommand("reader");
-  auto fuzz_calculate = fuzz->add_subcommand("calculate");
-
-  try
+  dir_tester(CLI::App* app)
   {
-    app.parse(argc, argv);
-  }
-  catch (const CLI::ParseError& e)
-  {
-    return app.exit(e);
+    subcommand = app->add_subcommand("dir");
+    subcommand->add_option(
+      "test-dir", test_dir, "The directory containing tests.");
+    subcommand->add_option(
+      "--dump-passes", debug_path, "Directory to store debug ASTs.");
   }
 
-  if (*dir)
+  int run() const override
   {
     for (const auto& entry :
          std::filesystem::recursive_directory_iterator(test_dir))
@@ -378,8 +367,38 @@ int main(int argc, char** argv)
         }
       }
     }
+    return 0;
   }
-  else if (*fuzz)
+};
+
+struct fuzz_tester : public tester
+{
+  infix::Config fuzz_config;
+  std::optional<uint32_t> fuzzer_start_seed = std::nullopt;
+  uint32_t fuzzer_seed_count = 100;
+  bool fuzzer_fail_fast = false;
+
+  CLI::App* fuzz_reader;
+  CLI::App* fuzz_calculate;
+
+  fuzz_tester(CLI::App* app)
+  {
+    subcommand = app->add_subcommand("fuzz");
+    subcommand->require_subcommand(1);
+
+    fuzz_config.install_cli(subcommand);
+    subcommand->add_option(
+      "--start-seed", fuzzer_start_seed, "Seed to start RNG");
+    subcommand->add_option(
+      "--seed-count", fuzzer_seed_count, "Number of fuzzing iterations");
+    subcommand->add_flag(
+      "--fail-fast", fuzzer_fail_fast, "Stop on first error");
+
+    fuzz_reader = subcommand->add_subcommand("reader");
+    fuzz_calculate = subcommand->add_subcommand("calculate");
+  }
+
+  int run() const override
   {
     fuzz_config.sanity();
     trieste::Fuzzer fuzzer;
@@ -434,10 +453,38 @@ int main(int argc, char** argv)
       return result;
     }
   }
-  else
+};
+
+// Select one test to run out of those provided.
+// Assumes test subcommands are mutually exclusive.
+int run_selected_tester(std::initializer_list<const tester*> testers)
+{
+  for (const tester* tst : testers)
   {
-    assert(false);
+    if (*tst->subcommand)
+    {
+      return tst->run();
+    }
+  }
+  assert(false);
+}
+
+int main(int argc, char** argv)
+{
+  CLI::App app;
+  app.require_subcommand(1); // not giving a subcommand is an error
+
+  auto dir = dir_tester(&app);
+  auto fuzz = fuzz_tester(&app);
+
+  try
+  {
+    app.parse(argc, argv);
+  }
+  catch (const CLI::ParseError& e)
+  {
+    return app.exit(e);
   }
 
-  return 0;
+  return run_selected_tester({&dir, &fuzz});
 }
