@@ -466,7 +466,8 @@ int run_selected_tester(std::initializer_list<const tester*> testers)
       return tst->run();
     }
   }
-  assert(false);
+  std::cout << "Unreachable: no tester selected." << std::endl;
+  return 1;
 }
 
 int main(int argc, char** argv)
