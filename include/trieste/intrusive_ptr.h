@@ -45,11 +45,13 @@ namespace trieste
     // the compiler to emit vtable lookups when it wants to
     // call the destructor, rather than run into undefined behavior.
 
-    constexpr virtual ~intrusive_refcounted_blk()
-    {
-      assert(intrusive_refcount == 0);
-    }
+    virtual ~intrusive_refcounted_blk() = 0;
   };
+
+  inline intrusive_refcounted_blk::~intrusive_refcounted_blk()
+  {
+    assert(intrusive_refcount == 0);
+  }
 
   template<typename T>
   struct intrusive_ptr final
@@ -108,14 +110,19 @@ namespace trieste
 
     constexpr intrusive_ptr<T>& operator=(const intrusive_ptr<T>& other)
     {
-      // Hold onto our ptr until we return, adding 1 to refcount
-      intrusive_ptr<T> tmp{*this};
+      // hold onto our old ptr without incrementing refcount, then destroy it at
+      // end method (using the actual constructor here causes a memory leak by
+      // incrementing refcount one too many times)
+      intrusive_ptr<T> tmp;
+      tmp.ptr = ptr;
+
       ptr = other.ptr;
+
+      // this happens before tmp is destroyed, meaning
+      // we get this->inc_ref(); tmp.dec_ref().
+      // If we are doing a self-assign, then the inc and dec order
+      // ensures we don't deallocate.
       inc_ref();
-      // dec_ref for our original ptr goes here, where tmp gets destroyed.
-      // If ptr == other.ptr, this ensures we don't accidentally delete ptr
-      // on self-assignment because refcount never hits 0 (it goes 1, 2, 1
-      // instead).
       return *this;
     }
 
@@ -166,7 +173,7 @@ namespace trieste
       return p;
     }
 
-    constexpr ~intrusive_ptr()
+    ~intrusive_ptr()
     {
       dec_ref();
     }
