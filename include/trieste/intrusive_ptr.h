@@ -1,10 +1,11 @@
 #pragma once
 
+#include "snmalloc/ds_core/defines.h"
+
 #include <cassert>
 #include <cstddef>
 #include <functional>
 #include <ostream>
-#include <type_traits>
 #include <utility>
 
 namespace trieste
@@ -19,6 +20,10 @@ namespace trieste
       intrusive_refcount += 1;
     }
 
+    // It's better to have the non-null case dec_ref code all in one place,
+    // because it's long for something that might be pasted over 10x
+    // into functions that use intrusive_ptr a lot.
+    SNMALLOC_SLOW_PATH
     constexpr void intrusive_dec_ref()
     {
       if (intrusive_refcount == 1)
@@ -62,6 +67,7 @@ namespace trieste
         ptr->intrusive_inc_ref();
       }
     }
+
     constexpr void dec_ref()
     {
       if (ptr)
