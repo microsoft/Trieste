@@ -26,14 +26,11 @@ namespace trieste
     SNMALLOC_SLOW_PATH
     constexpr void intrusive_dec_ref()
     {
-      if (intrusive_refcount == 1)
+      assert(intrusive_refcount > 0);
+      intrusive_refcount -= 1;
+      if (intrusive_refcount == 0)
       {
-        intrusive_refcount = 0;
         delete this;
-      }
-      else
-      {
-        intrusive_refcount -= 1;
       }
     }
 
@@ -111,8 +108,8 @@ namespace trieste
 
     constexpr intrusive_ptr<T>& operator=(const intrusive_ptr<T>& other)
     {
-      // Sets us to nullptr and holds onto our ptr in tmp
-      intrusive_ptr<T> tmp = std::move(*this);
+      // Hold onto our ptr until we return, adding 1 to refcount
+      intrusive_ptr<T> tmp{*this};
       ptr = other.ptr;
       inc_ref();
       // dec_ref for our original ptr goes here, where tmp gets destroyed.
@@ -125,7 +122,6 @@ namespace trieste
     constexpr intrusive_ptr<T>& operator=(intrusive_ptr<T>&& other)
     {
       std::swap(ptr, other.ptr);
-      other.dec_ref();
       return *this;
     }
 
