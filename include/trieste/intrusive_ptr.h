@@ -87,15 +87,21 @@ namespace trieste
     }
 
     template<typename U>
-    constexpr intrusive_ptr(const intrusive_ptr<U>& other) : ptr{other.get()}
+    constexpr intrusive_ptr(const intrusive_ptr<U>& other) : ptr{nullptr}
     {
+      // enforce U* to T* compatibility
+      T* tmp = other.get();
+      ptr = tmp;
       inc_ref();
     }
 
     template<typename U>
-    constexpr intrusive_ptr(intrusive_ptr<U>&& other) : ptr{other.get()}
+    constexpr intrusive_ptr(intrusive_ptr<U>&& other) : ptr{nullptr}
     {
-      other.release();
+      // to enforce the pointer compatibility (from U* to T* to
+      // intrusive_refcounted_blk*)
+      T* tmp = other.release();
+      ptr = tmp;
     }
 
     constexpr intrusive_ptr(const intrusive_ptr<T>& other) : ptr{other.ptr}
