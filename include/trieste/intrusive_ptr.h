@@ -2,6 +2,7 @@
 
 #include "snmalloc/ds_core/defines.h"
 
+#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <functional>
@@ -10,7 +11,31 @@
 
 namespace trieste
 {
-  struct intrusive_refcounted_blk
+  enum class intrusive_ptr_threading
+  {
+    sync,
+    async,
+  };
+
+  template<typename T>
+  struct intrusive_refcounted_traits
+  {
+    static constexpr void intrusive_inc_ref(T* ptr)
+    {
+      ptr->intrusive_inc_ref();
+    }
+
+    static constexpr void intrusive_dec_ref(T* ptr)
+    {
+      ptr->intrusive_dec_ref();
+    }
+  };
+
+  template<typename T, intrusive_ptr_threading>
+  struct intrusive_refcounted_blk;
+
+  template<typename T>
+  struct intrusive_refcounted_blk<T, intrusive_ptr_threading::sync>
   {
   private:
     size_t intrusive_refcount = 0;
@@ -30,40 +55,71 @@ namespace trieste
       intrusive_refcount -= 1;
       if (intrusive_refcount == 0)
       {
-        delete this;
+        delete static_cast<T*>(this);
       }
     }
 
   public:
-    template<typename T>
-    friend struct intrusive_ptr;
+    template<typename>
+    friend struct intrusive_refcounted_traits;
 
-    // impl note:
-    // This is virtual, because Trieste relies heavily on being able to
-    // use incomplete types in these pointers.
-    // The vtable replaces shared_ptr's way of tolerating that, by allowing
-    // the compiler to emit vtable lookups when it wants to
-    // call the destructor, rather than run into undefined behavior.
-
-    virtual ~intrusive_refcounted_blk() = 0;
+    ~intrusive_refcounted_blk()
+    {
+      assert(intrusive_refcount == 0);
+    }
   };
 
-  inline intrusive_refcounted_blk::~intrusive_refcounted_blk()
+  template<typename T>
+  struct intrusive_refcounted_blk<T, intrusive_ptr_threading::async>
   {
-    assert(intrusive_refcount == 0);
-  }
+  private:
+    std::atomic<size_t> intrusive_refcount = 0;
+
+    constexpr void intrusive_inc_ref()
+    {
+      intrusive_refcount += 1;
+    }
+
+    // It's better to have the non-null case dec_ref code all in one place,
+    // because it's long for something that might be pasted over 10x
+    // into functions that use intrusive_ptr a lot.
+    SNMALLOC_SLOW_PATH
+    constexpr void intrusive_dec_ref()
+    {
+      // Atomically subtract 1 from refcount and get the _old value_.
+      size_t prev_rc = intrusive_refcount.fetch_sub(1);
+      // If the value _was_ 0, we just did a negative wrap-around to
+      // max(size_t). We should stop now and think about how we got here.
+      assert(prev_rc > 0);
+
+      // If the value was 1, it is now 0 and we can clean up.
+      if (prev_rc == 1)
+      {
+        delete static_cast<T*>(this);
+      }
+    }
+
+  public:
+    template<typename>
+    friend struct intrusive_refcounted_traits;
+
+    ~intrusive_refcounted_blk()
+    {
+      assert(intrusive_refcount == 0);
+    }
+  };
 
   template<typename T>
   struct intrusive_ptr final
   {
   private:
-    intrusive_refcounted_blk* ptr;
+    T* ptr;
 
     constexpr void inc_ref()
     {
       if (ptr)
       {
-        ptr->intrusive_inc_ref();
+        intrusive_refcounted_traits<T>::intrusive_inc_ref(ptr);
       }
     }
 
@@ -71,7 +127,7 @@ namespace trieste
     {
       if (ptr)
       {
-        ptr->intrusive_dec_ref();
+        intrusive_refcounted_traits<T>::intrusive_dec_ref(ptr);
         ptr = nullptr;
       }
     }
@@ -87,32 +143,21 @@ namespace trieste
     }
 
     template<typename U>
-    constexpr intrusive_ptr(const intrusive_ptr<U>& other) : ptr{nullptr}
+    constexpr intrusive_ptr(const intrusive_ptr<U>& other) : ptr{other.ptr}
     {
-      // enforce U* to T* compatibility
-      T* tmp = other.get();
-      ptr = tmp;
       inc_ref();
     }
 
     template<typename U>
-    constexpr intrusive_ptr(intrusive_ptr<U>&& other) : ptr{nullptr}
-    {
-      // to enforce the pointer compatibility (from U* to T* to
-      // intrusive_refcounted_blk*)
-      T* tmp = other.release();
-      ptr = tmp;
-    }
+    constexpr intrusive_ptr(intrusive_ptr<U>&& other) : ptr{other.release()}
+    {}
 
     constexpr intrusive_ptr(const intrusive_ptr<T>& other) : ptr{other.ptr}
     {
       inc_ref();
     }
 
-    constexpr intrusive_ptr(intrusive_ptr<T>&& other) : ptr{nullptr}
-    {
-      std::swap(ptr, other.ptr);
-    }
+    constexpr intrusive_ptr(intrusive_ptr<T>&& other) : ptr{other.release()} {}
 
     constexpr intrusive_ptr<T>& operator=(const intrusive_ptr<T>& other)
     {
@@ -150,11 +195,7 @@ namespace trieste
 
     constexpr T* get() const
     {
-      // our "runtime check" for this being ok is by construction
-      // of the pointer itself.
-      // We can't have been given some U* that is not valid to static_cast to
-      // T*, because none of our methods allow it.
-      return static_cast<T*>(ptr);
+      return ptr;
     }
 
     constexpr T* operator->() const
@@ -283,8 +324,10 @@ namespace trieste
     return os << ptr.get();
   }
 
-  template<typename T>
-  struct intrusive_refcounted : public intrusive_refcounted_blk
+  template<
+    typename T,
+    intrusive_ptr_threading _threading = intrusive_ptr_threading::sync>
+  struct intrusive_refcounted : public intrusive_refcounted_blk<T, _threading>
   {
   public:
     constexpr intrusive_ptr<T> intrusive_ptr_from_this()

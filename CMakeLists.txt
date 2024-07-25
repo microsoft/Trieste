@@ -174,9 +174,13 @@ export(EXPORT ${PROJECT_NAME}_Targets
 export(PACKAGE trieste)
 
 # #############################################
+# # Add core Trieste tests
+enable_testing()
+add_subdirectory(test)
+
+# #############################################
 # # Add samples
 if(TRIESTE_BUILD_SAMPLES)
-  enable_testing()
   add_subdirectory(samples/infix)
 endif()
 

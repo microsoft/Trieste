@@ -407,7 +407,7 @@ namespace trieste
 
     auto find_first(Token token, NodeIt begin)
     {
-      assert((*begin)->parent() == this);   
+      assert((*begin)->parent() == this);
       return std::find_if(
         begin, children.end(), [token](auto& n) { return n->type() == token; });
     }
@@ -937,7 +937,17 @@ namespace trieste
     }
   };
 
+  constexpr void
+  intrusive_refcounted_traits<NodeDef>::intrusive_inc_ref(NodeDef* node)
+  {
+    node->intrusive_inc_ref();
+  }
 
+  constexpr void
+  intrusive_refcounted_traits<NodeDef>::intrusive_dec_ref(NodeDef* node)
+  {
+    node->intrusive_dec_ref();
+  }
 
   inline TokenDef::operator Node() const
   {
