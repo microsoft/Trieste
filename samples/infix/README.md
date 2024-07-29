@@ -1675,15 +1675,16 @@ T(Expression) << (T(Ref) << T(Ident)[Id])(
 ```
 
 Note that this pass will run many times (for example, with the sample
-program we've been looking at it runs 8 times) and so while this
+program we've been looking at it runs 8 times) and so while `can_replace`,
+which checks whether the definition has evaluated yet,
 may not be true at first, it will be eventually.
 
 Next, we replace all expressions which have a single literal value
-with a `Literal` node:
+with a `Literal` expression, marking them as evaluated:
 
 ``` c++
 T(Expression) << (T(Int) / T(Float))[Rhs] >>
-  [](Match& _) { return Literal << _(Rhs); },
+  [](Match& _) { return Expression << (Literal << _(Rhs)); },
 ```
 
 Now we are ready to start collapsing the maths nodes. Here is an
@@ -1704,72 +1705,75 @@ double get_double(const Node& node)
 
 /* ... */
 
-T(Add) << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+T(Add) << (T(Expression) << ((T(Literal) << T(Int)[Lhs]))) * (T(Expression) << (T(Literal) << T(Int)[Rhs])) >>
   [](Match& _) {
-    int lhs = get_int(_(Lhs));
-    int rhs = get_int(_(Rhs));
+    auto lhs = get_int(_(Lhs));
+    auto rhs = get_int(_(Rhs));
+
     // ^ here means to create a new node of Token type Int with the
-    // provided string as its location.
-    return Int ^ std::to_string(lhs + rhs);
+    // provided string as its location (which means its "value").
+    return Literal << (Int ^ std::to_string(lhs + rhs));
   },
 
-T(Add) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
+T(Add) << (T(Expression) << ((T(Literal) << Number[Lhs]))) * (T(Expression) << (T(Literal) << Number[Rhs])) >>
   [](Match& _) {
-    double lhs = get_double(_(Lhs));
-    double rhs = get_double(_(Rhs));
-    return Float ^ std::to_string(lhs + rhs);
+    auto lhs = get_double(_(Lhs));
+    auto rhs = get_double(_(Rhs));
+
+    return Literal << (Float ^ std::to_string(lhs + rhs));
   },
 ```
 
 These rules (and similar ones for `Subtract`, `Multiply`, and `Divide`)
 will run again and again until every expression has been collapsed to
-a single `Literal` node as we see below:
+a single `Literal` expression node as we see below:
 
 ```
 top
 └── calculation
     ├── assign
     │   ├── ident x
-    │   └── literal
-    │       └── int 15
+    │   └── expression
+    |       └── literal
+    │           └── int 15
     ├── assign
     │   ├── ident y
-    │   └── literal
-    │       └── int 7
+    │   └── expression
+    |       └── literal
+    │           └── int 7
     ├── output
     │   ├── string "1"
-    │   └── literal
-    │       └── int 22
+    │   └── expression
+    |       └── literal
+    │           └── int 22
     ├── assign
     │   ├── ident z
-    │   └── literal
-    │       └── int 10
+    │   └── expression
+    |       └── literal
+    │           └── int 10
     └── output
         ├── string "2"
-        └── literal
-            └── int 10
+        └── expression
+            └── literal
+                └── int 10
 ```
 
 ### Pass 7: Cleanup
 
-Those `Assign` nodes do nothing at this point, and so we can remove them.
-We can also elide the `Literal` node for similar reasons. Rules:
+Those `Assign` nodes do nothing at this point, and so we can remove them:
 
 ``` c++
 In(Calculation) * T(Assign) >> [](Match&) -> Node { return {}; },
-
-T(Literal) << Any[Rhs] >> [](Match& _) { return _(Rhs); },
 ```
 
 The final well-formedness check:
 
 ``` c++
 inline const auto wf_pass_cleanup =
-  wf_pass_maths
-  | (Calculation <<= Output++)
-  // note the use of >>= here. This allows us to have a choice
-  // as a field by giving it a temporary name.
-  | (Output <<= String * (Expression >>= wf_literal))
+  wf_pass_math_errs
+  // ensure that there are no assignments, only
+  // outputs here  
+  | (Calculation <<= Output++) 
   ;
 ```
 
@@ -1780,10 +1784,14 @@ top
 └── calculation
     ├── output
     │   ├── string "1"
-    │   └── int 22
+    │   └── expression
+    |       └── literal
+    │           └──int 22
     └── output
         ├── string "2"
-        └── int 10
+        └── expression
+            └── literal
+                └──int 10
 ```
 
 The `Rewriter` class has the following constructor:
@@ -1820,6 +1828,11 @@ for(auto& output : *calc){
   std::cout << str << " " << val << std::endl;
 }
 ```
+
+Note that this specific output style will only work in a language where values are single nodes fully described by their location.
+For Infix with just numbers, this is true.
+If extending Infix, you should use Writers to produce structured output instead.
+The accompanying source code shows this more general approach.
 
 You can see a full working example that uses all the helpers we have discussed
 in [infix.cc](infix.cc).
@@ -2054,20 +2067,26 @@ T(Divide)
   },
 ```
 
-In a very cool way, Trieste allows us to detect divide by zero errors.
-However, this now means that, potentially, some of the nodes in our
-AST will be of type error, resulting in empty subexpressions. This means
-we need to add some error handling, for example:
+For a simple language, detecting evaluation errors as part of the evaluation rules is simple and flexible.
+In a more complex language, however, errors can become emergent properties that mean "no contructive rule matched here".
+In that case, building meaningful errors will warrant its own pass.
 
-```c++
-// Note how we pattern match explicitly for the Error node
-In(Expression) *
-    (MathsOp << ((T(Expression)[Expression] << T(Error)) * T(Literal))) >>
+Then, you can remove errors from your evaluation pass and replace them with `NoChange`:
+```cpp
+if(rhs == 0) {
+  return NoChange ^ "";
+}
+```
+
+In a later pass, once all possible evaluation has occurred, you can then pattern match on all possible error cases.
+This mostly just duplicates a simple error rule like divide by 0, but it also allows more general rules like:
+
+```cpp
+T(Expression) << MathsOp[Op] >>
   [](Match& _) {
-    return err(_(Expression), "Invalid left hand argument");
+    return err(_(Op), "Invalid maths op");
   },
 ```
 
-By finding these errors explicitly we can propagate the error up the
-tree, thus eventually allowing the bad subtree to be exempted from the
-WF check and allowing the testing to proceed.
+This rule will catch any maths operation which no rule could evaluate and report it as an error.
+By adding higher-priority rules above it, you can capture more specific error cases for which it is possible to emit more precise error messages.

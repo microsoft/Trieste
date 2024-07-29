@@ -527,7 +527,7 @@ We identify "literals" as follows:
 - `Int` or `Float`
 - `Tuple` where all the elements are `Literal`
 
-Because we use the `Literal` marker to identify subtrees that satisfy conditions, we can write a well-formedness specification that matches the rules above exactly (simplified from a larger modification to out main Infix `wf`):
+Because we use the `Literal` marker to identify subtrees that satisfy conditions, we can write a well-formedness specification that matches the rules above exactly (simplified from a larger modification to our main Infix `wf`):
 ```cpp
 | (Literal <<= Int | Float | Tuple)
 | (Tuple <<= Literal++)
@@ -546,9 +546,9 @@ As a result, rules for container types like tuples (and other generic language f
 
 Without any operations on tuples, the single rule for evaluating one is quite simple:
 ```cpp
-T(Expression) << (T(Tuple)[Tuple] << (T(Literal)++ * End)) >>
+T(Expression) << (T(Tuple)[Tuple] << ((T(Expression) << T(Literal))++ * End)) >>
   [](Match& _) {
-    return Literal << _(Tuple);
+    return Expression << (Literal << _(Tuple));
   },
 ```
 
@@ -589,33 +589,20 @@ The tricky part is what happens to the well-formedness definition in this case:
 ```cpp
 inline const auto wf_pass_maths = 
   infix::wf
-  // The Op >>= prefix ensures the internal structure of the WF is set up properly.
-  // The disjunction cannot otherwise be nested inside *
-  // Technically it names the disjunction "Op", but we do not use that name.
-  | (Assign <<= Ident * (Op >>= Literal | Expression)) 
-  | (Output <<= String * (Op >>= Literal | Expression)) 
+  | (Literal <<= Int | Float)
+  // Add Literal to the set of possible expressions; it will be the only one after the errs pass.
+  | (Expression <<= (Add | Subtract | Multiply | Divide | Ref | Float | Int | Literal))
+  // --- tuples extension
   | (Literal <<= Int | Float | Tuple)
-  // all the math ops, but with both literal and expression as options
-  | (Add <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
-  | (Subtract <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
-  | (Multiply <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
-  | (Divide <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
-  | (Tuple <<= (Literal | Expression)++)
+  | (Expression <<= (Tuple | TupleIdx | Append | Add | Subtract | Multiply | Divide | Ref | Float | Int | Literal))
   ;
 ```
 
 Rather than a clean separation between `Literal` and `Expression`, we have to initially accept both: our `maths` pass might finish with `Expression` nodes left over almost anywhere.
 It's our `math_errs` pass that will flag errors in this case, so where our AST has `Expression`, we now have to accept both `Expression` and `Literal`.
 
-This is a problem, because Trieste does not accept `(X | Y) * Z` as a well-formedness constraint.
-We can either write `X | Y` or `X * Y`, but we can't nest them directly.
-The usual outcome is to define more token types rather than have complex, compound well-formedness logic.
-That is not desirable here, because this is one transitive step, our AST normally doesn't have these cases, and a refactor would unnecessarily disrupt far more than it would fix.
-
-In this situation, you can write `(Op >>= X | Y) * Z`.
-The internals of the well-formedness definition requires that each element of `*` has a "name", and the simple disjunction `X | Y` doesn't have one.
-We can work around this by naming `X | Y` some other token like `Op`.
-Refactoring your well-formedness definition is usually better, but for transient cases like this one, the `>>=` operator is what you need.
+We work around this by nesting `Literal` inside of `Expression`, and considering `Literal` as if it were another expression type.
+It would also be possible to mark everything as `Expression | Literal`, but that is both difficult to write in Trieste and quite a noisy change from the base well-formedness definition.
 
 **Exercise for the reader:**
 while it can be cleaner and more robust to have one pass for positive rules and one pass for errors, for a simple language like Infix it might be possible to make evaluation single-pass.
@@ -670,16 +657,17 @@ T(Append)
 To evaluate these append operations, we must detect when all the operation's arguments are evaluated, and check that those evaluated arguments are tuples.
 Once that is ensured, we can implement the tuple append operation using mostly standard `std::vector` manipulation:
 ```cpp
-T(Expression) << (T(Append) << ((T(Literal) << T(Tuple))++[Literal] * End)) >>
+T(Expression) << (T(Append) << ((T(Expression) << (T(Literal) << T(Tuple)))++[Literal] * End)) >>
   [](Match& _) {
     Node combined_tuple = Tuple;
-    for(Node child : _[Literal]) {
-      Node sub_tuple = child->front();
+    for(Node child : _[Expression]) {
+      Node child_literal = child->front();
+      Node sub_tuple = child_literal->front();
       for(Node elem : *sub_tuple) {
         combined_tuple->push_back(elem);
       }
     }
-    return Literal << combined_tuple;
+    return Expression << (Literal << combined_tuple);
   },
 ```
 
@@ -708,7 +696,7 @@ Since we chose to consider `.` as the new highest-precedence operator in Infix, 
 
 Its evaluation rule shows another error case like dividing by 0 - when the index is out of range:
 ```cpp
-T(Expression) << (T(TupleIdx)[TupleIdx] << (T(Literal) << T(Tuple)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+T(Expression) << (T(TupleIdx)[TupleIdx] << (T(Expression) << (T(Literal) << T(Tuple)[Lhs])) * (T(Expression) << (T(Literal) << T(Int)[Rhs]))) >>
   [](Match& _) {
     Node lhs = _(Lhs);
     Node rhs = _(Rhs);
@@ -819,6 +807,20 @@ This is Trieste's work-around for not being able to directly write multiple sibl
 
 All that said, we ultimately moved these rules to the `terminals` pass as a separate `dir::bottomup | dir::once` pass, meaning that we could safely just match `T(Int, Float)` without using more advanced patterns, since the problem was not having `dir::once`.
 More, simpler passes are an ideal outcome, but if that isn't possible then here is an example of the more advanced pattern writing you might need.
+
+#### Adding a Quick Disjunction in Well-Formeenss Definitions
+
+When dealing with well-formedness definitions, you might want to write `X * (Y | Z)` at some point.
+It can happen when you need to relax a sub-case of a well-formedness rule for one pass without perturbing the whole structure.
+
+This won't work, because it is not allowed to directly nest `|` inside `*`.
+Instead, you can follow this example:
+```cpp
+// The Op >>= prefix ensures the internal structure of the WF is set up properly.
+// The disjunction cannot otherwise be nested inside *
+// Technically it names the disjunction "Op", but we do not use that name.
+| (Assign <<= Ident * (Op >>= Literal | Expression)) 
+```
 
 ## Fuzzing and Test Cases
 

@@ -14,35 +14,20 @@ namespace
   // clang-format off
   inline const auto wf_pass_maths = 
     infix::wf
-    // The Op >>= prefix ensures the internal structure of the WF is set up properly.
-    // The disjunction cannot otherwise be nested inside *
-    // Technically it names the disjunction "Op", but we do not use that name.
-    | (Assign <<= Ident * (Op >>= Literal | Expression)) 
-    | (Output <<= String * (Op >>= Literal | Expression)) 
     | (Literal <<= Int | Float)
-    // all the math ops, but with both literal and expression as options
-    | (Add <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
-    | (Subtract <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
-    | (Multiply <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
-    | (Divide <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+    // Add Literal to the set of possible expressions; it will be the only one after the errs pass.
+    | (Expression <<= (Add | Subtract | Multiply | Divide | Ref | Float | Int | Literal))
     // --- tuples extension
     | (Literal <<= Int | Float | Tuple)
-    | (Tuple <<= (Literal | Expression)++)
-    | (Append <<= (Literal | Expression)++)
-    | (TupleIdx <<= (Lhs >>= Literal | Expression) * (Rhs >>= Literal | Expression))
+    | (Expression <<= (Tuple | TupleIdx | Append | Add | Subtract | Multiply | Divide | Ref | Float | Int | Literal))
     ;
   // clang-format on
 
   // clang-format off
   inline const auto wf_pass_math_errs = 
     wf_pass_maths
-    | (Assign <<= Ident * Literal)
-    | (Output <<= String * Literal)
-    // We omit operations, because they should all be gone.
-    // They are unreachable in this WF because Assign and
-    // Output only reference Literal, not Expression. 
-    // --- tuples extension
-    | (Tuple <<= Literal++)
+    // now errors are cleaned up, we only allow literal expressions
+    | (Expression <<= Literal)
     ;
   // clang-format on
 
@@ -69,7 +54,7 @@ namespace
     }
 
     auto assign = defs.front();
-    return assign->back() == Literal;
+    return assign->back() == Expression && assign->back()->back() == Literal;
   }
 
   int get_int(const Node& node)
@@ -93,57 +78,57 @@ namespace
       wf_pass_maths,
       dir::topdown,
       {
-        T(Add) << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+        T(Add) << (T(Expression) << ((T(Literal) << T(Int)[Lhs]))) * (T(Expression) << (T(Literal) << T(Int)[Rhs])) >>
           [](Match& _) {
             auto lhs = get_int(_(Lhs));
             auto rhs = get_int(_(Rhs));
 
             // ^ here means to create a new node of Token type Int with the
             // provided string as its location (which means its "value").
-            return Int ^ std::to_string(lhs + rhs);
+            return Literal << (Int ^ std::to_string(lhs + rhs));
           },
 
-        T(Add) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
+        T(Add) << (T(Expression) << ((T(Literal) << Number[Lhs]))) * (T(Expression) << (T(Literal) << Number[Rhs])) >>
           [](Match& _) {
             auto lhs = get_double(_(Lhs));
             auto rhs = get_double(_(Rhs));
 
-            return Float ^ std::to_string(lhs + rhs);
+            return Literal << (Float ^ std::to_string(lhs + rhs));
           },
 
-        T(Subtract) << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+        T(Subtract) << (T(Expression) << ((T(Literal) << T(Int)[Lhs]))) * (T(Expression) << (T(Literal) << T(Int)[Rhs])) >>
           [](Match& _) {
             auto lhs = get_int(_(Lhs));
             auto rhs = get_int(_(Rhs));
 
-            return Int ^ std::to_string(lhs - rhs);
+            return Literal << (Int ^ std::to_string(lhs - rhs));
           },
 
-        T(Subtract) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
+        T(Subtract) << (T(Expression) << ((T(Literal) << Number[Lhs]))) * (T(Expression) << (T(Literal) << Number[Rhs])) >>
           [](Match& _) {
             auto lhs = get_double(_(Lhs));
             auto rhs = get_double(_(Rhs));
 
-            return Float ^ std::to_string(lhs - rhs);
+            return Literal << (Float ^ std::to_string(lhs - rhs));
           },
 
-        T(Multiply) << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+        T(Multiply) << (T(Expression) << ((T(Literal) << T(Int)[Lhs]))) * (T(Expression) << (T(Literal) << T(Int)[Rhs])) >>
           [](Match& _) {
             auto lhs = get_int(_(Lhs));
             auto rhs = get_int(_(Rhs));
 
-            return Int ^ std::to_string(lhs * rhs);
+            return Literal << (Int ^ std::to_string(lhs * rhs));
           },
 
-        T(Multiply) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
+        T(Multiply) << (T(Expression) << ((T(Literal) << Number[Lhs]))) * (T(Expression) << (T(Literal) << Number[Rhs])) >>
           [](Match& _) {
             auto lhs = get_double(_(Lhs));
             auto rhs = get_double(_(Rhs));
 
-            return Float ^ std::to_string(lhs * rhs);
+            return Literal << (Float ^ std::to_string(lhs * rhs));
           },
 
-        T(Divide) << ((T(Literal) << T(Int)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+        T(Divide) << (T(Expression) << ((T(Literal) << T(Int)[Lhs]))) * (T(Expression) << (T(Literal) << T(Int)[Rhs])) >>
           [](Match& _) {
             auto lhs = get_int(_(Lhs));
             auto rhs = get_int(_(Rhs));
@@ -151,10 +136,10 @@ namespace
             if(rhs == 0) {
               return NoChange ^ "";
             }
-            return Int ^ std::to_string(lhs / rhs);
+            return Literal << (Int ^ std::to_string(lhs / rhs));
           },
 
-        T(Divide) << ((T(Literal) << Number[Lhs]) * (T(Literal) << Number[Rhs])) >>
+        T(Divide) << (T(Expression) << ((T(Literal) << Number[Lhs]))) * (T(Expression) << (T(Literal) << Number[Rhs])) >>
           [](Match& _) {
             auto lhs = get_double(_(Lhs));
             auto rhs = get_double(_(Rhs));
@@ -162,7 +147,7 @@ namespace
             if(rhs == 0.0) {
               return NoChange ^ "";
             }
-            return Float ^ std::to_string(lhs / rhs);
+            return Literal << (Float ^ std::to_string(lhs / rhs));
           },
 
         T(Expression) << (T(Ref) << T(Ident)[Id])(
@@ -176,31 +161,32 @@ namespace
           },
 
         T(Expression) << Number[Rhs] >>
-          [](Match& _) { return Literal << _(Rhs); },
+          [](Match& _) { return Expression << (Literal << _(Rhs)); },
 
         // --- tuples extension ---
 
         // a tuple of only literals is a literal; strip the expression prefix
-        T(Expression) << (T(Tuple)[Tuple] << (T(Literal)++ * End)) >>
+        T(Expression) << (T(Tuple)[Tuple] << ((T(Expression) << T(Literal))++ * End)) >>
           [](Match& _) {
-            return Literal << _(Tuple);
+            return Expression << (Literal << _(Tuple));
           },
 
         // 0 or more tuples appended make an aggregate tuple
-        T(Expression) << (T(Append) << ((T(Literal) << T(Tuple))++[Literal] * End)) >>
+        T(Expression) << (T(Append) << ((T(Expression) << (T(Literal) << T(Tuple)))++[Expression] * End)) >>
           [](Match& _) {
             Node combined_tuple = Tuple;
-            for(Node child : _[Literal]) {
-              Node sub_tuple = child->front();
+            for(Node child : _[Expression]) {
+              Node child_literal = child->front();
+              Node sub_tuple = child_literal->front();
               for(Node elem : *sub_tuple) {
                 combined_tuple->push_back(elem);
               }
             }
-            return Literal << combined_tuple;
+            return Expression << (Literal << combined_tuple);
           },
 
         // given a literal tuple and a literal idx, pick out the relevant tuple part or leave an error
-        T(Expression) << (T(TupleIdx)[TupleIdx] << (T(Literal) << T(Tuple)[Lhs]) * (T(Literal) << T(Int)[Rhs])) >>
+        T(Expression) << (T(TupleIdx)[TupleIdx] << (T(Expression) << (T(Literal) << T(Tuple)[Lhs])) * (T(Expression) << (T(Literal) << T(Int)[Rhs]))) >>
           [](Match& _) {
             Node lhs = _(Lhs);
             Node rhs = _(Rhs);
@@ -222,7 +208,7 @@ namespace
       dir::bottomup,
       {
         // custom error pattern: we can catch specific shapes and give more useful errors in those cases
-        T(Expression) << (T(Divide)[Divide] << (Any * (T(Literal) << T(Int, Float)[Rhs]))) >>
+        T(Expression) << (T(Divide)[Divide] << (Any * (T(Expression) << (T(Literal) << T(Int, Float)[Rhs])))) >>
           [](Match& _) {
             auto rhs = _(Rhs);
             if((rhs == Int && get_int(rhs) == 0) || (rhs == Float && get_double(rhs) == 0)) {
@@ -239,7 +225,7 @@ namespace
             // during this pass and as such is not
             // an error, but currently occurs during
             // generative testing.
-            return Literal << (Int ^ "0");
+            return Expression << (Literal << (Int ^ "0"));
           },
 
         T(Expression) << MathsOp[Op] >>
@@ -267,7 +253,7 @@ namespace
         // --- catch-all: fuzz testing generates expressions that wouldn't be stuck but somehow are
         // These expressions are things like "unevaluated 1 + 1", which can only have come from the
         // fuzzer, because `1 + 1`'s evaluation is well defined in the previous pass.
-        T(Expression)[Expression] >>
+        T(Expression)[Expression] << --T(Literal) >>
           [](Match& _) { return err(_(Expression), "Unevaluated expression"); },
       }};
   }
