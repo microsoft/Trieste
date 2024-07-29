@@ -844,7 +844,7 @@ The final result has 3 modes, which we will briefly motivate while offering poin
 You can find each mode under a different branch of a large if-statement in the test runner's main function.
 We recommend reading the [CLI11](https://cliutils.github.io/CLI11/book/) documentation in order to understand how the command-line argument handling for all our executables works.
 
-### *dir, the Directory Based Tester
+### dir_tester, the Directory Based Tester
 
 The first test runner we built uses `std::filesystem::recursive_directory_iterator` to scan a target directory for files ending in `.infix` which have a corresponding sibling file whose extension is `.expected`.
 Because Infix offers many modes of operation, and we want to test them all, each `.expected` file will list one or more headers starting with `//!` that indicate under which configurations the rest of the file contents should be output by running Infix on the input file.
@@ -866,7 +866,7 @@ We used this extensively in this project, and the folder's structure essentially
 It can even be useful to just run a Trieste system on an input without looking at its source code, then look at the ASTs it generates.
 Combined with well-formedness definitions and some well-chosen examples, this utility makes understanding a Trieste transformation's behavior much more accessible than it would be otherwise.
 
-### *fuzz, the Extended Fuzz Test Launcher
+### fuzz_tester, the Extended Fuzz Test Launcher
 
 While the `infix_trieste` executable exists, using `trieste::Driver` to wrap `infix::reader` and automatically generate a command-line executable, it has some key limitations:
 - It is difficult to handle multiple language configurations, since Infix's configuration options are parameters used to modify its pass definitions, and the Trieste driver takes an already-constructed pass as a parameter before parsing command-line arguments.
@@ -882,66 +882,3 @@ While the fuzz test driver is an easy starting point for a simple language imple
 
 > [!CAUTION]
 > Make sure to print `fuzzer.start_seed()`, like the default driver does, or your seed number won't be logged, and you won't be able to reproduce fuzz test failures!
-
-### *bfs, the Exhaustive Breadth-first Tester
-
-Our third testing method, and perhaps the most non-standard, is the breadth-first AST enumeration testing.
-This is an experimental testing mode, whose implementation we provide as-is in [`bfs.h`](./bfs.h) and [`progspace.h`](./progspace.h).
-It may eventually be incorporated into Trieste's fuzz-tester, but it is more than just "breadth-first AST generation".
-These notes explain what it is, and when you might want to use something like this.
-
-In between fuzz testing, where we generate a collection of random ASTs to stress our implementation, and test cases, which assert the behavior of specific examples, there lies a blind spot.
-It is possible that a small, simple example is never written as a test case, and that it takes a long time for fuzz testing to reach it.
-Alternatively, fuzz testing may be reaching the example, but a resulting wrong behavior might pass the fuzz test's sanity checks, all the while we still don't have an explicit test case that exposes the edge case.
-It is also worth noting that Trieste's fuzz testing doesn't exercise the string-level parser code, so any non-trivial rules there may contain bugs that need string-level inputs to catch.
-
-This is concerning, because if we haven't thought of this hypothetical example already, and the fuzz tester can't help us, then we're just waiting for a user to find it.
-For an experimental language with few (or no, for Infix) users, we might want to quickly build up a body of test code and expected outputs, such that we are more confident that our language (or our tutorial, for Infix) does not contain any oversights we simply did not have the imagination to find.
-This is where breadth-first testing comes in.
-
-Our breadth-first testing setup consists of 3 components:
-- A generator that can produce a finite, tractable space of example ASTs.
-  For instance, with Infix we cover all expressions consisting of literals `0`, `0.0`, empty tuples, and `foo` (where `foo = 1;`), and all combinations of compound expressions up to depth N (in our case 2, up to examples with 2 levels of operators like `(1 + 2) - (3 - 4)`).
-- A mapping from any AST we generated to a comprehensive set of input strings recognized by each Infix configuration.
-  Consider that with the option `--enable-tuples` the Infix language will parse `(1,2)`, `1,2`, `1,2,`, and `(1,2,)` as the same tuple.
-  Other options will only accept some of these variants.
-  It can be extremely tedious to enumerate a representative set of tuple string representations that cover all the parsing cases, as well as possible interactions between different expressions.
-- An assertion that checks whether a given AST can be re-parsed from all of its string representations under consideration.
-
-The first item could be derived from well-formedness constraints, but the other 2 must be written by hand to some extent due to their dependency on the specific behavior of the target language.
-Combining these components, we were able to exhaustively search approximately 3 million AST-configuration combinations for any potential parsing bugs, and eliminate any bugs we found.
-The downside is that the full execution took about 1.5hrs on a 4-core Intel i7 CPU, including the significant benefits of simple parallelism we added using `std::async`.
-The technique is not suitable for inclusion in regular test suites, so it is best run periodically to check for bugs that would not have been caught otherwise.
-
-The rest of this section discusses how we implemented our generators, our support library's functional programming-derived design, and some key performance optimizations that make this technique tractable.
-
-The [`bfs.h`](./bfs.h) library supports hand-constructing the first 2 components by providing a `bfs::Result<T>` type that lazily implements the standard concept of a non-determinism monad.
-This means that a `Result<T>` represents a lazy sequence of 0 or more `T`.
-When a function returns a `Result<T>`, that result can be combined with another `Result<U>` in order to produce a `Result<V>` which represents all possible combinations of `T`s and `U`s that could be combined to produce a `V`.
-Essentially, all combinations of `Result` form a cross-product of possible outputs, allowing us to treat "all possible values" as a single value.
-
-To manipulate these aggregate possibilities, `bfs::Result` provides a collection of standard methods, many of which are part of the monadic interface common in functional programming:
-- `Result()`: construct a result with 0 elements.
-- `Result(T)`: constructs a result with one element.
-- `Result<T>::map(std::function<U(T)> fn) -> Result<U>`: calls `fn` on every `T` to produce a `U`, which forms the elements of the returned `Result<U>`.
-- `Result<T>::flat_map(std::function<Result<U>(T)> fn) -> Result<U>`: calls `fn` on every `T` to produce a `Result<U>`, each of which is aggregated into an overall `Result<U>` that combines all the of `fn`'s output's in sequence.
-- `Result<T>::or_(Result<T> other) -> Result<T>`: produces a new `Result<T>` whose elements are all `T` in `this`, and all `T` in `other`.
-
-Algebraically, these methods are sufficient to recursively construct and combine instances of `bfs::Result` to produce essentially any sequence of "all possible `T`".
-See how we use them for our AST and string construction in [`progspace.h`](./progspace.h).
-For more information on this kind of technique, search online for "non-determinism monad" or "list monad" - there are many tutorials and blog posts suitable for a diverse set of programming backgrounds.
-
-Of course, implementing `bfs::Result` as a `std::vector` will quickly create containers with hundreds, thousands, or in our experience, millions of elements.
-Worse, combining those results will cause repeated iteration as bigger vectors are recursively rebuilt.
-That is why `bfs::Result` acts more like an iterator: it stores the data needed to generate all possible outputs, but only does so partially and on demand.
-`bfs::Result::iterator` _is_ an iterator, allowing `Result` to be used in a range-for loop.
-Iterating over a `Result` will construct and access each element in turn, using usually constant space and time throughout the loop's execution.
-We say "usually", because the depth of the original recursive construction of the `Result` and the number of combinators will proportionally increase memory consumption as well as execution time.
-For a bounded recursion, the footprint of a `Result` can be bounded by recursion depth, so for our intended usage it will be effectively constant.
-
-In a similar vein, we do not want to recursively concatenate `std::string` instances when constructing our input strings.
-To solve this, we implemented `bfs::CatString`, a simplification of [`Chain`](https://typelevel.org/cats/datatypes/chain.html) from the Scala ecosystem's Cats library.
-While our minimum-viable C++ implementation lacks some of the original's performance optimizations, the core design is maintained: concatenating `CatString` has O(1) time complexity because it just builds a tuple of `std::shared_ptr` to its inputs.
-`CatString` is essentially a tree of string fragments and control nodes, which can be flattened into a single string (or any `std::ostream` sink) in one on-demand O(n) iteration.
-By discarding unnecessary operations like indexing and contiguous storage, we no longer need to think about string concatenation cost.
-That is how we can write naive recursive string concatenations in combination with `bfs::Result` to build large families of strings with minimal overhead.
