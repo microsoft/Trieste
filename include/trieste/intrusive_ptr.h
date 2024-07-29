@@ -32,18 +32,18 @@ namespace trieste
       constexpr copyable_refcount(const copyable_refcount&) : value{0} {}
       constexpr copyable_refcount(copyable_refcount&&) : value{0} {}
 
-      constexpr operator size_t() const
+      operator size_t() const
       {
         return value;
       }
 
-      constexpr copyable_refcount operator+=(size_t inc)
+      copyable_refcount operator+=(size_t inc)
       {
         value += inc;
         return *this;
       }
 
-      constexpr size_t fetch_sub(size_t dec)
+      size_t fetch_sub(size_t dec)
       {
         return value.fetch_sub(dec);
       }
