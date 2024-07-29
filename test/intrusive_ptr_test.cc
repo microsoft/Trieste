@@ -4,9 +4,7 @@
 #include <thread>
 #include <trieste/intrusive_ptr.h>
 
-struct Dummy
-: public trieste::
-    intrusive_refcounted<Dummy, trieste::intrusive_ptr_threading::async>
+struct Dummy : public trieste::intrusive_refcounted<Dummy>
 {
   size_t tag;
 

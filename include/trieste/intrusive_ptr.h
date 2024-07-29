@@ -11,11 +11,44 @@
 
 namespace trieste
 {
-  enum class intrusive_ptr_threading
+  namespace detail
   {
-    sync,
-    async,
-  };
+    // In principle, std::atomic should not be copied.
+    // It should be a single object that is pointer-to and manipulated by
+    // multiple threads. For refcounts however, it should be possible to copy a
+    // refcounted object. The catch is that _everything but the refcount should
+    // be copied_. The copy constructors here will just set the new refcount to
+    // 0, as if the object was constructed from scratch, so different
+    // intrusive_ptr can take ownership of the new object.
+    struct copyable_refcount final
+    {
+    private:
+      std::atomic<size_t> value = 0;
+
+    public:
+      constexpr copyable_refcount(size_t value_) : value{value_} {}
+
+      constexpr copyable_refcount() = default;
+      constexpr copyable_refcount(const copyable_refcount&) : value{0} {}
+      constexpr copyable_refcount(copyable_refcount&&) : value{0} {}
+
+      constexpr operator size_t() const
+      {
+        return value;
+      }
+
+      constexpr copyable_refcount operator+=(size_t inc)
+      {
+        value += inc;
+        return *this;
+      }
+
+      constexpr size_t fetch_sub(size_t dec)
+      {
+        return value.fetch_sub(dec);
+      }
+    };
+  }
 
   template<typename T>
   struct intrusive_refcounted_traits
@@ -28,84 +61,6 @@ namespace trieste
     static constexpr void intrusive_dec_ref(T* ptr)
     {
       ptr->intrusive_dec_ref();
-    }
-  };
-
-  template<typename T, intrusive_ptr_threading>
-  struct intrusive_refcounted_blk;
-
-  template<typename T>
-  struct intrusive_refcounted_blk<T, intrusive_ptr_threading::sync>
-  {
-  private:
-    size_t intrusive_refcount = 0;
-
-    constexpr void intrusive_inc_ref()
-    {
-      intrusive_refcount += 1;
-    }
-
-    // It's better to have the non-null case dec_ref code all in one place,
-    // because it's long for something that might be pasted over 10x
-    // into functions that use intrusive_ptr a lot.
-    SNMALLOC_SLOW_PATH
-    constexpr void intrusive_dec_ref()
-    {
-      assert(intrusive_refcount > 0);
-      intrusive_refcount -= 1;
-      if (intrusive_refcount == 0)
-      {
-        delete static_cast<T*>(this);
-      }
-    }
-
-  public:
-    template<typename>
-    friend struct intrusive_refcounted_traits;
-
-    ~intrusive_refcounted_blk()
-    {
-      assert(intrusive_refcount == 0);
-    }
-  };
-
-  template<typename T>
-  struct intrusive_refcounted_blk<T, intrusive_ptr_threading::async>
-  {
-  private:
-    std::atomic<size_t> intrusive_refcount = 0;
-
-    constexpr void intrusive_inc_ref()
-    {
-      intrusive_refcount += 1;
-    }
-
-    // It's better to have the non-null case dec_ref code all in one place,
-    // because it's long for something that might be pasted over 10x
-    // into functions that use intrusive_ptr a lot.
-    SNMALLOC_SLOW_PATH
-    constexpr void intrusive_dec_ref()
-    {
-      // Atomically subtract 1 from refcount and get the _old value_.
-      size_t prev_rc = intrusive_refcount.fetch_sub(1);
-      // If the value _was_ 0, we just did a negative wrap-around to
-      // max(size_t). We should stop now and think about how we got here.
-      assert(prev_rc > 0);
-
-      // If the value was 1, it is now 0 and we can clean up.
-      if (prev_rc == 1)
-      {
-        delete static_cast<T*>(this);
-      }
-    }
-
-  public:
-    template<typename>
-    friend struct intrusive_refcounted_traits;
-
-    ~intrusive_refcounted_blk()
-    {
-      assert(intrusive_refcount == 0);
     }
   };
 
@@ -161,18 +116,15 @@ namespace trieste
 
     constexpr intrusive_ptr<T>& operator=(const intrusive_ptr<T>& other)
     {
-      // hold onto our old ptr without incrementing refcount, then destroy it at
-      // end method (using the actual constructor here causes a memory leak by
-      // incrementing refcount one too many times)
-      intrusive_ptr<T> tmp;
-      tmp.ptr = ptr;
+      // Self-assignment case (skip the code below that would destroy the object
+      // otherwise)
+      if (ptr == other.ptr)
+      {
+        return *this;
+      }
 
+      dec_ref();
       ptr = other.ptr;
-
-      // this happens before tmp is destroyed, meaning
-      // we get this->inc_ref(); tmp.dec_ref().
-      // If we are doing a self-assign, then the inc and dec order
-      // ensures we don't deallocate.
       inc_ref();
       return *this;
     }
@@ -226,6 +178,51 @@ namespace trieste
     }
 
     friend std::hash<intrusive_ptr<T>>;
+  };
+
+  template<typename T>
+  struct intrusive_refcounted
+  {
+  private:
+    detail::copyable_refcount intrusive_refcount = 0;
+
+    constexpr void intrusive_inc_ref()
+    {
+      intrusive_refcount += 1;
+    }
+
+    // It's better to have the non-null case dec_ref code all in one place,
+    // because it's long for something that might be pasted over 10x
+    // into functions that use intrusive_ptr a lot.
+    SNMALLOC_SLOW_PATH
+    constexpr void intrusive_dec_ref()
+    {
+      // Atomically subtract 1 from refcount and get the _old value_.
+      size_t prev_rc = intrusive_refcount.fetch_sub(1);
+      // If the value _was_ 0, we just did a negative wrap-around to
+      // max(size_t). We should stop now and think about how we got here.
+      assert(prev_rc > 0);
+
+      // If the value was 1, it is now 0 and we can clean up.
+      if (prev_rc == 1)
+      {
+        delete static_cast<T*>(this);
+      }
+    }
+
+  public:
+    template<typename>
+    friend struct intrusive_refcounted_traits;
+
+    constexpr intrusive_ptr<T> intrusive_ptr_from_this()
+    {
+      return intrusive_ptr{static_cast<T*>(this)};
+    }
+
+    ~intrusive_refcounted()
+    {
+      assert(intrusive_refcount == 0);
+    }
   };
 
   template<typename T, typename U>
@@ -323,18 +320,6 @@ namespace trieste
   {
     return os << ptr.get();
   }
-
-  template<
-    typename T,
-    intrusive_ptr_threading _threading = intrusive_ptr_threading::sync>
-  struct intrusive_refcounted : public intrusive_refcounted_blk<T, _threading>
-  {
-  public:
-    constexpr intrusive_ptr<T> intrusive_ptr_from_this()
-    {
-      return intrusive_ptr{static_cast<T*>(this)};
-    }
-  };
 }
 
 namespace std
