@@ -324,6 +324,7 @@ Try it out and see what you think.
 The simplest but least extensible way to support tuples in Infix is to do so directly in the parser.
 This strategy requires little work since it re-uses a feature of Infix's parser (perhaps more intuitively, "tokenizer"), but consider also that because it lives directly in the parser, it is in some ways the least extensible approach.
 There is no way to add a pre-processing pass that goes before the parser, so Trieste's rule layering techniques will not be available.
+Also, Trieste's fuzzer does not work on the parser.
 
 To add tuples to the parser, first we add a new token type, `ParserTuple`:
 ```cpp
@@ -331,26 +332,41 @@ inline const auto ParserTuple = TokenDef("infix-parser-tuple");
 ```
 Like `Comma`, this token is defined as "internal" since it does not appear in a fully-parsed Infix program.
 
-The new token type is incorporated into the existing mechanism for reading parentheses:
+The new token type is incorporated into the existing mechanism for reading parentheses, but it needs additional context to work properly.
+We achieve this with a mixture of parser modes and auxiliary state variables.
+
+First, parser modes are the names, such as `"start"` or `"parentheses"`, which label different collections of rules for parsing characters.
+The original Infix parser had only the `"start"` label, but, for handling where commas are allowed, we need two states: inside parenthese and outside parentheses.
+Both states have the almost the same rules, so we use a helper lambda to build both rulesets while parameterizing over the differences: the mode name, either `"start"` or `"parentheses"`, and the flag `in_parentheses`.
+
+Second, we use a local variable stored in a shared_ptr:
+```cpp
+std::shared_ptr<size_t> parentheses_level = std::make_shared<size_t>(0);
+```
+This counts how many parentheses deep our parse is nested, so we can properly exit `"parentheses"` mode only when we have encountered enough `)` characters.
+
+In this context, our rules look like this:
 ```cpp
 R"(,)" >>
   [](auto& m) {
-    if (m.in(Paren) || m.group_in(Paren) || m.group_in(ParserTuple))
+    if (in_parentheses)
     {
       m.seq(ParserTuple);
     }
     else
     {
-      m.error("Commas outside parens are illegal");
+      m.error("Invalid use of comma");
     }
   },
 
-// Parens. (unmodified from original, but included for context)
-R"((\()[[:blank:]]*)" >>
+// Additional state handling is included here.
+R"(\()" >>
   [](auto& m) {
-    // we push a Paren node. Subsequent nodes will be added
-    // as its children.
-    m.push(Paren, 1);
+    m.push(Paren);
+
+    // We are inside parenthese: shift to that mode
+    ++*parentheses_level;
+    m.mode("parentheses");
   },
 
 R"(\))" >>
@@ -359,6 +375,16 @@ R"(\))" >>
     m.term(terminators);
     // pop back up out of the Paren
     m.pop(Paren);
+
+    if(*parentheses_level > 0)
+    {
+      --*parentheses_level;
+    }
+
+    if(*parentheses_level == 0)
+    {
+      m.mode("start");
+    }
   },
 ```
 
@@ -435,13 +461,8 @@ The way this works hinges on the semantics of `m.seq(TokenType)`, due to which t
 There are a lot of edge cases and lazy-added groups in parser behavior, so hopefully this worked example is more informative than just a long list of possible behaviors.
 
 The explanation above does not cover the multiple error conditions written in the `,` rule, however.
-Because of the cursor-and-state-machine model in the parser, calling `m.seq(ParserTuple)` whenever we see a comma will work for valid programs, but will cause well-formedness violations on invalid programs because of how `ParserTuple` will end up "taking over" any containing group, even ones whose meaning is completely unrelated to it.
-To exclude these cases, we ensure that we only try to add a `ParserTuple` node if we are inside a `Paren`, or in a group that is a child of a `Paren`, or in a group that is a child of a `ParserTuple` (that is, we're already constructing one).
-If we are not in those cases, we reject `,` at the parser level by adding an error node instead.
-
-To get these kinds of conditionals right, it was very useful to fuzz our implementation at the level of input strings.
-It took multiple attempts and fuzzing-generated counter-examples to reach the conditional we present here.
-Fortunately, the well-formedness checks helped the fuzzing process by flagging mistakes which lead to unexpected AST shapes.
+We avoid those by having a special mode that tracks how many parentheses deep we are, meaning that we will not call `.seq` outside of parentheses.
+Be aware however that it is easy to write parser rules that go wrong on sufficiently malformed character inputs - the more complex your parser, the more useful it becomes to perform character-level input fuzzing.
 
 > [!CAUTION]
 > Notice that grouping ranges of tokens using `m.seq` will always allow a trailing separator, such as a trailing comma in our case.
