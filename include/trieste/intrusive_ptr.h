@@ -37,7 +37,7 @@ namespace trieste
         return value;
       }
 
-      copyable_refcount operator+=(size_t inc)
+      copyable_refcount& operator+=(size_t inc)
       {
         value += inc;
         return *this;
