@@ -8,7 +8,6 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -27,7 +26,7 @@ namespace trieste
   private:
     std::string origin_;
     std::string contents;
-    std::vector<std::pair<size_t, size_t>> lines;
+    std::vector<size_t> lines;
 
   public:
     static Source load(const std::filesystem::path& file)
@@ -72,112 +71,51 @@ namespace trieste
 
     std::pair<size_t, size_t> linecol(size_t pos) const
     {
-      // If we have no lines, contents is an empty string.
-      // Realistically this case will only happen for pos == 0.
-      if (lines.empty())
-      {
-        return {0, pos};
-      }
+      // Lines and columns are 0-indexed.
+      auto it = std::lower_bound(lines.begin(), lines.end(), pos);
 
-      // Find the first line that begins _after_ pos, and then backtrack one
-      // element if we need to. We can't write this directly because "last
-      // element for which condition was false" is not an stdlib primitive.
-      auto it = std::lower_bound(
-        lines.begin(),
-        lines.end(),
-        pos,
-        [](std::pair<size_t, size_t> elem, size_t pos_) {
-          return elem.first <= pos_;
-        });
-      // If we're at the beginning already, or we couldn't find a line after
-      // pos, then our current line should be fine. If lines is constructed
-      // correctly, it is on either the only line or the last line (and pos is
-      // on that line or beyond all lines).
-      if (it == lines.end() || (it != lines.begin() && it->first > pos))
-      {
-        --it;
-      }
+      auto line = it - lines.begin();
+      auto col = pos;
 
-      size_t line = std::distance(lines.begin(), it);
-      size_t col = pos - it->first;
+      if (it != lines.begin())
+        col -= *(it - 1) + 1;
 
       return {line, col};
     }
 
     std::pair<size_t, size_t> linepos(size_t line) const
     {
-      // Special case: for out of range lines, index them at the end of our
-      // string and give them length 0. This will cause minimally-ugly
-      // misbehavior if there's an out of range error. Also, this gracefully
-      // handles the technically out of range situation where we ask for line 0
-      // of an empty string, which is what linecol(0) will give its caller in
-      // that case.
+      // Lines are 0-indexed.
+      if (line > lines.size())
+        return {std::string::npos, 0};
 
-      // Change note: this used to return std::string::npos when line was out of
-      // range by more than 1, but callers weren't checking for it so that case
-      // just caused things like .subtr(max_long) in practice. Best return an
-      // empty line with max idx, which will cause blank outputs. Otherwise,
-      // actually assert(line <= lines.size()) to crash here and not half way
-      // down the calling function.
-      if (line >= lines.size())
-      {
-        return {contents.size(), 0};
-      }
+      size_t start = 0;
+      auto end = contents.size();
 
-      return lines[line]; // already in {start, size} format
+      if (line > 0)
+        start = lines[line - 1] + 1;
+
+      if (line < lines.size())
+        end = lines[line];
+
+      return {start, end - start};
     }
 
   private:
+    // Semantics note:
+    // The code here only looks for \n and is not intended to be platform-sensitive.
+    // Effectively, sources operate in binary mode and leave encoding issues to the language implementation.
+    // There are however some cosmetic fixes in error printing, such as in Location::str(), which ensure
+    // that control characters don't leak into Trieste's output in that case.
     void find_lines()
     {
-      using namespace std::string_view_literals;
-      // Find the lines (accounting for cross-platform line ending issues).
-      // We store the size of the line to support linepos(line), so people can
-      // print exactly the line and not fragments of \r\n.
-      auto try_match = [](std::string_view curr, std::string_view part)
-        -> std::optional<std::string_view> {
-        // substr will always return a valid result if the index is in range.
-        // Even if part.size() is out of bounds, we will just get a truncated
-        // string_view to compare against.
-        if (curr.substr(0, part.size()) == part)
-        {
-          return curr.substr(part.size());
-        }
-        else
-        {
-          return std::nullopt;
-        }
-      };
+      // Find the lines.
+      auto pos = contents.find('\n');
 
-      size_t line_start = 0;
-      std::string_view curr = contents;
-      while (!curr.empty())
+      while (pos != std::string::npos)
       {
-        // match each possible line ending variant
-        auto curr_after_match = try_match(curr, "\r\n"sv);
-        if (!curr_after_match)
-        {
-          curr_after_match = try_match(curr, "\n"sv);
-        }
-
-        if (curr_after_match)
-        {
-          size_t pos_before_match = curr.data() - contents.data();
-          curr = *curr_after_match;
-
-          lines.emplace_back(line_start, pos_before_match - line_start);
-          line_start = curr.data() - contents.data();
-        }
-        else
-        {
-          curr = curr.substr(1);
-        }
-      }
-
-      // Trailing content without a new line at the end
-      if (line_start < contents.size())
-      {
-        lines.emplace_back(line_start, contents.size() - line_start);
+        lines.push_back(pos);
+        pos = contents.find('\n', pos + 1);
       }
     }
   };
@@ -225,6 +163,26 @@ namespace trieste
         return {};
 
       std::stringstream ss;
+      auto output_without_r = [&ss](const std::string_view& str) -> void {
+        for(char ch : str) {
+          if(ch == '\r') {
+            continue;
+          }
+          ss << ch;
+        }
+      };
+      auto count_without_r = [](const std::string_view& str, size_t pos, size_t len) -> size_t {
+        size_t skipping_len = 0;
+        size_t curr = pos;
+        while(curr < std::min(pos + len, str.size())) {
+          if(str[curr] != '\r') {
+            ++skipping_len;
+          }
+          ++curr;
+        }
+        return skipping_len;
+      };
+
       auto [line, col] = linecol();
       auto [linepos, linelen] = source->linepos(line);
 
@@ -233,21 +191,27 @@ namespace trieste
         auto cover = std::min(linelen - col, len);
         std::fill_n(std::ostream_iterator<char>(ss), col, ' ');
         std::fill_n(std::ostream_iterator<char>(ss), cover, '~');
+        ss << std::endl;
 
         auto [line2, col2] = source->linecol(pos + len);
         auto [linepos2, linelen2] = source->linepos(line2);
         linelen = (linepos2 - linepos) + linelen2;
 
-        ss << std::endl << source->view().substr(linepos, linelen) << std::endl;
+        output_without_r(source->view().substr(linepos, linelen));
+        ss << std::endl;
 
         std::fill_n(std::ostream_iterator<char>(ss), col2, '~');
         ss << std::endl;
       }
       else
       {
-        ss << source->view().substr(linepos, linelen) << std::endl;
+        auto line_str = source->view().substr(linepos, linelen);
+        output_without_r(line_str);
+        ss << std::endl;
+        col = count_without_r(line_str, 0, col);
         std::fill_n(std::ostream_iterator<char>(ss), col, ' ');
-        std::fill_n(std::ostream_iterator<char>(ss), len, '~');
+        auto len_counted = count_without_r(line_str, 0, len);
+        std::fill_n(std::ostream_iterator<char>(ss), len_counted, '~');
         ss << std::endl;
       }
 
