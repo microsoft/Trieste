@@ -210,8 +210,9 @@ namespace trieste
             source->view().substr(interim_pos, linepos2 - interim_pos);
         }
 
-        write_indexed_skipping_r(
-          line_view_first, [&](size_t idx) { return idx < col ? ' ' : '~'; });
+        write_indexed_skipping_r(line_view_first, [&ccol = col](size_t idx) {
+          return idx < ccol ? ' ' : '~';
+        });
         ss << std::endl;
         write_chars_skipping_r(line_view_first);
         write_chars_skipping_r(interim_view);
@@ -230,7 +231,7 @@ namespace trieste
         assert(pos >= linepos);
         write_indexed_skipping_r(
           line_view.substr(0, pos - linepos + len),
-          [&](size_t idx) { return idx < col ? ' ' : '~'; });
+          [&ccol = col](size_t idx) { return idx < ccol ? ' ' : '~'; });
         ss << std::endl;
       }
 
