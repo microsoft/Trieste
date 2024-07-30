@@ -534,13 +534,13 @@ namespace trieste
   inline detail::Rule
   operator>>(detail::Located<const std::string&> s, detail::ParseEffect effect)
   {
-    return intrusive_ptr(new detail::RuleDef(s, effect));
+    return detail::Rule::make(s, effect);
   }
 
   inline detail::Rule
   operator>>(detail::Located<const char*> s, detail::ParseEffect effect)
   {
-    return intrusive_ptr(new detail::RuleDef(s, effect));
+    return detail::Rule::make(s, effect);
   }
 
   inline std::pair<Token, GenLocationF>

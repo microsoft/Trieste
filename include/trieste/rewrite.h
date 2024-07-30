@@ -388,7 +388,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Cap(*this));
+        return intrusive_ptr<Cap>::make(*this);
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -410,7 +410,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Anything(*this));
+        return intrusive_ptr<Anything>::make(*this);
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -434,7 +434,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new TokenMatch(*this));
+        return intrusive_ptr<TokenMatch>::make(*this);
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -476,7 +476,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new RegexMatch(*this));
+        return intrusive_ptr<RegexMatch>::make(*this);
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -507,7 +507,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Opt(*this));
+        return intrusive_ptr<Opt>::make(*this);
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -538,7 +538,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Rep(*this));
+        return intrusive_ptr<Rep>::make(*this);
       }
 
       PatternPtr custom_rep() override
@@ -578,7 +578,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Not(*this));
+        return intrusive_ptr<Not>::make(*this);
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -617,7 +617,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Choice(*this));
+        return intrusive_ptr<Choice>::make(*this);
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -656,7 +656,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new InsideStar(*this));
+        return intrusive_ptr<InsideStar>::make(*this);
       }
 
       PatternPtr custom_rep() override
@@ -693,14 +693,14 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Inside(*this));
+        return intrusive_ptr<Inside>::make(*this);
       }
 
       PatternPtr custom_rep() override
       {
         // Rep(Inside) -> InsideStar
         if (no_continuation())
-          return intrusive_ptr(new InsideStar<N>(types));
+          return intrusive_ptr<InsideStar<N>>::make(types);
         return {};
       }
 
@@ -723,7 +723,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new First(*this));
+        return intrusive_ptr<First>::make(*this);
       }
 
       PatternPtr custom_rep() override
@@ -744,7 +744,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Last(*this));
+        return intrusive_ptr<Last>::make(*this);
       }
 
       PatternPtr custom_rep() override
@@ -777,7 +777,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Children(*this));
+        return intrusive_ptr<Children>::make(*this);
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -811,7 +811,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Pred(*this));
+        return intrusive_ptr<Pred>::make(*this);
       }
 
       PatternPtr custom_rep() override
@@ -842,7 +842,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new NegPred(*this));
+        return intrusive_ptr<NegPred>::make(*this);
       }
 
       PatternPtr custom_rep() override
@@ -872,7 +872,7 @@ namespace trieste
 
       PatternPtr clone() const& override
       {
-        return intrusive_ptr(new Action(*this));
+        return intrusive_ptr<Action>::make(*this);
       }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
@@ -916,30 +916,31 @@ namespace trieste
       Pattern operator()(F&& action) const
       {
         return {
-          intrusive_ptr(new Action<F>(std::forward<F>(action), pattern)),
+          intrusive_ptr<Action<F>>::make(std::forward<F>(action), pattern),
           fast_pattern};
       }
 
       Pattern operator[](const Token& name) const
       {
-        return {intrusive_ptr(new Cap(name, pattern)), fast_pattern};
+        return {intrusive_ptr<Cap>::make(name, pattern), fast_pattern};
       }
 
       Pattern operator~() const
       {
         return {
-          intrusive_ptr(new Opt(pattern)),
+          intrusive_ptr<Opt>::make(pattern),
           FastPattern::match_opt(fast_pattern)};
       }
 
       Pattern operator++() const
       {
-        return {intrusive_ptr(new Pred(pattern)), FastPattern::match_pred()};
+        return {intrusive_ptr<Pred>::make(pattern), FastPattern::match_pred()};
       }
 
       Pattern operator--() const
       {
-        return {intrusive_ptr(new NegPred(pattern)), FastPattern::match_pred()};
+        return {
+          intrusive_ptr<NegPred>::make(pattern), FastPattern::match_pred()};
       }
 
       Pattern operator++(int) const
@@ -951,13 +952,13 @@ namespace trieste
           return {result, FastPattern::match_any()};
 
         return {
-          intrusive_ptr(new Rep(pattern)),
+          intrusive_ptr<Rep>::make(pattern),
           FastPattern::match_opt(fast_pattern)};
       }
 
       Pattern operator!() const
       {
-        return {intrusive_ptr(new Not(pattern)), FastPattern::match_pred()};
+        return {intrusive_ptr<Not>::make(pattern), FastPattern::match_pred()};
       }
 
       Pattern operator*(Pattern rhs) const
@@ -978,24 +979,24 @@ namespace trieste
           tokens.insert(tokens.end(), lhs_tokens.begin(), lhs_tokens.end());
           tokens.insert(tokens.end(), rhs_tokens.begin(), rhs_tokens.end());
           return {
-            intrusive_ptr(new TokenMatch(tokens)),
+            intrusive_ptr<TokenMatch>::make(tokens),
             FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
         }
 
         if (pattern->has_captures())
           return {
-            intrusive_ptr(new Choice<true>(pattern, rhs.pattern)),
+            intrusive_ptr<Choice<true>>::make(pattern, rhs.pattern),
             FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
         else
           return {
-            intrusive_ptr(new Choice<false>(pattern, rhs.pattern)),
+            intrusive_ptr<Choice<false>>::make(pattern, rhs.pattern),
             FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
       }
 
       Pattern operator<<(Pattern rhs) const
       {
         return {
-          intrusive_ptr(new Children(pattern, rhs.pattern)), fast_pattern};
+          intrusive_ptr<Children>::make(pattern, rhs.pattern), fast_pattern};
       }
 
       const std::set<Token>& get_starts() const
@@ -1042,17 +1043,17 @@ namespace trieste
   }
 
   inline const auto Any = detail::Pattern(
-    intrusive_ptr(new detail::Anything()), detail::FastPattern::match_any());
+    intrusive_ptr<detail::Anything>::make(), detail::FastPattern::match_any());
   inline const auto Start = detail::Pattern(
-    intrusive_ptr(new detail::First()), detail::FastPattern::match_pred());
+    intrusive_ptr<detail::First>::make(), detail::FastPattern::match_pred());
   inline const auto End = detail::Pattern(
-    intrusive_ptr(new detail::Last()), detail::FastPattern::match_pred());
+    intrusive_ptr<detail::Last>::make(), detail::FastPattern::match_pred());
 
   inline detail::Pattern T(const Token& type)
   {
     std::vector<Token> types = {type};
     return detail::Pattern(
-      intrusive_ptr(new detail::TokenMatch(types)),
+      intrusive_ptr<detail::TokenMatch>::make(types),
       detail::FastPattern::match_token({type}));
   }
 
@@ -1062,14 +1063,14 @@ namespace trieste
   {
     std::vector<Token> types_ = {type1, type2, types...};
     return detail::Pattern(
-      intrusive_ptr(new detail::TokenMatch(types_)),
+      intrusive_ptr<detail::TokenMatch>::make(types_),
       detail::FastPattern::match_token({type1, type2, types...}));
   }
 
   inline detail::Pattern T(const Token& type, const std::string& r)
   {
     return detail::Pattern(
-      intrusive_ptr(new detail::RegexMatch(type, r)),
+      intrusive_ptr<detail::RegexMatch>::make(type, r),
       detail::FastPattern::match_token({type}));
   }
 
@@ -1078,7 +1079,7 @@ namespace trieste
   {
     std::array<Token, 1 + sizeof...(types)> types_ = {type1, types...};
     return detail::Pattern(
-      intrusive_ptr(new detail::Inside<1 + sizeof...(types)>(types_)),
+      intrusive_ptr<detail::Inside<1 + sizeof...(types)>>::make(types_),
       detail::FastPattern::match_parent({type1, types...}));
   }
 

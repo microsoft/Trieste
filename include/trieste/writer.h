@@ -130,7 +130,7 @@ namespace trieste
 
     static Destination dir(const std::filesystem::path& path)
     {
-      auto d = intrusive_ptr(new DestinationDef());
+      auto d = Destination::make();
       d->mode_ = Mode::FileSystem;
       d->path_ = path;
       return d;
@@ -138,7 +138,7 @@ namespace trieste
 
     static Destination console()
     {
-      auto d = intrusive_ptr(new DestinationDef());
+      auto d = Destination::make();
       d->mode_ = Mode::Console;
       d->path_ = ".";
       return d;
@@ -146,7 +146,7 @@ namespace trieste
 
     static Destination synthetic()
     {
-      auto d = intrusive_ptr(new DestinationDef());
+      auto d = Destination::make();
       d->mode_ = Mode::Synthetic;
       d->path_ = ".";
       return d;

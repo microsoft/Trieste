@@ -64,7 +64,7 @@ struct Test
     ptrs_per_thread.emplace_back();
     for (size_t i = 0; i < ptr_count; ++i)
     {
-      ptrs_per_thread.front().push_back(ptr_t{new Dummy{i}});
+      ptrs_per_thread.front().push_back(ptr_t::make(i));
     }
     while (ptrs_per_thread.size() < thread_behaviors.size())
     {

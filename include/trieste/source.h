@@ -51,7 +51,7 @@ namespace trieste
       auto size = f.tellg();
       f.seekg(0, std::ios::beg);
 
-      auto source = intrusive_ptr{new SourceDef()};
+      auto source = Source::make();
       source->origin_ = std::filesystem::relative(file).string();
       source->contents.resize(static_cast<std::size_t>(size));
       f.read(&source->contents[0], size);
@@ -65,7 +65,7 @@ namespace trieste
 
     static Source synthetic(const std::string& contents)
     {
-      auto source = intrusive_ptr{new SourceDef()};
+      auto source = Source::make();
       source->contents = contents;
       source->find_lines();
       return source;

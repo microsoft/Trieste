@@ -196,7 +196,7 @@ namespace trieste
     : type_(type), location_(location), parent_(nullptr)
     {
       if (type_ & flag::symtab)
-        symtab_ = intrusive_ptr(new SymtabDef());
+        symtab_ = Symtab::make();
     }
 
     void add_flags()
@@ -292,12 +292,12 @@ namespace trieste
 
     static Node create(const Token& type)
     {
-      return intrusive_ptr{new NodeDef(type, {nullptr, 0, 0})};
+      return Node(new NodeDef(type, Location{nullptr, 0, 0}));
     }
 
     static Node create(const Token& type, Location location)
     {
-      return intrusive_ptr{new NodeDef(type, location)};
+      return Node(new NodeDef(type, location));
     }
 
     static Node create(const Token& type, NodeRange range)
@@ -305,8 +305,8 @@ namespace trieste
       if (range.empty())
         return create(type);
 
-      return intrusive_ptr{
-        new NodeDef(type, range.front()->location_ * range.back()->location_)};
+      return Node(
+        new NodeDef(type, range.front()->location_ * range.back()->location_));
     }
 
     const Token& type() const

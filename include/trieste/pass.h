@@ -89,7 +89,7 @@ namespace trieste
 
     operator Pass() const
     {
-      return intrusive_ptr(new PassDef(std::move(*this)));
+      return Pass::make(std::move(*this));
     }
 
     const std::string& name()

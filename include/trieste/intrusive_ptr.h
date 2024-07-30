@@ -88,6 +88,12 @@ namespace trieste
     }
 
   public:
+    template<typename... Args>
+    static intrusive_ptr<T> make(Args&&... args)
+    {
+      return intrusive_ptr(new T(std::forward<Args>(args)...));
+    }
+
     constexpr intrusive_ptr() : ptr{nullptr} {}
 
     constexpr intrusive_ptr(std::nullptr_t) : ptr{nullptr} {}
@@ -116,16 +122,19 @@ namespace trieste
 
     constexpr intrusive_ptr<T>& operator=(const intrusive_ptr<T>& other)
     {
-      // Self-assignment case (skip the code below that would destroy the object
-      // otherwise)
+      // Self-assignment case, don't bother touching refcounts then
       if (ptr == other.ptr)
       {
         return *this;
       }
 
-      dec_ref();
+      intrusive_ptr<T> tmp;
+      // Don't actually inc_ref, but putting old ptr in tmp lets us leverage the
+      // built in dec_ref with null checks below.
+      tmp.ptr = ptr;
       ptr = other.ptr;
       inc_ref();
+      // tmp gets dec_ref here, potentially destroying the value at old ptr
       return *this;
     }
 
