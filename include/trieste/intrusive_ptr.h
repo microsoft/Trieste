@@ -11,60 +11,6 @@
 
 namespace trieste
 {
-  namespace detail
-  {
-    // In principle, std::atomic should not be copied.
-    // It should be a single object that is pointer-to and manipulated by
-    // multiple threads. For refcounts however, it should be possible to copy a
-    // refcounted object. The catch is that _everything but the refcount should
-    // be copied_. The copy constructors here will just set the new refcount to
-    // 0, as if the object was constructed from scratch, so different
-    // intrusive_ptr can take ownership of the new object.
-    struct copyable_refcount final
-    {
-    private:
-      // The refcount here starts at 0, not 1 like in other reference counting
-      // systems. It's because we're not even sure we're reference counting a
-      // heap allocated object at all.
-      //
-      // The reference count is embedded into a user-allocatable object that can
-      // (and does in this codebase) live on the stack in some cases. If a
-      // pointer to an intrusive_refcounted is given to an intrusive_ptr, then
-      // its refcount is incremented to 1, and it becomes managed as a
-      // reference-counted object. If not, it is convenient to start and keep
-      // the refcount at 0 - no intrusive_ptr should point to a stack-allocated
-      // intrusive_refcounted. Also, we assert that the end refcount of a
-      // destroyed intrusive_refcounted is 0, and starting at 1 would prevent
-      // that assertion from holding in general.
-      static constexpr size_t refcount_init = 0;
-      std::atomic<size_t> value;
-
-    public:
-      constexpr copyable_refcount(size_t value_) : value{value_} {}
-
-      constexpr copyable_refcount() : value{refcount_init} {}
-      constexpr copyable_refcount(const copyable_refcount&)
-      : value{refcount_init}
-      {}
-
-      operator size_t() const
-      {
-        return value;
-      }
-
-      copyable_refcount& operator+=(size_t inc)
-      {
-        value += inc;
-        return *this;
-      }
-
-      size_t fetch_sub(size_t dec)
-      {
-        return value.fetch_sub(dec);
-      }
-    };
-  }
-
   template<typename T>
   struct intrusive_refcounted_traits
   {
@@ -213,9 +159,21 @@ namespace trieste
   struct intrusive_refcounted
   {
   private:
-    // See docs on this type for an explanation of its unusual refcounting
-    // semantics.
-    detail::copyable_refcount intrusive_refcount;
+    // The refcount here starts at 0, not 1 like in other reference counting
+    // systems. It's because we're not even sure we're reference counting a
+    // heap allocated object at all.
+    //
+    // The reference count is embedded into a user-allocatable object that can
+    // (and does in this codebase) live on the stack in some cases. If a
+    // pointer to an intrusive_refcounted is given to an intrusive_ptr, then
+    // its refcount is incremented to 1, and it becomes managed as a
+    // reference-counted object. If not, it is convenient to start and keep
+    // the refcount at 0 - no intrusive_ptr should point to a stack-allocated
+    // intrusive_refcounted. Also, we assert that the end refcount of a
+    // destroyed intrusive_refcounted is 0, and starting at 1 would prevent
+    // that assertion from holding in general.
+    static constexpr size_t refcount_init = 0;
+    std::atomic<size_t> intrusive_refcount;
 
     constexpr void intrusive_inc_ref()
     {
@@ -244,6 +202,20 @@ namespace trieste
   public:
     template<typename>
     friend struct intrusive_refcounted_traits;
+
+    // When we copy an intrusive_refcounted object, the refcount must not be
+    // copied. It must be reset, because now we have 2 objects with separate
+    // ownership, lifetime, and so forth.
+    //
+    // Point of confusion: if you write your own copy constructor in a subclass,
+    // you don't have to call this superclass's copy constructor. If you just
+    // write your copy constructor as if this superclass didn't exist, the
+    // refcount will be default-initialized, which is what the copy constructor
+    // does anyway if you invoke it.
+    constexpr intrusive_refcounted() : intrusive_refcount{refcount_init} {}
+    constexpr intrusive_refcounted(const intrusive_refcounted<T>&)
+    : intrusive_refcount{refcount_init}
+    {}
 
     constexpr intrusive_ptr<T> intrusive_ptr_from_this()
     {
