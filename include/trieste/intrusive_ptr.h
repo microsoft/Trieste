@@ -23,14 +23,29 @@ namespace trieste
     struct copyable_refcount final
     {
     private:
-      std::atomic<size_t> value{0};
+      // The refcount here starts at 0, not 1 like in other reference counting
+      // systems. It's because we're not even sure we're reference counting a
+      // heap allocated object at all.
+      //
+      // The reference count is embedded into a user-allocatable object that can
+      // (and does in this codebase) live on the stack in some cases. If a
+      // pointer to an intrusive_refcounted is given to an intrusive_ptr, then
+      // its refcount is incremented to 1, and it becomes managed as a
+      // reference-counted object. If not, it is convenient to start and keep
+      // the refcount at 0 - no intrusive_ptr should point to a stack-allocated
+      // intrusive_refcounted. Also, we assert that the end refcount of a
+      // destroyed intrusive_refcounted is 0, and starting at 1 would prevent
+      // that assertion from holding in general.
+      static constexpr size_t refcount_init = 0;
+      std::atomic<size_t> value;
 
     public:
       constexpr copyable_refcount(size_t value_) : value{value_} {}
 
-      constexpr copyable_refcount() = default;
-      constexpr copyable_refcount(const copyable_refcount&) : value{0} {}
-      constexpr copyable_refcount(copyable_refcount&&) : value{0} {}
+      constexpr copyable_refcount() : value{refcount_init} {}
+      constexpr copyable_refcount(const copyable_refcount&)
+      : value{refcount_init}
+      {}
 
       operator size_t() const
       {
@@ -198,7 +213,9 @@ namespace trieste
   struct intrusive_refcounted
   {
   private:
-    detail::copyable_refcount intrusive_refcount{0};
+    // See docs on this type for an explanation of its unusual refcounting
+    // semantics.
+    detail::copyable_refcount intrusive_refcount;
 
     constexpr void intrusive_inc_ref()
     {
