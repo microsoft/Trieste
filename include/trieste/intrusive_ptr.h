@@ -70,7 +70,7 @@ namespace trieste
   private:
     T* ptr;
 
-    constexpr void inc_ref()
+    constexpr void inc_ref() const
     {
       if (ptr)
       {
@@ -127,20 +127,25 @@ namespace trieste
       {
         return *this;
       }
+      // Increment other's refcount before copying the ptr
+      other.inc_ref();
 
       intrusive_ptr<T> tmp;
       // Don't actually inc_ref, but putting old ptr in tmp lets us leverage the
       // built in dec_ref with null checks below.
       tmp.ptr = ptr;
+
       ptr = other.ptr;
-      inc_ref();
       // tmp gets dec_ref here, potentially destroying the value at old ptr
       return *this;
     }
 
     constexpr intrusive_ptr<T>& operator=(intrusive_ptr<T>&& other)
     {
-      std::swap(ptr, other.ptr);
+      intrusive_ptr<T> old;
+      old.ptr = ptr;
+      ptr = other.ptr;
+      other.ptr = nullptr;
       return *this;
     }
 

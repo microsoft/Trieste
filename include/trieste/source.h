@@ -17,21 +17,8 @@ namespace trieste
 {
   class SourceDef;
   struct Location;
-  class NodeDef;
-
-  // Because NodeDef is an incomplete type for a while, we need to explicitly
-  // defer trying to express its refcount increment and decrement (or we get
-  // incomplete type error). The two functions that are not implemented here can
-  // be found under NodeDef's definition.
-  template<>
-  struct intrusive_refcounted_traits<NodeDef>
-  {
-    static constexpr void intrusive_inc_ref(NodeDef*);
-    static constexpr void intrusive_dec_ref(NodeDef*);
-  };
 
   using Source = intrusive_ptr<SourceDef>;
-  using Node = intrusive_ptr<NodeDef>;
 
   class SourceDef final : public intrusive_refcounted<SourceDef>
   {
@@ -126,8 +113,6 @@ namespace trieste
       }
     }
   };
-
-  using Source = intrusive_ptr<SourceDef>;
 
   struct Location
   {
