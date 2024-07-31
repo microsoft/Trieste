@@ -23,7 +23,7 @@ namespace trieste
     struct copyable_refcount final
     {
     private:
-      std::atomic<size_t> value = 0;
+      std::atomic<size_t> value{0};
 
     public:
       constexpr copyable_refcount(size_t value_) : value{value_} {}
@@ -198,7 +198,7 @@ namespace trieste
   struct intrusive_refcounted
   {
   private:
-    detail::copyable_refcount intrusive_refcount = 0;
+    detail::copyable_refcount intrusive_refcount{0};
 
     constexpr void intrusive_inc_ref()
     {
