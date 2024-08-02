@@ -12,10 +12,13 @@ namespace trieste
 {
   class NodeDef;
 
-  // Because NodeDef is an incomplete type in this file, we need to explicitly
-  // defer trying to express its refcount increment and decrement (or we get
-  // incomplete type error). The two functions that are not implemented here can
-  // be found under NodeDef's definition.
+  // Certain uses of the Node alias before the full definition of NodeDef can
+  // cause incomplete type errors, so this manually relocates the problematic
+  // code to after NodeDef is fully defined. See the docs on the specialized
+  // trait for details.
+  //
+  // Note: this is only needed by our C++17 implementation of NodeRange (in
+  // ast.h). If we stop supporting C++17, this can be deleted.
   template<>
   struct intrusive_refcounted_traits<NodeDef>
   {
