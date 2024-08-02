@@ -3,7 +3,7 @@
 #pragma once
 
 #include "logging.h"
-#include "source.h"
+#include "ast.h"
 
 #include <re2/re2.h>
 
@@ -186,7 +186,7 @@ namespace trieste
         if (!parent)
           return ast;
 
-        ast = parent->shared_from_this();
+        ast = parent->intrusive_ptr_from_this();
       }
     }
 

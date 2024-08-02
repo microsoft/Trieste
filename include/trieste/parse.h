@@ -7,6 +7,7 @@
 #include "gen.h"
 #include "logging.h"
 #include "regex.h"
+#include "trieste/intrusive_ptr.h"
 #include "wf.h"
 
 #include <filesystem>
@@ -22,7 +23,7 @@ namespace trieste
     class Make;
     using ParseEffect = std::function<void(Make&)>;
 
-    class RuleDef
+    class RuleDef final : public intrusive_refcounted<RuleDef>
     {
       friend class trieste::Parse;
 
@@ -41,7 +42,7 @@ namespace trieste
       {}
     };
 
-    using Rule = std::shared_ptr<RuleDef>;
+    using Rule = intrusive_ptr<RuleDef>;
 
     class Make
     {
@@ -139,7 +140,7 @@ namespace trieste
         while (node->parent()->type().in(skip))
         {
           extend();
-          node = node->parent()->shared_from_this();
+          node = node->parent()->intrusive_ptr_from_this();
         }
 
         extend();
@@ -147,7 +148,7 @@ namespace trieste
 
         if (p == type)
         {
-          node = p->shared_from_this();
+          node = p->intrusive_ptr_from_this();
         }
         else
         {
@@ -215,7 +216,7 @@ namespace trieste
         {
           extend();
 
-          node = node->parent()->shared_from_this();
+          node = node->parent()->intrusive_ptr_from_this();
           return true;
         }
 
@@ -244,7 +245,7 @@ namespace trieste
         {
           node->push_back(make_error(node->location(), "this is unclosed"));
           term();
-          node = node->parent()->shared_from_this();
+          node = node->parent()->intrusive_ptr_from_this();
           term();
         }
 
@@ -533,13 +534,13 @@ namespace trieste
   inline detail::Rule
   operator>>(detail::Located<const std::string&> s, detail::ParseEffect effect)
   {
-    return std::make_shared<detail::RuleDef>(s, effect);
+    return detail::Rule::make(s, effect);
   }
 
   inline detail::Rule
   operator>>(detail::Located<const char*> s, detail::ParseEffect effect)
   {
-    return std::make_shared<detail::RuleDef>(s, effect);
+    return detail::Rule::make(s, effect);
   }
 
   inline std::pair<Token, GenLocationF>
