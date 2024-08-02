@@ -2,6 +2,7 @@
 
 #include "defaultmap.h"
 #include "rewrite.h"
+#include "trieste/intrusive_ptr.h"
 #include "wf.h"
 
 #include <vector>
@@ -17,9 +18,9 @@ namespace trieste
   }
 
   class PassDef;
-  using Pass = std::shared_ptr<PassDef>;
+  using Pass = intrusive_ptr<PassDef>;
 
-  class PassDef
+  class PassDef : public intrusive_refcounted<PassDef>
   {
   public:
     using F = std::function<size_t(Node)>;
@@ -88,7 +89,7 @@ namespace trieste
 
     operator Pass() const
     {
-      return std::make_shared<PassDef>(std::move(*this));
+      return Pass::make(std::move(*this));
     }
 
     const std::string& name()

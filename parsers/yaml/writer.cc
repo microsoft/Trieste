@@ -1,10 +1,9 @@
 #include "internal.h"
-#include "trieste/rewrite.h"
-#include "trieste/utf8.h"
-#include "trieste/wf.h"
 #include "yaml.h"
 
 #include <string>
+#include <trieste/trieste.h>
+#include <trieste/utf8.h>
 
 namespace
 {
@@ -116,7 +115,7 @@ namespace
 
     if (current->in({MappingItem, FlowMappingItem}))
     {
-      newline = newline || !is_complex(current->shared_from_this());
+      newline = newline || !is_complex(current->intrusive_ptr_from_this());
     }
 
     return newline && !current->in({Sequence, FlowSequence});

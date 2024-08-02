@@ -10,6 +10,24 @@
 
 namespace trieste
 {
+  class NodeDef;
+
+  // Certain uses of the Node alias before the full definition of NodeDef can
+  // cause incomplete type errors, so this manually relocates the problematic
+  // code to after NodeDef is fully defined. See the docs on the specialized
+  // trait for details.
+  //
+  // Note: this is only needed by our C++17 implementation of NodeRange (in
+  // ast.h). If we stop supporting C++17, this can be deleted.
+  template<>
+  struct intrusive_refcounted_traits<NodeDef>
+  {
+    static constexpr void intrusive_inc_ref(NodeDef*);
+    static constexpr void intrusive_dec_ref(NodeDef*);
+  };
+
+  using Node = intrusive_ptr<NodeDef>;
+
   struct TokenDef;
   struct Token;
 
