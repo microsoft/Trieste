@@ -65,6 +65,36 @@ namespace trieste
     };
   }
 
+  // These traits are an indirect helper for incrementing and decrementing
+  // refcounts on intrusive_refcounted objects. Usually, it is fine to just call
+  // the intrusive_inc_ref and intrusive_dec_ref methods on T* directly, but
+  // inflexibly doing that all the time interacts poorly with cases where T is
+  // an incomplete type.
+  //
+  // Consider this example, where many intrusive_ptr methods must be compiled in
+  // a context where T is an incomplete type:
+  // ```cpp
+  // class T;
+  // using Handle = intrusive_ptr<T>;
+  // void foo(Handle /*...*/) { /*...*/ }
+  // ```
+  //
+  // Without any special handling, this would try to compile both method calls
+  // and destructor calls on an incomplete T, which is bad. The solution is to
+  // specialize these traits with forward-declared functions:
+  // ```cpp
+  // template<>
+  // struct intrusive_refcounted_traits<T>
+  // {
+  //   static constexpr void intrusive_inc_ref(T* ptr);
+  //   static constexpr void intrusive_dec_ref(T* ptr);
+  // };
+  // ```
+  //
+  // Then, you can implement the function bodies later on in your code when T is
+  // complete, and using Handle at any point will be fine because the 2
+  // functions prototypes prevent Handle from actually trying to compile the
+  // method calls it needs too early.
   template<typename T>
   struct intrusive_refcounted_traits
   {
