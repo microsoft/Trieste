@@ -11,6 +11,18 @@
 namespace trieste
 {
   class NodeDef;
+
+  // Because NodeDef is an incomplete type in this file, we need to explicitly
+  // defer trying to express its refcount increment and decrement (or we get
+  // incomplete type error). The two functions that are not implemented here can
+  // be found under NodeDef's definition.
+  template<>
+  struct intrusive_refcounted_traits<NodeDef>
+  {
+    static constexpr void intrusive_inc_ref(NodeDef*);
+    static constexpr void intrusive_dec_ref(NodeDef*);
+  };
+
   using Node = intrusive_ptr<NodeDef>;
 
   struct TokenDef;
