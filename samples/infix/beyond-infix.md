@@ -467,8 +467,8 @@ Be aware however that it is easy to write parser rules that go wrong on sufficie
 > [!CAUTION]
 > Notice that grouping ranges of tokens using `m.seq` will always allow a trailing separator, such as a trailing comma in our case.
 > This is a feature given our tuple design, but it can have unexpected consequences for other use cases.
-> For example, the Infix language allows trailing `=` in assignments: `x = 1 =;` is equivalent to `x = 1;` because assignments are also implemented using `m.seq`.
-> As we did above, it might be possible to avoid these undesirable semantics with extra conditionals, but the more of those conditionals live in the parser, the more it may benefit readability and analyzability to express those semantics as passes and rules instead.
+> For example, the Infix language used to allow trailing `=` in assignments: `x = 1 =;` was equivalent to `x = 1;` because assignments were also implemented using `m.seq`.
+> It might be possible to avoid these undesirable semantics with extra conditionals, but the more of those conditionals live in the parser, the more it may benefit readability and analyzability to express those semantics as passes and rules instead.
 
 Once we have our parser tuples in our AST, we can extract them using rewrite rules.
 Here are our commented rewrite rules from the `expressions` pass:
@@ -766,7 +766,7 @@ While we don't make significant changes to Infix's scoping behavior, there were 
 - If your language has non-traditional scoping behavior, you can still use symbol tables, but you may want to avoid `flags::defbeforeuse` and `flags::shadowing` as they have the non-customizable error behavior mentioned above.
   It is however still possible to get any given result if you write your own lookup helpers around the main lookup method, and write your own resolver to disambiguate between or flag errors regarding all the definitions the less-constrained built-in lookup will find.
 
-### Notes on Pattern Behavior
+### Extra Trieste Behavior Notes
 
 Here are some stories that came up during development, but the outcome was ultimately scrapped.
 They have their own educational merit however, so we discuss them here.
@@ -842,6 +842,142 @@ Instead, you can follow this example:
 // Technically it names the disjunction "Op", but we do not use that name.
 | (Assign <<= Ident * (Op >>= Literal | Expression)) 
 ```
+
+#### How Assignment Used to Work
+
+This section keeps alive the old documentation on how assignment was implemented.
+It was another use of .seq which ultimately made less sense, as it allowed strange shapes like `x = 1 =;`.
+Its diagrams may help you understand how .seq works regardless, however.
+
+``` c++
+// Equals.
+R"(=)" >> [](auto& m) { m.add(Equals); },
+
+// Terminator.
+R"(;)" >> [](auto& m) { m.term({Equals}); },
+```
+
+These rules, for parsing assignments, are different from the other parsing rules for
+the infix language. The first rule calls `seq`. This command indicates that we are 
+entering into a sequence of groups. Let's look at how we parse this line:
+
+``` typescript
+x = 5 + 3;
+```
+
+<table>
+<tr><th>Action</th><th>Location</th><th>Tree</th></tr>
+<tr><td>Init</td><td>
+
+``` typescript
+x = 5 + 3;
+^
+```
+
+</td><td>
+
+``` mermaid
+graph TD;
+  A[Top]-->B[File]
+  B-->C(cursor):::cursor
+  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
+```
+
+</td></tr>
+<tr><td>Token (add) </td><td>
+
+``` typescript
+x = 5 + 3;
+  ^
+```
+
+</td><td>
+
+``` mermaid
+graph TD;
+  A[Top]-->B[File]
+  B-->C[Group]
+  C-->D[x]
+  C-->E(cursor):::cursor
+  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
+```
+
+</td></tr>
+<tr><td>Token (seq)</td><td>
+
+``` typescript
+x = 5 + 3;
+   ^
+```
+
+</td><td>
+
+``` mermaid
+graph TD;
+  A[Top]-->B[File]
+  B-->C[=]
+  C-->D[Group]
+  D-->E[x]
+  C-->F(cursor):::cursor
+  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
+
+```
+
+</td></tr>
+<tr><td>Token (add x 3)</td><td>
+
+``` typescript
+x = 5 + 3;
+         ^
+```
+
+</td><td>
+
+``` mermaid
+graph TD;
+  A[Top]-->B[File]
+  B-->C[=]
+  C-->D[Group]
+  D-->E[x]
+  C-->F[Group]
+  F-->G[Int 5]
+  F-->H[Add]
+  F-->I[Int 3]
+  F-->J(cursor):::cursor
+  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
+```
+
+</td></tr>
+<tr><td>Token (term)</td><td>
+
+``` typescript
+x = 5 + 3;
+          ^
+```
+
+</td><td>
+
+``` mermaid
+graph TD;
+  A[Top]-->B[File]
+  B-->C[=]
+  C-->D[Group]
+  D-->E[x]
+  C-->F[Group]
+  F-->G[Int 5]
+  F-->H[Add]
+  F-->I[Int 3]
+  B-->J(cursor):::cursor
+  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
+```
+
+</td></tr>
+</table>
+
+Because we call `term` with `Equals`, it will not only
+terminate the group but also terminate the sequence of values in
+the `Equals`. The next call to `add` will add a new group at the same
+level as the `Equals`.
 
 ## Fuzzing and Test Cases
 

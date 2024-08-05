@@ -164,7 +164,7 @@ p("start", // this indicates the 'mode' these rules are associated with
     R"(\s+)" >> [](auto&) {}, // no-op
 
     // Equals.
-    R"(=)" >> [](auto& m) { m.seq(Equals); },
+    R"(=)" >> [](auto& m) { m.add(Equals); },
 
     // [tuples only] Commas: might be tuple literals, function calls.
     R"(,)" >> [](auto& m) { m.add(Comma); },
@@ -622,140 +622,6 @@ As you can see, `push` and `pop` allow us to move up and down the parse
 tree, creating structure even as we parse the tokens themselves that
 will help us later in the process.
 
-### Parsing example with `seq`
-
-Let's look at the rule definitions again in detail:
-
-``` c++
-// Equals.
-R"(=)" >> [](auto& m) { m.seq(Equals); },
-
-// Terminator.
-R"(;)" >> [](auto& m) { m.term({Equals}); },
-```
-
-These rules, for parsing assignments, are different from the other parsing rules for
-the infix language. The first rule calls `seq`. This command indicates that we are 
-entering into a sequence of groups. Let's look at how we parse this line:
-
-``` typescript
-x = 5 + 3;
-```
-
-<table>
-<tr><th>Action</th><th>Location</th><th>Tree</th></tr>
-<tr><td>Init</td><td>
-
-``` typescript
-x = 5 + 3;
-^
-```
-
-</td><td>
-
-``` mermaid
-graph TD;
-  A[Top]-->B[File]
-  B-->C(cursor):::cursor
-  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
-```
-
-</td></tr>
-<tr><td>Token (add) </td><td>
-
-``` typescript
-x = 5 + 3;
-  ^
-```
-
-</td><td>
-
-``` mermaid
-graph TD;
-  A[Top]-->B[File]
-  B-->C[Group]
-  C-->D[x]
-  C-->E(cursor):::cursor
-  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
-```
-
-</td></tr>
-<tr><td>Token (seq)</td><td>
-
-``` typescript
-x = 5 + 3;
-   ^
-```
-
-</td><td>
-
-``` mermaid
-graph TD;
-  A[Top]-->B[File]
-  B-->C[=]
-  C-->D[Group]
-  D-->E[x]
-  C-->F(cursor):::cursor
-  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
-
-```
-
-</td></tr>
-<tr><td>Token (add x 3)</td><td>
-
-``` typescript
-x = 5 + 3;
-         ^
-```
-
-</td><td>
-
-``` mermaid
-graph TD;
-  A[Top]-->B[File]
-  B-->C[=]
-  C-->D[Group]
-  D-->E[x]
-  C-->F[Group]
-  F-->G[Int 5]
-  F-->H[Add]
-  F-->I[Int 3]
-  F-->J(cursor):::cursor
-  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
-```
-
-</td></tr>
-<tr><td>Token (term)</td><td>
-
-``` typescript
-x = 5 + 3;
-          ^
-```
-
-</td><td>
-
-``` mermaid
-graph TD;
-  A[Top]-->B[File]
-  B-->C[=]
-  C-->D[Group]
-  D-->E[x]
-  C-->F[Group]
-  F-->G[Int 5]
-  F-->H[Add]
-  F-->I[Int 3]
-  B-->J(cursor):::cursor
-  classDef cursor stroke-width:4px,stroke-dasharray:5 5;
-```
-
-</td></tr>
-</table>
-
-Because we call `term` with `Equals`, it will not only
-terminate the group but also terminate the sequence of values in
-the `Equals`. The next call to `add` will add a new group at the same
-level as the `Equals`.
-
 ## Passes
 
 We now have a parse tree for our program. It has turned this program:
@@ -773,39 +639,36 @@ into this tree:
 ```
 top
 └── file
-    ├── equals
-    │   ├── group
-    │   │   └── ident x
-    │   └── group
-    │       ├── int 5
-    │       ├── +
-    │       └── int 10
-    ├── equals
-    │   ├── group
-    │   │   └── ident y
-    │   └── group
-    │       ├── int 1
-    │       ├── -
-    │       ├── int 9
-    │       ├── +
-    │       └── ident x
+    ├── group
+    │   ├── ident x
+    │   ├── equals
+    │   ├── int 5
+    │   ├── +
+    │   └── int 10
+    ├── group
+    │   ├── ident y
+    │   ├── equals
+    │   ├── int 1
+    │   ├── -
+    │   ├── int 9
+    │   ├── +
+    │   └── ident x
     ├── group
     │   ├── print
     │   ├── string "1"
     │   ├── ident x
     │   ├── +
     │   └── ident y
-    ├── equals
-    │   ├── group
-    │   │   └── ident z
-    │   └── group
-    │       ├── paren
-    │       │   └── group
-    │       │       ├── int 5
-    │       │       ├── *
-    │       │       └── ident x
-    │       ├── /
-    │       └── ident y
+    ├── group
+    │   ├── ident z
+    │   ├── equals
+    │   ├── paren
+    │   │   └── group
+    │   │       ├── int 5
+    │   │       ├── *
+    │   │       └── ident x
+    │   ├── /
+    │   └── ident y
     └── group
         ├── print
         ├── string "2"
@@ -826,9 +689,8 @@ inline const auto wf_parse_tokens = wf_literal | String | Paren | Print | Ident 
 // ++ indicates that there are zero or more instances of the token
 inline const auto wf_parser =
     (Top <<= File)
-  | (File <<= (Group | Equals)++)
+  | (File <<= Group++)
   | (Paren <<= Group++)
-  | (Equals <<= Group++)
   | (Group <<= wf_parse_tokens++)
   ;
 ```
@@ -838,9 +700,9 @@ ensure that the input to the next pass is as expected. If the parse
 tree fails this check, Trieste will stop rewriting at that pass and
 output an error indicating what is wrong with the tree.
 
-### Pass 1: Expressions
+### Pass 1 & 2: Definitions and Expressions
 
-Our first pass will take the raw tokens from the parser and organize
+Our first passes will take the raw tokens from the parser and organize
 them into mathematical expressions. We will do this by specifying a 
 `PassDef` object, which has the following constructor:
 
@@ -883,9 +745,8 @@ In(Top) * T(File)[File] >>
 // i.e. a single ident being assigned. We replace it with
 // an Assign node that has two children: the Ident and the
 // an Expression, which will take the children of the Group.
-In(Calculation) *
-    (T(Equals) << ((T(Group) << T(Ident)[Id]) * T(Group)[Rhs])) >>
-  [](Match& _) { return Assign << _(Id) << (Expression << *_[Rhs]); },
+In(Calculation) * T(Group) << (T(Ident)[Id] * T(Equals) * Any++[Rhs]) >>
+  [](Match& _) { return Assign << _(Id) << (Expression << _[Rhs]); },
 
 // This rule selects a Group that matches the Output pattern
 // of `print <string> <expression>`. In this case, Any++ indicates that
@@ -897,12 +758,16 @@ In(Calculation) *
     (T(Group) << (T(Print) * T(String)[Lhs] * Any++[Rhs])) >>
   [](Match& _) { return Output << _(Lhs) << (Expression << _[Rhs]); },
 
+```
+
+Then, once we've organized our definitions into `Output` and `Assign`, pre-process our expressions:
+```cpp
 // This node unwraps Groups that are inside Parens, making them
 // Expression nodes.
 In(Expression) * (T(Paren) << T(Group)[Group]) >>
   [](Match& _) { return Expression << *_[Group]; },
-
 ```
+
 The general shape of a rule is `Pattern >> Effect`, which produces a `PatternEffect`.
 In a pattern, `T(Foo)` matches a single node `Foo`, and `C * D` matches pattern `C` followed 
 by pattern `D`. `P << C` means that the pattern `C` matches the children of whatever node
@@ -996,6 +861,12 @@ inline const auto wf_pass_expressions =
 This will ensure that a tree which progresses to the next step takes
 this form.
 
+> [!NOTE]
+> We omit the well-formedness definition in between the `definitions` and `expressions` passes.
+> That intermediate well-formedness definition is not necessary in the simplest case, so we keep things straightforward here.
+> In more complex expression rules, then splitting the ruleset into two passes helps separate out the processing of expressions and definitions, and leads to smaller and simpler passes in the end.
+> For the curious, the intermediate pass's well-formedness definition allows a mix of valid assignments and fully unparsed expressions, building the definition above in two steps instead of one.
+
 Now that we have a pass, let us look at how we construct a
 `Driver` object:
 
@@ -1016,7 +887,7 @@ function returns the `Parse` object that we specified before.
 We then include our rewrite passes, where the `PassDef` returned
 by the function `expressions()` is the only one defined thus far. 
 
-### Pass 2: Terminals
+### Pass 3: Terminals
 
 While it might be possible to write patterns that means "int or float or identifier or nested expression" while parsing operator precedence, this quickly stops scaling for more complex languages.
 So, before we parse binary operators, we quickly note which single tokens count expressions on their own.
@@ -1034,7 +905,7 @@ Similarly, in our language all identifiers in an expression count as leaf sub-ex
 
 If you need to tackle the more complex case of looking for "an int token that has at least one sibling on either side", then look in the [./beyond-infix](advanced tutorial) for some pattern writing techniques.
 
-### Passes 3 and 4: Operator precedence
+### Passes 4 and 5: Operator precedence
 
 Now that we have our tokens roughly organized around mathematical
 expressions, we need to solve the problem of operator precedence.
@@ -1302,7 +1173,7 @@ flowchart TD
 The resulting tree can be evaluated recursively to obtain a result
 which respects the operator precedence rules.
 
-### Pass 4: Trim
+### Pass 6: Trim
 
 At this point there may be a few nodes where you have an
 expression as a child of an expression. Before we proceed we want
@@ -1393,7 +1264,7 @@ top
                 └── ident z
 ```
 
-### Pass 5: Checking References
+### Pass 7: Checking References
 
 At this stage, we will check that all of our identifiers are defined.
 Recall that we are building a symbol table for the calculation. Trieste
