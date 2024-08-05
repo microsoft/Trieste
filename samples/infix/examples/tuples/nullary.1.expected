@@ -1,0 +1,6 @@
+//! --enable-tuples expect_parse_fail
+//! expect_parse_fail
+Invalid paren
+-- nullary.infix:0:11
+print "()" ();
+           ~

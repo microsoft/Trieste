@@ -961,6 +961,7 @@ namespace trieste
         return {intrusive_ptr<Not>::make(pattern), FastPattern::match_pred()};
       }
 
+      /** match RHS in the context of LHS */
       Pattern operator*(Pattern rhs) const
       {
         auto result = pattern->clone();
@@ -993,6 +994,7 @@ namespace trieste
             FastPattern::match_choice(fast_pattern, rhs.fast_pattern)};
       }
 
+      /** within LHS, match RHS */
       Pattern operator<<(Pattern rhs) const
       {
         return {
@@ -1049,6 +1051,7 @@ namespace trieste
   inline const auto End = detail::Pattern(
     intrusive_ptr<detail::Last>::make(), detail::FastPattern::match_pred());
 
+  /** matches the token */
   inline detail::Pattern T(const Token& type)
   {
     std::vector<Token> types = {type};
@@ -1057,6 +1060,7 @@ namespace trieste
       detail::FastPattern::match_token({type}));
   }
 
+  /** matches any of the tokens given */
   template<typename... Ts>
   inline detail::Pattern
   T(const Token& type1, const Token& type2, const Ts&... types)
@@ -1093,6 +1097,7 @@ namespace trieste
     return {node};
   }
 
+  /** get the contents of the node range */
   inline detail::RangeContents operator*(NodeRange range)
   {
     return {range};
@@ -1108,6 +1113,7 @@ namespace trieste
     return lhs ? lhs : rhs;
   }
 
+  /** LHS, but with RHS appended */
   inline Node operator<<(Node node1, Node node2)
   {
     node1->push_back(node2);

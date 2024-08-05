@@ -1,0 +1,9 @@
+//! postfix
+//! --enable-tuples postfix
+//! --enable-tuples --tuples-require-parens postfix
+//! --enable-tuples --tuples-require-parens --use-parser-tuples postfix
+x 5 10 + =
+y 1 9 - x + =
+"1" x y + print
+z 5 x * y / =
+"2" z print
