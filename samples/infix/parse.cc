@@ -6,7 +6,7 @@
 
 namespace infix
 {
-  const std::initializer_list<Token> terminators = {Equals, ParserTuple};
+  const std::initializer_list<Token> terminators = {ParserTuple};
 
   Parse parser(bool use_parser_tuples)
   {
@@ -21,7 +21,7 @@ namespace infix
           R"(\s+)" >> [](auto&) {}, // no-op
 
           // Equals.
-          R"(=)" >> [](auto& m) { m.seq(Equals); },
+          R"(=)" >> [](auto& m) { m.add(Equals); },
 
           // [tuples only] Commas: might be tuple literals, function calls.
           R"(,)" >>
@@ -109,7 +109,7 @@ namespace infix
           R"(-)" >> [](auto& m) { m.add(Subtract); },
 
           // Multiply ('*' is a reserved RegEx character)
-          R"re(\*)re" >> [](auto& m) { m.add(Multiply); },
+          R"(\*)" >> [](auto& m) { m.add(Multiply); },
 
           // Divide
           R"(/)" >> [](auto& m) { m.add(Divide); },

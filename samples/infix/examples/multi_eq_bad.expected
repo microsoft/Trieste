@@ -3,11 +3,16 @@
 //! --enable-tuples --tuples-require-parens expect_parse_fail
 //! --enable-tuples --tuples-require-parens --use-parser-tuples expect_parse_fail
 Invalid assign
--- multi_eq_bad.infix:0:0
+-- multi_eq_bad.infix:0:6
 x = 5 = 6;
-~~~~~~~~~
+      ~
 
 Invalid assign
--- multi_eq_bad.infix:2:0
-x = = 1;
-~~~~~~~
+-- multi_eq_bad.infix:1:6
+y = 1 =;
+      ~
+
+Invalid assign
+-- multi_eq_bad.infix:2:4
+z = = 1;
+    ~

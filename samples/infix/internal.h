@@ -12,7 +12,7 @@ namespace infix
 
   // clang-format off
   inline const auto wf_parse_tokens =
-    Int | Float | String | Paren | Print | Ident | Add | Subtract | Divide | Multiply
+    Int | Float | String | Paren | Print | Ident | Add | Subtract | Divide | Multiply | Equals
     // --- tuples extension ---
     | Comma | Append | TupleIdx
     ;
@@ -23,7 +23,6 @@ namespace infix
       (Top <<= File)
     | (File <<= (Group | Equals)++)
     | (Paren <<= Group++)
-    | (Equals <<= Group++)
     | (Group <<= wf_parse_tokens++)
     // --- tuples extension ---
     | (Paren <<= (Group | ParserTuple)++)

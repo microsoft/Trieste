@@ -1,6 +1,8 @@
 #include "infix.h"
 #include "internal.h"
 #include "trieste/ast.h"
+#include "trieste/pass.h"
+#include "trieste/token.h"
 
 #include <sys/types.h>
 #include <trieste/trieste.h>
@@ -19,9 +21,34 @@ namespace
   inline const auto TupleCandidate = TokenDef("infix-tuple-candidate");
 
   // clang-format off
-  inline const auto wf_expressions_tokens =
-    (wf_parse_tokens - (String | Paren | Print))
+  inline const auto wf_definitions_tokens =
+    (wf_parse_tokens - (String | Equals | Print))
     | Expression
+    // Only relevant until expressions pass:
+    | Paren
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline const auto wf_pass_definitions =
+      (Top <<= Calculation)
+    | (Calculation <<= (Assign | Output)++)
+    // [Ident] here indicates that the Ident node is a symbol that should
+    // be stored in the symbol table  
+    | (Assign <<= Ident * Expression)[Ident]
+    | (Output <<= String * Expression)
+    // Almost but not quite what we want - the next pass ensures an expression can't be empty (after eliminating the one tuple-related case where it can be), and removes stray groups here.
+    | (Expression <<= wf_definitions_tokens++)
+    // There are only relevant until next pass:
+    | (Group <<= wf_definitions_tokens++)
+    | (Paren <<= (Group | ParserTuple)++)
+    | (ParserTuple <<= Group++)
+    ;
+  // clang-format on
+
+  // clang-format off
+  inline const auto wf_expressions_tokens =
+    (wf_definitions_tokens - Paren)
     // --- tuples extension ---
     | TupleCandidate
     | ParserTuple
@@ -30,13 +57,8 @@ namespace
 
   // clang-format off
   inline const auto wf_pass_expressions =
-      (Top <<= Calculation)
-    | (Calculation <<= (Assign | Output)++)
-    // [Ident] here indicates that the Ident node is a symbol that should
-    // be stored in the symbol table  
-    | (Assign <<= Ident * Expression)[Ident]
+    wf_pass_definitions
     | (Ref <<= Ident) // not checked yet, but syntactically we're sure it's an identifier
-    | (Output <<= String * Expression)
     // [1] here indicates that there should be at least one token
     | (Expression <<= wf_expressions_tokens++[1])
     // --- tuples extension ---
@@ -123,12 +145,12 @@ namespace
     ;
   // clang-format on
 
-  PassDef expressions(const Config& config)
+  PassDef definitions()
   {
-    PassDef pass{
-      "expressions",
-      wf_pass_expressions,
-      dir::topdown,
+    return {
+      "definitions",
+      wf_pass_definitions,
+      dir::topdown | dir::once,
       {
         // In() indicates this is the root node of the pattern match.
         // What we return will replace the nodes we specify after the *.
@@ -143,9 +165,8 @@ namespace
         // i.e. a single ident being assigned. We replace it with
         // an Assign node that has two children: the Ident and the
         // an Expression, which will take the children of the Group.
-        In(Calculation) *
-            (T(Equals) << ((T(Group) << T(Ident)[Id]) * T(Group)[Rhs] * End)) >>
-          [](Match& _) { return Assign << _(Id) << (Expression << *_[Rhs]); },
+        In(Calculation) * T(Group) << (T(Ident)[Id] * T(Equals) * Any++[Rhs]) >>
+          [](Match& _) { return Assign << _(Id) << (Expression << _[Rhs]); },
 
         // This rule selects a Group that matches the Output pattern
         // of `print <string> <expression>`. In this case, Any++ indicates that
@@ -156,7 +177,32 @@ namespace
         In(Calculation) *
             (T(Group) << (T(Print) * T(String)[Lhs] * Any++[Rhs])) >>
           [](Match& _) { return Output << _(Lhs) << (Expression << _[Rhs]); },
+
+        // Error cases: because rules are tried in order, this only catches
+        // things that don't match the rules above.
+        T(Equals)[Equals] >>
+          [](Match& _) { return err(_(Equals), "Invalid assign"); },
+
+        // Orphaned print node will catch bad output statements
+        T(Print)[Print] >>
+          [](Match& _) { return err(_(Print), "Invalid output"); },
+
+        In(Calculation) * T(Group)[Group] >>
+          [](Match& _) {
+            return err(_(Group), "Could not parse as assign or print");
+          },
       }};
+  }
+
+  PassDef expressions(const Config& config)
+  {
+    PassDef pass{
+      "expressions",
+      wf_pass_expressions,
+      // with once, sometimes we fail to flag empty expressions as errors
+      dir::topdown,
+      {},
+    };
 
     // This is the normal arithmetic grouping rule, same as Infix without
     // tuples. It should apply in any of these cases:
@@ -308,14 +354,6 @@ namespace
       // malformed parser tuples.
       T(Paren)[Paren] >>
         [](Match& _) { return err(_(Paren), "Invalid paren"); },
-
-      // Ditto for malformed equals nodes
-      T(Equals)[Equals] >>
-        [](Match& _) { return err(_(Equals), "Invalid assign"); },
-
-      // Orphaned print node will catch bad output statements
-      T(Print)[Print] >>
-        [](Match& _) { return err(_(Print), "Invalid output"); },
 
       // Our WF definition allows this, so we need to handle it.
       T(Expression)[Rhs] << End >>
@@ -618,6 +656,7 @@ namespace infix
     return {
       "infix",
       {
+        definitions(),
         expressions(config),
         terminals(),
         tuple_idx(),
