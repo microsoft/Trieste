@@ -238,7 +238,28 @@ namespace
             (T(Paren) << (T(ParserTuple)[ParserTuple] << T(Group)++[Group]) *
                End) >>
           [](Match& _) {
-            Node parser_tuple = ParserTuple;
+            // Style note: doing more complex manipulations in an action body
+            // like this can be useful. If the pattern fully validates your
+            // input, it can be very effective to write a few lines of code
+            // beyond a return that just construct the output tree you want
+            // (here, meaning "and also make all the sub-groups expressions").
+            // In this case, doing the change all in one makes the pattern
+            // easier to read (as in, looks like a selection from the WF
+            // definition), rather than merging the nested loop into a set of
+            // recursive patterns.
+            //
+            // On the other hand, consider that if this "extra code" becomes too
+            // long (or more complicated than what you might reasonably write in
+            // one line of SQL/Python/Haskell/Scala/OCaml/language with
+            // expressive one-liners), then you might not be using Trieste to
+            // its full potential. Adding a new pass (either before or after!)
+            // and/or splitting up a large rule is often the better idea,
+            // because then you can see the cases of your logic enumerated (like
+            // everywhere else in this file), and you can look at AST dumps
+            // between passes when debugging. Remember - keeping your code
+            // simple, logical, readable, and debuggable is the key metric.
+            Node parser_tuple =
+              ParserTuple; // start with empty ParserTuple node
             for (const auto& child : _[Group])
             {
               // Use NodeRange to make Expression use all of the child's
