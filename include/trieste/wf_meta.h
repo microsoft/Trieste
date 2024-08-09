@@ -417,14 +417,19 @@ namespace trieste::wf::meta
         {
           if (field == WfTokenName)
           {
-            fields.emplace_back(
-              token_by_name(field), Choice{{token_by_name(field)}});
+            fields.push_back(Field{
+              token_by_name(field),
+              Choice{{token_by_name(field)}},
+            });
           }
           else if (field == WfFieldNamedChoice)
           {
             Node field_name = field / WfTokenName;
             Node choice = field / WfChoice;
-            fields.emplace_back(token_by_name(field_name), read_choice(choice));
+            fields.push_back(Field{
+              token_by_name(field_name),
+              read_choice(choice),
+            });
           }
           else
           {
