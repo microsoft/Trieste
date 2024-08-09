@@ -294,7 +294,10 @@ namespace trieste::wf::meta
 
     auto result =
       Top << (WfMeta << (WfNamespace ^ raw_ns) << token_defs << shape_defs);
-    assert(wf_wf.build_st(result));
+    if (!wf_wf.build_st(result))
+    {
+      throw std::runtime_error("Failed to build symbol table");
+    }
     return result;
   }
 
