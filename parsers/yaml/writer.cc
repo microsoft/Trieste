@@ -84,7 +84,7 @@ namespace
 
   bool is_in(const Node& node, std::set<Token> tokens)
   {
-    NodeDef* parent = node->parent();
+    NodeDef* parent = node->parent_unsafe();
     while (parent != Top)
     {
       if (tokens.count(parent->type()) > 0)
@@ -92,7 +92,7 @@ namespace
         return true;
       }
 
-      parent = parent->parent();
+      parent = parent->parent_unsafe();
     }
 
     return false;
@@ -101,16 +101,16 @@ namespace
   bool is_sequence_out(Node node)
   {
     bool newline = false;
-    NodeDef* current = node->parent();
+    NodeDef* current = node->parent_unsafe();
     if (current->in({AnchorValue, TagValue}))
     {
       newline = true;
-      current = current->parent();
+      current = current->parent_unsafe();
     }
 
     if (current->in({AnchorValue, TagValue}))
     {
-      current = current->parent();
+      current = current->parent_unsafe();
     }
 
     if (current->in({MappingItem, FlowMappingItem}))

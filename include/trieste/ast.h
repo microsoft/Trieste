@@ -324,7 +324,12 @@ namespace trieste
       return location_;
     }
 
-    NodeDef* parent()
+    Node parent()
+    {
+      return parent_ ? parent_->intrusive_ptr_from_this() : nullptr;
+    }
+
+    NodeDef* parent_unsafe()
     {
       return parent_;
     }
@@ -407,7 +412,7 @@ namespace trieste
 
     auto find_first(Token token, NodeIt begin)
     {
-      assert((*begin)->parent() == this);
+      assert((*begin)->parent_unsafe() == this);
       return std::find_if(
         begin, children.end(), [token](auto& n) { return n->type() == token; });
     }

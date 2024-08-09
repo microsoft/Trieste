@@ -283,7 +283,7 @@ namespace
       return front->location().linecol().second;
     }
 
-    return indent_of(node->parent());
+    return indent_of(node->parent_unsafe());
   }
 
   Location trim_start(const Location& loc, std::size_t min_indent)
@@ -618,7 +618,7 @@ namespace
       return Top;
     }
 
-    return find_nearest(node->parent(), tokens);
+    return find_nearest(node->parent_unsafe(), tokens);
   }
 
   std::size_t
@@ -2283,7 +2283,8 @@ namespace
              << (~T(Whitespace) * AnchorTag[Anchor] * ~AnchorTag[Tag] * End)) >>
           [](Match& _) {
             Token nearest_group = find_nearest(
-              _(Anchor)->parent(), {DocumentGroup, KeyGroup, ValueGroup});
+              _(Anchor)->parent_unsafe(),
+              {DocumentGroup, KeyGroup, ValueGroup});
             return Lift << nearest_group << _(Anchor) << _(Tag);
           },
 
@@ -2874,7 +2875,7 @@ namespace
        {
          (T(DoubleQuote)[DoubleQuote] << End) >>
            [](Match& _) {
-             std::size_t indent = indent_of(_(DoubleQuote)->parent());
+             std::size_t indent = indent_of(_(DoubleQuote)->parent_unsafe());
              if (_(DoubleQuote)->parent() != Document)
              {
                indent += 1;
@@ -2891,7 +2892,7 @@ namespace
 
          (T(SingleQuote)[SingleQuote] << End) >>
            [](Match& _) {
-             std::size_t indent = indent_of(_(SingleQuote)->parent());
+             std::size_t indent = indent_of(_(SingleQuote)->parent_unsafe());
              if (_(SingleQuote)->parent() != Document)
              {
                indent += 1;
@@ -2913,7 +2914,8 @@ namespace
                   T(ChompIndicator)[ChompIndicator] *
                   T(BlockLine)++[BlockLine] * End)) >>
            [](Match& _) {
-             std::size_t indent = indent_of(_(IndentIndicator)->parent());
+             std::size_t indent =
+               indent_of(_(IndentIndicator)->parent_unsafe());
              std::size_t relative_indent =
                _(IndentIndicator)->location().view()[0] - '0';
              indent += relative_indent;
@@ -2925,7 +2927,8 @@ namespace
               << (T(IndentIndicator)[IndentIndicator] *
                   T(BlockLine)++[BlockLine] * End)) >>
            [](Match& _) {
-             std::size_t indent = indent_of(_(IndentIndicator)->parent());
+             std::size_t indent =
+               indent_of(_(IndentIndicator)->parent_unsafe());
              std::size_t relative_indent =
                _(IndentIndicator)->location().view()[0] - '0';
              indent += relative_indent;

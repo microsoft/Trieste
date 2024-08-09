@@ -140,7 +140,7 @@ namespace trieste
         while (node->parent()->type().in(skip))
         {
           extend();
-          node = node->parent()->intrusive_ptr_from_this();
+          node = node->parent();
         }
 
         extend();
@@ -148,7 +148,7 @@ namespace trieste
 
         if (p == type)
         {
-          node = p->intrusive_ptr_from_this();
+          node = p;
         }
         else
         {
@@ -216,7 +216,7 @@ namespace trieste
         {
           extend();
 
-          node = node->parent()->intrusive_ptr_from_this();
+          node = node->parent();
           return true;
         }
 
@@ -245,7 +245,7 @@ namespace trieste
         {
           node->push_back(make_error(node->location(), "this is unclosed"));
           term();
-          node = node->parent()->intrusive_ptr_from_this();
+          node = node->parent();
           term();
         }
 
