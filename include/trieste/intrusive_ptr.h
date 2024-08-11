@@ -263,7 +263,7 @@ namespace trieste
     // because it's long for something that might be pasted over 10x
     // into functions that use intrusive_ptr a lot.
     SNMALLOC_SLOW_PATH
-    constexpr void intrusive_dec_ref()
+    void intrusive_dec_ref()
     {
       // Atomically subtract 1 from refcount and get the _old value_.
       size_t prev_rc = intrusive_refcount.fetch_sub(1);
@@ -274,8 +274,88 @@ namespace trieste
       // If the value was 1, it is now 0 and we can clean up.
       if (prev_rc == 1)
       {
-        delete static_cast<T*>(this);
+        recursion_safe_delete_this();
       }
+    }
+
+    /**
+     * @brief Safely destroy the intrusively reference counted object, assuming
+     * it is on the heap
+     *
+     * For some recursively constructed objects (like trieste::NodeDef), their
+     * destructors are called recursively. They will do this via
+     * ~intrusive_ptr<T>, which will ultimately call ~T, which might recurse
+     * back into ~intrusive_ptr<T>.
+     *
+     * For deep graphs this can be a problem leading to stack overflow if we
+     * just allow arbitrary reentrancy through ~T. This design ensures
+     * there at most two calls to this function (which is necessary for
+     * heap-based destructor recursion) on the stack.
+     *
+     * Note: technically you could put this code on ~T by adding it to the
+     * intrusive_refcounted<T> destructor, but that would run regardless of
+     * whether or not our T* is on the heap. Some of our objects can be used
+     * with either heap or automatic storage, so we avoid deleting stack
+     * allocated objects by taking advantage of the assumption inside an
+     * intrusive_ptr<T>: if you gave your pointer to an intrusive_ptr, it must
+     * be ok to free it as if it's heap allocated. This still lets us rearrange
+     * the ~T calls, but doesn't try to heap-deallocate T objects that have
+     * automatic storage (and therefore have never been in an intrusive_ptr).
+     *
+     * There are two cases where this destructor function is called:
+     *   - Outer case: there are no other calls to the destructor on the stack
+     *   - Re-entrant case: there is one more call to the destructor on the
+     * stack
+     *
+     * This destructor uses thread local state to detect which case it is in
+     * using
+     *
+     *   thread_local std::vector<T*>* work_list{nullptr};
+     *
+     * On entry to the destructor if the work_list is nullptr, then we are in
+     * the Outer case. The Outer case sets up a work_list, stores a pointer to
+     * it in the thread_local and processes the work_list, which includes this
+     * nodes children.  Processing the worklist can result in calls to
+     * ~intrusive_ptr<T>. When the work_list is empty, the thread_local is
+     * nullified. Thus the next call to ~intrusive_ptr<T> will be considered an
+     * Outer case.
+     *
+     * The Re-entrant case is detected by the work_list being non-null.
+     * In this case, a pointer to this object is moved into the work_list and
+     * the destructor returns. The children will be processed by the Outer case.
+     */
+    void recursion_safe_delete_this()
+    {
+      T* self = static_cast<T*>(this);
+      // Contains a pointer to a vector on the stack for handling the
+      // recursive destruction of the object.
+      // We don't use an actual vector in the TLS as the destruction
+      // of the TLS can cause problems on some platforms.
+      thread_local std::vector<T*>* work_list{nullptr};
+
+      if (work_list)
+      {
+        // Re-entrant case, move ourselves into the work_list and return.
+        work_list->push_back(self);
+        return;
+      }
+
+      // Outer case, set up the work_list, and process it.
+      std::vector<T*> work_list_local;
+      work_list = &work_list_local;
+
+      work_list_local.push_back(self);
+
+      while (!work_list_local.empty())
+      {
+        T* ptr = work_list_local.back();
+        work_list_local.pop_back();
+        // may recursively call ~intrusive_ptr<T> and reach the re-entrant case,
+        // depending on structure
+        delete ptr;
+      }
+
+      work_list = nullptr;
     }
 
   public:
