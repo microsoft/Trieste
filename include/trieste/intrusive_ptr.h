@@ -103,7 +103,7 @@ namespace trieste
       ptr->intrusive_inc_ref();
     }
 
-    static constexpr void intrusive_dec_ref(T* ptr)
+    static void intrusive_dec_ref(T* ptr)
     {
       ptr->intrusive_dec_ref();
     }
@@ -125,6 +125,9 @@ namespace trieste
 
     constexpr void dec_ref()
     {
+      // This function is constexpr on the off-chance that the compiler knows
+      // ptr == nullptr. In that case, it can skip all work here. That is the
+      // only case this would be compile-time evaluatable.
       if (ptr)
       {
         intrusive_refcounted_traits<T>::intrusive_dec_ref(ptr);
