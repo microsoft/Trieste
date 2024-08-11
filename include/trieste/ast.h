@@ -879,7 +879,7 @@ namespace trieste
     node->intrusive_inc_ref();
   }
 
-  constexpr void
+  inline void
   intrusive_refcounted_traits<NodeDef>::intrusive_dec_ref(NodeDef* node)
   {
     node->intrusive_dec_ref();
