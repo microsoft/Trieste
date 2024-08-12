@@ -22,7 +22,6 @@ jobs:
         - platform: "ubuntu-latest"
           variant: "ninja"
           compiler: "clang"
-          build-type: "Release"
           cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_BUILD_PARSER_TESTS=1"
           generator: "-G Ninja"
           dependencies: "sudo apt install ninja-build"
@@ -58,9 +57,9 @@ jobs:
       # Don't abort runners if a single one fails
       fail-fast: false
 
-    runs-on: ${{matrix.platform}}
+    runs-on: ${{ matrix.platform }}
 
-    name: ${{matrix.platform}} ${{matrix.build-type}} ${{matrix.standard}} ${{matrix.compiler}} ${{matrix.variant}}
+    name: ${{ matrix.platform }} ${{ matrix.build-type }} ${{ matrix.standard }} ${{ matrix.compiler }} ${{ matrix.variant }}
 
     steps:
     - uses: actions/checkout@v3
@@ -69,11 +68,11 @@ jobs:
       run: ${{ matrix.dependencies }}
       
     - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.build-type}} ${{matrix.generator}} ${{matrix.standard}} ${{matrix.enable-tests}} ${{matrix.cmake-options}}
+      run: cmake -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} ${{ matrix.generator }} ${{ matrix.standard }} ${{ matrix.enable-tests }} ${{ matrix.cmake-options }}
 
     - name: Build
-      run: cmake --build ${{github.workspace}}/build --config ${{matrix.build-type}}
+      run: cmake --build ${{ github.workspace }}/build --config ${{ matrix.build-type }}
 
     - name: Test
-      working-directory: ${{github.workspace}}/build
-      run: ctest -C ${{matrix.build-type}} --output-on-failure --timeout 400 --interactive-debug-mode 0 
+      working-directory: ${{ github.workspace }}/build
+      run: ctest -C ${{ matrix.build-type }} --output-on-failure --timeout 400 --interactive-debug-mode 0 
