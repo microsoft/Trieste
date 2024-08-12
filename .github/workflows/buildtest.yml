@@ -20,7 +20,9 @@ jobs:
         
         include:
         - platform: "ubuntu-latest"
+          variant: "ninja"
           compiler: "clang"
+          build-type: "Release"
           cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_BUILD_PARSER_TESTS=1"
           generator: "-G Ninja"
           dependencies: "sudo apt install ninja-build"
