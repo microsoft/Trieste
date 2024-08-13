@@ -1,15 +1,20 @@
 #pragma once
 
+#include "rewrite.h"
+#include "token.h"
+#include "wf.h"
+
 #include <algorithm>
 #include <initializer_list>
 #include <sstream>
 #include <stdexcept>
-#include <trieste/trieste.h>
 #include <unordered_set>
 #include <variant>
 
 namespace trieste::wf::meta
 {
+  using namespace wf::ops;
+
   inline const auto WfMeta = TokenDef("wf-meta-meta");
 
   inline const auto WfNone = TokenDef("wf-meta-none");
