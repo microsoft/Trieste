@@ -2,12 +2,15 @@
 
 #include "rewrite.h"
 #include "token.h"
+#include "trieste/ast.h"
 #include "wf.h"
 
 #include <algorithm>
 #include <initializer_list>
+#include <iterator>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 #include <variant>
 
@@ -454,5 +457,158 @@ namespace trieste::wf::meta
     }
 
     return wf;
+  }
+
+  inline void write_wf_node(std::ostream& out, const Node& top)
+  {
+    WFContext ctx{wf_wf};
+    using namespace std::string_view_literals;
+
+    auto starts_with =
+      [](const std::string_view& str, const std::string_view& prefix) -> bool {
+      return str.substr(0, prefix.size()) == prefix;
+    };
+
+    // The next two functions do some replacing on names+structure, so the
+    // format is a little more concise / intuitive than the default AST dump.
+
+    // Primarily, this changes `(wf-meta-fields (wf-meta-fields-binding
+    // (wf-meta-none)) (wf-meta-fields-list ...))` into `(fields ...)`, and in
+    // the rare case where the binding is non-empty, we get `(fields-binding
+    // (token "the-binding") (fields ...))`.
+
+    // Otherwise, it just shortens the names to omit the namespacing.
+
+    auto name_without_ns = [&](Token token) -> std::string_view {
+      std::string_view name = token.str();
+      if (token == WfTokenName)
+      {
+        return "token"sv;
+      }
+      else if (token == WfFieldsBinding)
+      {
+        return "fields-binding"sv;
+      }
+      else if (token == WfFieldsList)
+      {
+        return "fields"sv;
+      }
+
+      for (const std::string_view& ns :
+           {"wf-meta-token-flag-"sv,
+            "wf-meta-token-"sv,
+            "wf-meta-fields-"sv,
+            "wf-meta-sequence-"sv,
+            "wf-meta-"sv})
+      {
+        if (starts_with(name, ns))
+        {
+          return name.substr(ns.size());
+        }
+      }
+
+      std::ostringstream err;
+      err << "Unknown token namespace " << name;
+      throw std::runtime_error(err.str());
+    };
+
+    auto node_replacer = [](Node node) -> Node {
+      if (node == WfFields)
+      {
+        Node binding = node / WfFieldsBinding;
+        Node fields_list = node / WfFieldsList;
+        if (binding->front() == WfNone)
+        {
+          return WfFields << NodeRange{
+                   fields_list->begin(), fields_list->end()};
+        }
+        else
+        {
+          return WfFieldsBinding << binding->front() << fields_list;
+        }
+      }
+      else
+      {
+        return node;
+      }
+    };
+
+    // This isn't meant to be general, but if somehow a token name/sequence min
+    // count has non-alphanumeric chars in it, then it will at least gracefully
+    // degrade into "not pretty but reparseable".
+    auto write_string_literal = [&](const std::string_view& str) -> void {
+      out << '"';
+      for (char ch : str)
+      {
+        if (ch == '"')
+        {
+          out << "\\\"";
+        }
+        else
+        {
+          out << ch;
+        }
+      }
+      out << '"';
+    };
+
+    constexpr size_t indent_spaces = 2;
+    size_t indent_count = 0;
+    auto indent = [&]() -> void { indent_count += indent_spaces; };
+    auto dedent = [&]() -> void {
+      assert(indent_count > 0);
+      indent_count -= indent_spaces;
+    };
+    auto fill_indent = [&]() -> void {
+      std::fill_n(std::ostream_iterator<char>{out}, indent_count, ' ');
+    };
+
+    const Node meta = top / WfMeta;
+    std::deque<std::pair<Node, NodeIt>> stack{{meta, meta->begin()}};
+    while (!stack.empty())
+    {
+      Node node = stack.back().first;
+      NodeIt next_child_cursor = stack.back().second;
+      stack.pop_back();
+
+      // If the next child to process is the first one, we should print the
+      // start of its parent first.
+      if (next_child_cursor == node->begin())
+      {
+        fill_indent();
+        out << '(' << name_without_ns(node->type());
+
+        if (node->type().def->fl & flag::print)
+        {
+          out << ' ';
+          write_string_literal(node->location().view());
+        }
+
+        indent();
+      }
+
+      // If we have no children (begin == end), we immediately go up one level.
+      // If we have children, we processed them all now, and we go up one level.
+      if (next_child_cursor == node->end())
+      {
+        // We finished writing any children.
+        dedent();
+        out << ')';
+        continue;
+      }
+
+      // If we got here, there is a next child node to look at.
+      // We push ourselves for when that's done (with next child incremented),
+      // then push the next child for processing. We will return to this node
+      // when the child is processed, and either go to its next child, or notice
+      // we processed all the children and finish the node.
+      stack.push_back({node, std::next(next_child_cursor)});
+
+      // Print the child on a new line.
+      out << std::endl;
+
+      Node next_child = node_replacer(*next_child_cursor);
+      stack.push_back({next_child, next_child->begin()});
+    }
   }
 }

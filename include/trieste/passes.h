@@ -266,9 +266,8 @@ namespace trieste
         if (!ok)
           return false;
         // Write the well-formedness definition to a neighboring output file.
-        f << language_name << std::endl
-          << pass_name << std::endl
-          << wf::meta::wf_to_node(wf);
+        f << language_name << std::endl << pass_name << std::endl;
+        wf::meta::write_wf_node(f, wf::meta::wf_to_node(wf));
 
         return true;
       };
