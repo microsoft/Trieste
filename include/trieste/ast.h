@@ -226,70 +226,6 @@ namespace trieste
     }
 
   public:
-    /**
-     * @brief Destroy the Node Def object
-     *
-     * This destructor will transitively destroy the children of the node.
-     *
-     * For deep graphs this can be a problem leading to stack overflow if we
-     * just allow arbitrary reentrancy through ~NodeDef. This design ensures
-     * there at most two calls to the destructor on the stack.
-     *
-     * There are two cases where this destructor is called:
-     *   - Outer case: there are no other calls to the destructor on the stack
-     *   - Re-entrant case: there is one more call to the destructor on the
-     * stack
-     *
-     * This destructor uses thread local state to detect which case it is in
-     * using
-     *
-     *   thread_local std::vector<Nodes>* work_list{nullptr};
-     *
-     * On entry to the destructor if the work_list is nullptr, then we are in
-     * the Outer case. The Outer case sets up a work_list, stores a pointer to
-     * it in the thread_local and processes the work_list, which includes this
-     * nodes children.  Processing the worklist can result in calls to ~NodeDef.
-     * When the work_list is empty, the thread_local is nullified. Thus the next
-     * call to NodeDef will be considered an Outer case.
-     *
-     * The Re-entrant case is detected by the work_list being non-null.
-     * In this case, the children are moved into the work_list and the
-     * destructor returns. The children will be processed by the Outer case.
-     */
-    ~NodeDef()
-    {
-      // Contains a pointer to a vector on the stack for handling the
-      // recursive destruction of the AST.
-      // We don't use an actual vector in the TLS as the destruction
-      // of the TLS can cause problems on some platforms.
-      thread_local std::vector<Nodes>* work_list{nullptr};
-
-      if (work_list)
-      {
-        // Re-entrant case, move the children into the work_list and return.
-        work_list->push_back(std::move(children));
-        return;
-      }
-
-      // Outer case, set up the work_list, and process it.
-      std::vector<Nodes> work_list_local;
-      work_list = &work_list_local;
-
-      work_list_local.push_back(std::move(children));
-
-      while (!work_list_local.empty())
-      {
-        // clear will potentially call this destructor recursively, so we need
-        // to have finished modifying the work_list before calling it, hence
-        // moving the nodes out of the work_list into a local variable.
-        auto nodes = std::move(work_list_local.back());
-        work_list_local.pop_back();
-        nodes.clear();
-      }
-
-      work_list = nullptr;
-    }
-
     static Node create(const Token& type)
     {
       return Node(new NodeDef(type, Location{nullptr, 0, 0}));
@@ -943,7 +879,7 @@ namespace trieste
     node->intrusive_inc_ref();
   }
 
-  constexpr void
+  inline void
   intrusive_refcounted_traits<NodeDef>::intrusive_dec_ref(NodeDef* node)
   {
     node->intrusive_dec_ref();
