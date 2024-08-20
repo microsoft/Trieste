@@ -675,7 +675,7 @@ namespace trieste
             if (p->type() == type)
               return match_continuation(it, parent, match);
 
-          p = p->parent();
+          p = p->parent_unsafe();
         }
 
         return false;
