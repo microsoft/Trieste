@@ -31,7 +31,7 @@ A rule consists of a pattern and an effect. For each cursor position and rule, t
 
 * `~a` — optionally `a` (always succeeds)
 * `a++` — zero or more `a`
-  * Note that `a++` is greedy and that matching does not backtrack. For example, `Any++ * T(Bar)` will not match `Foo Foo Bar` since `Any++` consumes all three terms. To simulate backtracking, use negative lookahead: `(Any * --T(Bar))++ * T(Bar)`
+  * Note that `a++` is greedy and that matching does not backtrack. For example, `Any++ * T(Bar)` will not match `Foo Foo Bar` since `Any++` consumes all three terms. In order to simulate backtracking, use negative lookahead: `(Any * --T(Bar))++ * Any * T(Bar)`
 
 * `a[Name]` — match `a` and bind result to `Name` (`Name` must be a token)
 * `a(f)` — match `a` and require that `f` returns true for the terms selected by `a`
