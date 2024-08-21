@@ -145,9 +145,10 @@ build_tests(size_t ptr_count, size_t thread_count, size_t permutations)
 }
 
 // The intention of this test is to do a lot of work to refcounts, while under
-// some kind of thread sanitizer. Changing the tag on Dummy from async to sync
-// should make Clang's thread sanitizer unhappy, for instance, whereas if the
-// tag is async then everything _should_ be fine.
+// some kind of thread sanitizer. Changing the intrusive_ptr implementation to
+// use non-atomic refcounting should make Clang's thread sanitizer unhappy, for
+// instance, whereas with the current thread-safe implementation everything
+// _should_ be fine.
 int main()
 {
   // Be very careful when increasing these numbers... they can quickly eat up

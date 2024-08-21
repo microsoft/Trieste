@@ -11,7 +11,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT TRIESTE_SANITIZE)
   target_link_libraries(trieste_intrusive_ptr_test -fsanitize=thread)
 endif()
 
-add_test(NAME trieste_intrusive_ptr_test COMMAND trieste_intrusive_ptr_test)
+add_test(NAME trieste_intrusive_ptr_test COMMAND trieste_intrusive_ptr_test WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_intrusive_ptr_test>)
 
 add_executable(trieste_wf_meta_reparse_test
   wf_meta_reparse_test.cc

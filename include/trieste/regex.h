@@ -186,7 +186,7 @@ namespace trieste
         if (!parent)
           return ast;
 
-        ast = parent->intrusive_ptr_from_this();
+        ast = parent;
       }
     }
 

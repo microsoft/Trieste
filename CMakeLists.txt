@@ -3,6 +3,7 @@ project(trieste VERSION 1.0.0 LANGUAGES CXX)
 
 # #############################################
 # Options
+option(TRIESTE_ENABLE_TESTING "Specifies whether to enable Trieste's tests" OFF)
 option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
 option(TRIESTE_BUILD_PARSERS "Specifies whether to build the parsers" ON)
 option(TRIESTE_BUILD_PARSER_TESTS "Specifies whether to build the parser tests" OFF)
@@ -175,12 +176,15 @@ export(PACKAGE trieste)
 
 # #############################################
 # # Add core Trieste tests
-enable_testing()
-add_subdirectory(test)
+if(TRIESTE_ENABLE_TESTING)
+  enable_testing()
+  add_subdirectory(test)
+endif()
 
 # #############################################
 # # Add samples
 if(TRIESTE_BUILD_SAMPLES)
+  enable_testing()
   add_subdirectory(samples/infix)
 endif()
 
