@@ -594,7 +594,7 @@ namespace trieste
 
           for (auto& child : *current)
           {
-            if (child->parent() != current.get())
+            if (child->parent_unsafe() != current.get())
             {
               logging::Error()
                 << child->location().origin_linecol()
