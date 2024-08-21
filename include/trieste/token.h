@@ -23,7 +23,7 @@ namespace trieste
   struct intrusive_refcounted_traits<NodeDef>
   {
     static constexpr void intrusive_inc_ref(NodeDef*);
-    static constexpr void intrusive_dec_ref(NodeDef*);
+    inline static void intrusive_dec_ref(NodeDef*);
   };
 
   using Node = intrusive_ptr<NodeDef>;
