@@ -179,6 +179,8 @@ namespace trieste
   inline const auto Error = TokenDef("error", flag::internal);
   inline const auto ErrorMsg = TokenDef("errormsg", flag::print);
   inline const auto ErrorAst = TokenDef("errorast");
+  inline const auto DebugInfo = TokenDef("debugmsg", flag::print);
+  inline const auto DebugAst = TokenDef("debugast");
 
   namespace detail
   {

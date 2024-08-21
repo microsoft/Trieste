@@ -16,12 +16,18 @@
 namespace trieste
 {
   class PassDef;
+  namespace detail
+  {
+    class DebugMatch;
+  }
 
   class Match
   {
   private:
     size_t index{0};
     std::vector<std::pair<bool, std::map<Token, NodeRange>>> captures{16};
+
+    friend class detail::DebugMatch;
 
   public:
     Match() {}
@@ -1035,6 +1041,112 @@ namespace trieste
     };
   }
 
+  detail::PatternEffect<Node> Dbg(Token, detail::PatternEffect<Node>, bool);
+
+  namespace detail
+  {
+    class DebugMatch : public PatternDef
+    {
+    private:
+      Token start;
+      Pattern pattern;
+      bool dbg_on_success;
+
+      std::vector<std::string> notes;
+      std::set<Token> captures;
+      int success_count;
+
+      friend PatternEffect<Node> trieste::Dbg(Token, PatternEffect<Node>, bool);
+
+    public:
+      DebugMatch(Token start_, Pattern pattern_, bool dbg_on_success_ = false)
+      : start(start_), pattern(pattern_), dbg_on_success(dbg_on_success_)
+      {}
+
+      PatternPtr clone() const& override
+      {
+        throw std::runtime_error("The DebugMatch pattern can't be cloned");
+      };
+
+      bool match(NodeIt& it, const Node& parent, Match& match) const& override
+      {
+        // The virtual function is declared with `const&` since matchers usually
+        // shouldn't have a state. This is an exception, since we want to
+        // extract information about the match to later emit the information in
+        // the effect. The `const_cast<DebugMatch*>(this)` hack around the
+        // `const&` restriction.
+
+        if (it != parent->end() && (*it)->type() == this->start)
+        {
+          auto begin = it;
+          auto result = this->pattern.match(it, parent, match);
+
+          if (result)
+          {
+            const_cast<DebugMatch*>(this)->success_count += 1;
+            if (!this->dbg_on_success)
+            {
+              return true;
+            }
+          }
+
+          auto matched_range = NodeRange(begin, it);
+          auto notes_mut = &const_cast<DebugMatch*>(this)->notes;
+          auto captures_mut = &const_cast<DebugMatch*>(this)->captures;
+
+          // Main debug message
+          {
+            std::ostringstream msg;
+            msg << "match ";
+            if (result)
+            {
+              msg << "succeeded ";
+            }
+            else
+            {
+              msg << "failed ";
+            }
+            msg << "after " << std::distance(begin, it) << " nodes";
+            notes_mut->push_back(msg.str());
+          }
+
+          // Warning about follow up matches
+          if (this->success_count >= 1 && !this->dbg_on_success)
+          {
+            std::ostringstream msg;
+            msg << "this might have matched on the output of a previous "
+                   "successful match";
+            notes_mut->push_back(msg.str());
+          }
+
+          // Collect captures
+          for (size_t i = match.index;; i--)
+          {
+            const auto& [valid, map] = match.captures[i];
+            if (valid)
+            {
+              for (const auto& [key, value] : map)
+              {
+                captures_mut->insert(key);
+              }
+            }
+
+            if (i == 0)
+              break;
+          }
+
+          match.set(DebugInfo, NodeRange(begin, it));
+
+          return true;
+        }
+        else
+        {
+          return this->pattern.match(it, parent, match);
+        }
+      }
+    };
+  }
+
   template<typename F>
   inline auto operator>>(detail::Located<detail::Pattern> pattern, F effect)
     -> detail::PatternEffect<decltype(effect(std::declval<Match&>()))>
@@ -1190,5 +1302,78 @@ namespace trieste
       nodes.push_back(n->clone());
 
     return nodes;
+  }
+
+  /// @brief This function can be wrapped around a pattern and effect to debug
+  /// pattern matching. It will count how many tokens have been matched before
+  /// the match failed. The results will be emitted as an error node.
+  ///
+  /// The first argument is the token that the debug should start tracking. To
+  /// investigate why <code>(if)(lit 1:3)(less)</code> doesn't match, the first
+  /// token should be set to <code>If</code> like this:
+  ///
+  /// \code{.diff}
+  ///   {
+  /// +   Dbg(If,
+  ///     T(If) * T(Lit)[Lit] * T(Then) >>
+  ///       [](Match& _) {
+  ///         // [...]
+  ///       }
+  /// +   ),
+  ///   }
+  /// \endcode
+  ///
+  /// The output will contain the number of matched tokens and a list of all
+  /// groups that have been captured until the match fails.
+  ///
+  /// @param dbg_on_success Indicates if successful matches should also emit
+  /// an `err` node with debug information. Setting this to `false` can result
+  /// in the matching on the rewritten tree on consecutive match attempts.
+  inline detail::PatternEffect<Node> Dbg(
+    Token type, detail::PatternEffect<Node> effect, bool dbg_on_success = true)
+  {
+    // Note: This doesn't compile with `auto`. I'm guessing that
+    // `intrusive_ptr` doesn't support downcasting to `PatternPtr`
+    // for the `Pattern` constructor. The hack is to do upcasting
+    // in out custom effect.
+    detail::PatternPtr pattern = intrusive_ptr<detail::DebugMatch>::make(
+      type, effect.first.value, dbg_on_success);
+    auto original_effect = effect.second;
+    return {
+      detail::Pattern(
+        pattern,
+        // We want to accept any token, since the contained pattern could
+        // start with any token, and when want to be invisible until the
+        // start token was found
+        detail::FastPattern::match_pred()),
+      [pattern, original_effect](Match& _) {
+        auto debug = (detail::DebugMatch*)pattern.get();
+        if (debug->notes.empty())
+        {
+          return original_effect(_);
+        }
+        else
+        {
+          Node node = Error;
+
+          for (auto msg : debug->notes)
+          {
+            node = node << (DebugInfo ^ msg);
+          }
+          for (auto key : debug->captures)
+          {
+            std::ostringstream msg;
+            msg << "capture '" << key.str() << "': ";
+            node = node << ((DebugInfo ^ msg.str()) << _[key]);
+          }
+
+          debug->notes.clear();
+          debug->captures.clear();
+
+          node = node << ((DebugInfo ^ "matched nodes") << _[DebugInfo]);
+
+          return node;
+        }
+      }};
   }
 }
