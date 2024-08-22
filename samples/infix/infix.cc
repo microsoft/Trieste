@@ -19,6 +19,9 @@ int main(int argc, char** argv)
   app.add_option("-m,--mode", mode, "Output mode.")
     ->transform(CLI::IsMember(modes));
 
+  infix::Config config;
+  config.install_cli(&app);
+
   try
   {
     app.parse(argc, argv);
@@ -28,7 +31,7 @@ int main(int argc, char** argv)
     return app.exit(e);
   }
 
-  auto reader = infix::reader().file(input_path);
+  auto reader = infix::reader(config).file(input_path);
   Destination dest =
     output_path.empty() ? DestinationDef::console() : DestinationDef::dir(".");
   if (output_path.empty())
@@ -41,23 +44,8 @@ int main(int argc, char** argv)
     ProcessResult result;
     if (mode == "calculate")
     {
-      result = reader >> infix::calculate();
-      if (!result.ok)
-      {
-        logging::Error err;
-        result.print_errors(err);
-        return 1;
-      }
-
-      Node calc = result.ast->front();
-      for (const Node& output : *calc)
-      {
-        auto str = output->front()->location().view();
-        auto val = output->back()->location().view();
-        std::cout << str << " " << val << std::endl;
-      }
-
-      return 0;
+      result = reader >> infix::calculate() >>
+        infix::calculate_output_writer(output_path).destination(dest);
     }
     if (mode == "infix")
     {
