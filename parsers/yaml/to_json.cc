@@ -212,7 +212,7 @@ namespace
           [](Match& _) {
             Location loc = _(Key)->location();
             auto view = loc.view();
-            if (view.front() == '"' && view.back() == '"')
+            if (!view.empty() && view.front() == '"' && view.back() == '"')
             {
               loc.pos += 1;
               loc.len -= 2;

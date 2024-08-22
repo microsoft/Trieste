@@ -101,6 +101,13 @@ namespace trieste
     }
 
   private:
+    // Semantics note:
+    // The code here only looks for \n and is not intended to be
+    // platform-sensitive. Effectively, sources operate in binary mode and leave
+    // encoding issues to the language implementation. There are however some
+    // cosmetic fixes in error printing, such as in Location::str(), which
+    // ensure that control characters don't leak into Trieste's output in that
+    // case.
     void find_lines()
     {
       // Find the lines.
@@ -157,29 +164,73 @@ namespace trieste
         return {};
 
       std::stringstream ss;
+      auto write_chars_skipping_r = [&ss](const std::string_view& str) -> void {
+        for (char ch : str)
+        {
+          if (ch != '\r')
+          {
+            ss << ch;
+          }
+        }
+      };
+      auto write_indexed_skipping_r =
+        [&ss](const std::string_view& str, auto fn) -> void {
+        size_t idx = 0;
+        for (char ch : str)
+        {
+          if (ch != '\r')
+          {
+            ss << fn(idx);
+          }
+          ++idx;
+        }
+      };
+
       auto [line, col] = linecol();
       auto [linepos, linelen] = source->linepos(line);
 
       if (view().find_first_of('\n') != std::string::npos)
       {
-        auto cover = std::min(linelen - col, len);
-        std::fill_n(std::ostream_iterator<char>(ss), col, ' ');
-        std::fill_n(std::ostream_iterator<char>(ss), cover, '~');
+        auto line_view_first = source->view().substr(linepos, linelen);
+        size_t col_last;
+        std::string_view interim_view;
+        std::string_view line_view_last;
+        {
+          auto [line2, col2] = source->linecol(pos + len);
+          auto [linepos2, linelen2] = source->linepos(line2);
+          line_view_last = source->view().substr(linepos2, linelen2);
+          col_last = col2;
 
-        auto [line2, col2] = source->linecol(pos + len);
-        auto [linepos2, linelen2] = source->linepos(line2);
-        linelen = (linepos2 - linepos) + linelen2;
+          // Find the lines in between first and last to insert, if there are
+          // any such lines. If the lines are adjacent, this creates a 1 char
+          // line view with the new line between the two.
+          size_t interim_pos = linepos + linelen;
+          interim_view =
+            source->view().substr(interim_pos, linepos2 - interim_pos);
+        }
 
-        ss << std::endl << source->view().substr(linepos, linelen) << std::endl;
-
-        std::fill_n(std::ostream_iterator<char>(ss), col2, '~');
+        write_indexed_skipping_r(line_view_first, [&ccol = col](size_t idx) {
+          return idx < ccol ? ' ' : '~';
+        });
+        ss << std::endl;
+        write_chars_skipping_r(line_view_first);
+        write_chars_skipping_r(interim_view);
+        write_chars_skipping_r(line_view_last);
+        ss << std::endl;
+        write_indexed_skipping_r(
+          line_view_last.substr(0, col_last), [&](size_t) { return '~'; });
         ss << std::endl;
       }
       else
       {
-        ss << source->view().substr(linepos, linelen) << std::endl;
-        std::fill_n(std::ostream_iterator<char>(ss), col, ' ');
-        std::fill_n(std::ostream_iterator<char>(ss), len, '~');
+        auto line_view = source->view().substr(linepos, linelen);
+        write_chars_skipping_r(line_view);
+        ss << std::endl;
+
+        assert(pos >= linepos);
+        write_indexed_skipping_r(
+          line_view.substr(0, pos - linepos + len),
+          [&ccol = col](size_t idx) { return idx < ccol ? ' ' : '~'; });
         ss << std::endl;
       }
 
