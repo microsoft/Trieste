@@ -450,10 +450,6 @@ namespace
       }
 
       auto view = line->location().view();
-      if (view.find("---") != std::string::npos)
-      {
-        return "Invalid element: ---";
-      }
 
       for (std::size_t i = 0; i < view.size() - 1; ++i)
       {
@@ -1050,8 +1046,8 @@ namespace
           [](Match&) -> Node { return nullptr; },
 
         In(DocumentGroup) * T(DocumentStart)[DocumentStart] * ~T(NewLine) *
-            ~T(Whitespace) * T(Comment) * T(NewLine) >>
-          [](Match& _) { return _(DocumentStart); },
+            ~T(Whitespace) * T(Comment) * T(NewLine)[NewLine] >>
+          [](Match& _) { return Seq << _(DocumentStart) << _(NewLine); },
 
         In(StreamGroup) *
             (DirectiveToken[Head] * DirectiveToken++[Tail] *
@@ -1288,10 +1284,15 @@ namespace
             return FlowSequenceItem << (FlowGroup << _(Head) << _[Tail]);
           },
 
+        In(FlowSequence) *
+            (T(FlowSequenceItem)[FlowSequenceItem] * T(Comment) *
+             T(Comment)++) >>
+          [](Match& _) { return _(FlowSequenceItem); },
+
         In(FlowMapping) *
             (T(FlowKeyValue)
-             << (T(Key) * FlowToken++[Key] * T(Colon) * FlowToken++[Value] *
-                 End)) >>
+             << (T(Key) * FlowToken++[Key] * ~T(Comment) * T(Colon) *
+                 FlowToken++[Value] * End)) >>
           [](Match& _) {
             return FlowMappingItem << (FlowGroup << _[Key])
                                    << (FlowGroup << _[Value]);
