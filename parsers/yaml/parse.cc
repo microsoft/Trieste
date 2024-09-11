@@ -559,6 +559,11 @@ namespace trieste
               m.add(SingleQuote);
             },
 
+          R"("[^"]*\n\-\-\-[^"]*")" >>
+            [](auto& m) {
+              m.error("Invalid document marker in double quoted scalar");
+            },
+
           // Double-quote. NB this captures absolutely everything at this stage,
           // and is cleaned up in the quotes() pass, because the semantics of
           // quoted strings are too complex to handle in this parser.
