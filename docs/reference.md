@@ -18,7 +18,7 @@ A rule consists of a pattern and an effect. For each cursor position and rule, t
 ### Patterns
 
 * `T(tok)` — a single term with token tok
-* `T(tok1, .., tokn)` — a single term with token in tok1, .., tokn
+* `T(tok1, .., tokn)` — a single term with one of the specified tokens
 * `Any` — any single term
 
 * `!a` — not a
@@ -40,8 +40,8 @@ A rule consists of a pattern and an effect. For each cursor position and rule, t
 * `++a` — matches if `a` matches, but does not select anything
 * `--a` — matches if `a` does not match, but does not select anything
 
-* `In(tok1, ..., tokn)` — matches if cursor is directly inside a term with one of the listed tokens
-* `In(tok1, ..., tokn)++` — matches if cursor is nested inside a term with one of the listed tokens (directly or recursively)
+* `In(tok1, .., tokn)` — matches if cursor is directly inside a term with one of the listed tokens
+* `In(tok1, .., tokn)++` — matches if cursor is nested inside a term with one of the listed tokens (directly or recursively)
 
 * `Start` — matches if the cursor is before the first child of a term
 * `End` — matches if the cursor is after the last child of a term
