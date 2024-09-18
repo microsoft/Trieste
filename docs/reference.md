@@ -61,9 +61,40 @@ An effect is a C++ function that takes a single argument of type `Match&` which 
   * If `Name` is bound to an empty sequence, the program crashes
 * `Lift << tok` — Lift the children of this node to the nearest enclosing term with token `tok` (having no such enclosing term is an error). For example `Lift << Foo << a << b` will lift `a b` to be a child of the nearest enclosing `Foo` term.
 
-TODO: Symbol tables, lookup, lookdown, fresh variables
-
-
 ## Well-Formedness specifications
 
+Each rewrite pass in Trieste must have a corresponding well-formedness specification. It specifies the valid tree shape for that particular pass. The well-formedness specification is also used to create name bindings for field accesses, to bind terms to symbol tables and to generate random trees for fuzz testing. Between each pass, it is checked that the tree shape conforms with the well-formedness specification, labels are bound to nodes and symbol tables are populated.
+
+A well-formedness specification consists of several shapes specifying relationships of `Tokens`:
+
+* `tok <<= tok1 ... tokn` - `tok` have children `tok1 ... tokn`, 
+  where the relationship between the children is specified with the following operators: 
+  * `tok1 * tok2 * ... * tokn` - specifies a sequence of siblings `tok1` to `tokn`.
+  * `tok1 | tok2 | ... | tokn` - specifies a choice of tokens `tok1`, `tok2`, up to `tokn`.
+  * `label >>= tok` - gives the label `label` to `tok`. The `label` is itself a `Token`. Allows choice of tokens to appear in a sequence, e.g., `(label >>= tok1 | tok2) * tok3`. This is disallowed without a label. Sequences or repetitions cannot be labelled.   
+  * `tok++` - zero or more `Tokens`. A choice between tokens can also be repeated (`(tok1 | tok2)++`) but not sequences or labelled tokens. Repetition can be given a lower bound with `[]`, e.g., `++[2]`. 
+* `(tok <<= tok1 * tok2)[tok1]` - binds `tok` nodes to a symbol table with `tok1` as the lookup key. 
+
+### Example: Labels
+
+Labels (specified with the `>>=` operator) can be used to access specific children of a node. Consider the shape for `Addition` nodes from infix, where `Expression` has been labelled:
+
+`(Add <<= (Lhs >>= Expression) * (Rhs >>= Expression))`
+
+The labels (`Lhs` and `Rhs`) are other `Tokens`. The left child of an `Add` node `n` can be accessed by `n/Lhs` in subsequent passes. 
+
+### Example: Symbol tables 
+A symbol table is a map from the _value_ of one term to another and can, for example, be used to map variables to expressions. Recall the following shape from the well-formedness specification for infix: 
+
+`(Assign <<= Ident * Expression)[Ident]`
+
+Nodes of type `Assign` will be bound to the symbol table of its closest ancestor defined with `flag::symtab`. The `Top` node is defined with `flag::symtab` and is the ancestor of all other nodes so there is always at least one symbol table. In the above example, the value of the `Ident` node is the lookup key in the symbol table. Note that the `Assign` node (not the `Ident` node) must be defined with `flag::lookup` for the lookup to work for this example. The same key can be bound to several nodes (possibly of different types) in the same symbol table if the key token type (`Ident` in the infix example) is not defined with `flag::shadowing`. 
+
+### Random tree generation 
 TODO
+
+### Checking well-formedness  
+TODO
+
+TODO: lookdown, fresh variables 
+
