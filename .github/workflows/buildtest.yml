@@ -78,3 +78,11 @@ jobs:
     - name: Test
       working-directory: ${{github.workspace}}/build
       run: ctest -C ${{matrix.build-type}} --output-on-failure --timeout 400 --interactive-debug-mode 0 
+  
+  all-checks:
+    # Join of all build-test jobs
+    needs: [build-test]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check all jobs
+      run: echo "All jobs passed"
