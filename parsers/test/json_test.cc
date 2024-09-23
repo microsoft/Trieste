@@ -259,14 +259,16 @@ struct TestCase
   {
     if (std::filesystem::is_directory(file_or_dir))
     {
-      for (auto& path : std::filesystem::directory_iterator(file_or_dir))
+      const std::filesystem::path dir_path = file_or_dir;
+      auto dir_iter = std::filesystem::directory_iterator{dir_path};
+      for(auto it = std::filesystem::begin(dir_iter); it != std::filesystem::end(dir_iter); ++it)
       {
-        load(test_cases, path);
+        load(test_cases, it->path());
       }
     }
     else
     {
-      std::filesystem::path file = file_or_dir;
+      const std::filesystem::path file = file_or_dir;
       if (file.extension() == ".json")
       {
         std::string json = utf8::read_to_end(file, true);

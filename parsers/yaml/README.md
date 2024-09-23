@@ -49,8 +49,8 @@ The language implementation exposes the following helpers:
 
 ## Using the `yamlc` Executable
 
-One of the targets that will be written to the `dist/parsers` directory is an executable named `yamlc`. It
-has the following usage information:
+One of the targets that will be written to the `dist/parsers` directory is an executable named `yamlc` (which will
+only be built if the `TRIESTE_BUILD_PARSER_TOOLS` flag is set). It has the following usage information:
 
 ```
 Usage: parsers/yamlc [OPTIONS] input [output]

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "passes.h"
+#include "trieste/intrusive_ptr.h"
 #include "trieste/wf.h"
 
 #include <filesystem>
@@ -10,9 +11,9 @@
 namespace trieste
 {
   class DestinationDef;
-  using Destination = std::shared_ptr<DestinationDef>;
+  using Destination = intrusive_ptr<DestinationDef>;
 
-  class DestinationDef
+  class DestinationDef : public intrusive_refcounted<DestinationDef>
   {
   private:
     enum class Mode
@@ -129,7 +130,7 @@ namespace trieste
 
     static Destination dir(const std::filesystem::path& path)
     {
-      auto d = std::make_shared<DestinationDef>();
+      auto d = Destination::make();
       d->mode_ = Mode::FileSystem;
       d->path_ = path;
       return d;
@@ -137,7 +138,7 @@ namespace trieste
 
     static Destination console()
     {
-      auto d = std::make_shared<DestinationDef>();
+      auto d = Destination::make();
       d->mode_ = Mode::Console;
       d->path_ = ".";
       return d;
@@ -145,7 +146,7 @@ namespace trieste
 
     static Destination synthetic()
     {
-      auto d = std::make_shared<DestinationDef>();
+      auto d = Destination::make();
       d->mode_ = Mode::Synthetic;
       d->path_ = ".";
       return d;
@@ -223,8 +224,7 @@ namespace trieste
       }
 
       Destination dest = destination_;
-      wf::push_back(*wf_);
-      wf::push_back(wf_writer);
+      WFContext context({wf_, &wf_writer});
 
       Nodes error_nodes;
       std::vector<Node> stack;
@@ -260,9 +260,6 @@ namespace trieste
           stack.insert(stack.end(), current->begin(), current->end());
         }
       }
-
-      wf::pop_front();
-      wf::pop_front();
 
       if (!error_nodes.empty())
       {
@@ -333,6 +330,16 @@ namespace trieste
     Destination destination() const
     {
       return destination_;
+    }
+
+    const wf::Wellformed& input_wf() const
+    {
+      return *wf_;
+    }
+
+    const std::vector<Pass>& passes() const
+    {
+      return passes_;
     }
   };
 }

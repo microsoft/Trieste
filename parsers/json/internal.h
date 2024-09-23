@@ -6,6 +6,11 @@ namespace trieste
 {
   namespace json
   {
+    inline const auto Comma = TokenDef("json-comma");
+    inline const auto Colon = TokenDef("json-colon");
+    inline const auto Lhs = TokenDef("json-lhs");
+    inline const auto Rhs = TokenDef("json-rhs");
+
     Parse parser();
 
     inline const auto wf_parse_tokens =

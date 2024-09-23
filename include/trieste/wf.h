@@ -32,6 +32,7 @@ namespace trieste
       GenNodeLocationF gloc;
       Rand rand;
       size_t target_depth;
+      size_t ceiling_depth;
       double alpha;
 
       /* The generator chooses which token to emit next. It makes this choice
@@ -53,11 +54,13 @@ namespace trieste
         GenNodeLocationF gloc_,
         Seed seed_,
         size_t target_depth_,
-        double alpha_ = 1)
+        double alpha_ = 1,
+        size_t ceiling_multiplier_ = 2)
       : token_terminal_distance(token_terminal_distance_),
         gloc(gloc_),
         rand(seed_),
         target_depth(target_depth_),
+        ceiling_depth(ceiling_multiplier_ * target_depth),
         alpha(alpha_)
       {}
 
@@ -104,6 +107,30 @@ namespace trieste
             }
           });
 
+        if (depth >= ceiling_depth)
+        {
+          // if we have reached this point P(c | d, p) as high entropy.
+          // In order to encourage termination, we will start to manually choose
+          // the child with the highest likelihood of terminating.
+          auto max = std::max_element(offsets.begin(), offsets.end());
+          return tokens[std::distance(offsets.begin(), max)];
+        }
+
+        if (depth >= 2 * ceiling_depth)
+        {
+          logging::Warn()
+            << "Token generation is not reaching a terminal after depth "
+            << depth;
+          logging::Warn()
+            << "This can indicate an issue with the WF definition (for "
+               "example, a cycle), or that the target depth is too shallow.";
+          logging::Trace() << "P(d | c, p):";
+          for (size_t i = 0; i < tokens.size(); i++)
+          {
+            logging::Trace() << "  " << tokens[i].str() << ": " << offsets[i];
+          }
+        }
+
         // compute the cumulative distribution of P(d | c, p)
         std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
 
@@ -134,6 +161,15 @@ namespace trieste
     struct Choice
     {
       std::vector<Token> types;
+
+      SNMALLOC_SLOW_PATH Choice() = default;
+      SNMALLOC_SLOW_PATH Choice(std::vector<Token> types_) :
+        types{types_} {}
+      SNMALLOC_SLOW_PATH Choice(const Choice&) = default;
+      SNMALLOC_SLOW_PATH Choice(Choice&&) = default;
+      SNMALLOC_SLOW_PATH Choice& operator=(const Choice&) = default;
+      SNMALLOC_SLOW_PATH Choice& operator=(Choice&&) = default;
+      SNMALLOC_SLOW_PATH ~Choice() = default;
 
       bool check(Node node) const
       {
@@ -212,6 +248,15 @@ namespace trieste
       Choice choice;
       size_t minlen;
 
+      SNMALLOC_SLOW_PATH Sequence(Choice choice_, size_t minlen_) :
+        choice{choice_}, minlen{minlen_} {}
+      SNMALLOC_SLOW_PATH Sequence() = default;
+      SNMALLOC_SLOW_PATH Sequence(const Sequence&) = default;
+      SNMALLOC_SLOW_PATH Sequence(Sequence&&) = default;
+      SNMALLOC_SLOW_PATH Sequence& operator=(const Sequence&) = default;
+      SNMALLOC_SLOW_PATH Sequence& operator=(Sequence&&) = default;
+      SNMALLOC_SLOW_PATH ~Sequence() = default;
+
       size_t index(const Token&) const
       {
         return std::numeric_limits<size_t>::max();
@@ -278,6 +323,15 @@ namespace trieste
     {
       std::vector<Field> fields;
       Token binding;
+
+      SNMALLOC_SLOW_PATH Fields(std::vector<Field> fields_, Token binding_) :
+        fields{fields_}, binding{binding_} {}
+      SNMALLOC_SLOW_PATH Fields() = default;
+      SNMALLOC_SLOW_PATH Fields(const Fields&) = default;
+      SNMALLOC_SLOW_PATH Fields(Fields&&) = default;
+      SNMALLOC_SLOW_PATH Fields& operator=(const Fields&) = default;
+      SNMALLOC_SLOW_PATH Fields& operator=(Fields&&) = default;
+      SNMALLOC_SLOW_PATH ~Fields() = default;
 
       size_t index(const Token& field) const
       {
@@ -428,6 +482,15 @@ namespace trieste
       Token type;
       ShapeT shape;
 
+      SNMALLOC_SLOW_PATH Shape(Token type_, ShapeT shape_) :
+        type{type_}, shape{shape_} {}
+      SNMALLOC_SLOW_PATH Shape() = default;
+      SNMALLOC_SLOW_PATH Shape(const Shape&) = default;
+      SNMALLOC_SLOW_PATH Shape(Shape&&) = default;
+      SNMALLOC_SLOW_PATH Shape& operator=(const Shape&) = default;
+      SNMALLOC_SLOW_PATH Shape& operator=(Shape&&) = default;
+      SNMALLOC_SLOW_PATH ~Shape() = default;
+
       Shape& operator[](const Token& binding)
       {
         std::visit([&](auto& s) { s[binding]; }, shape);
@@ -438,6 +501,13 @@ namespace trieste
     struct Wellformed
     {
       std::map<Token, ShapeT> shapes;
+
+      SNMALLOC_SLOW_PATH Wellformed() = default;
+      SNMALLOC_SLOW_PATH Wellformed(const Wellformed&) = default;
+      SNMALLOC_SLOW_PATH Wellformed(Wellformed&&) = default;
+      SNMALLOC_SLOW_PATH Wellformed& operator=(const Wellformed&) = default;
+      SNMALLOC_SLOW_PATH Wellformed& operator=(Wellformed&&) = default;
+      SNMALLOC_SLOW_PATH ~Wellformed() = default;
 
       operator bool() const
       {
@@ -455,26 +525,26 @@ namespace trieste
           [&](auto& shape) { return shape.index(field); }, find->second);
       }
 
-      void prepend(const Shape& shape)
+      void SNMALLOC_SLOW_PATH prepend(const Shape& shape)
       {
         auto find = shapes.find(shape.type);
         if (find == shapes.end())
           append(shape);
       }
 
-      void prepend(Shape&& shape)
+      void SNMALLOC_SLOW_PATH prepend(Shape&& shape)
       {
         auto find = shapes.find(shape.type);
         if (find == shapes.end())
           append(shape);
       }
 
-      void append(const Shape& shape)
+      void SNMALLOC_SLOW_PATH append(const Shape& shape)
       {
         shapes[shape.type] = shape.shape;
       }
 
-      void append(Shape&& shape)
+      void SNMALLOC_SLOW_PATH append(Shape&& shape)
       {
         shapes[shape.type] = std::move(shape.shape);
       }
@@ -524,7 +594,7 @@ namespace trieste
 
           for (auto& child : *current)
           {
-            if (child->parent() != current.get())
+            if (child->parent_unsafe() != current.get())
             {
               logging::Error()
                 << child->location().origin_linecol()
@@ -691,20 +761,20 @@ namespace trieste
         return Choice{std::vector<Token>{type1, type2}};
       }
 
-      inline Choice operator|(const Token& type, const Choice& choice)
+      inline SNMALLOC_SLOW_PATH Choice operator|(const Token& type, const Choice& choice)
       {
         Choice result{choice.types};
         result.types.push_back(type);
         return result;
       }
 
-      inline Choice operator|(const Token& type, Choice&& choice)
+      inline SNMALLOC_SLOW_PATH Choice operator|(const Token& type, Choice&& choice)
       {
         choice.types.push_back(type);
         return std::move(choice);
       }
 
-      inline Choice operator|(const Choice& choice1, const Choice& choice2)
+      inline SNMALLOC_SLOW_PATH Choice operator|(const Choice& choice1, const Choice& choice2)
       {
         Choice result{choice1.types};
         result.types.insert(
@@ -712,7 +782,7 @@ namespace trieste
         return result;
       }
 
-      inline Choice operator|(const Choice& choice1, Choice&& choice2)
+      inline SNMALLOC_SLOW_PATH Choice operator|(const Choice& choice1, Choice&& choice2)
       {
         choice2.types.insert(
           choice2.types.end(), choice1.types.begin(), choice1.types.end());
@@ -734,7 +804,7 @@ namespace trieste
         return choice2 | choice1;
       }
 
-      inline Choice operator-(const Choice& choice, const Token& type)
+      inline SNMALLOC_SLOW_PATH Choice operator-(const Choice& choice, const Token& type)
       {
         Choice result{choice.types};
         result.types.erase(
@@ -743,7 +813,7 @@ namespace trieste
         return result;
       }
 
-      inline Choice operator-(const Choice& choice1, const Choice& choice2)
+      inline SNMALLOC_SLOW_PATH Choice operator-(const Choice& choice1, const Choice& choice2)
       {
         Choice result{choice1.types};
         result.types.erase(
@@ -833,14 +903,14 @@ namespace trieste
         return (fst >>= fst) * snd;
       }
 
-      inline Fields operator*(const Fields& fst, const Field& snd)
+      inline SNMALLOC_SLOW_PATH Fields operator*(const Fields& fst, const Field& snd)
       {
         auto fields = Fields{fst.fields, Invalid};
         fields.fields.push_back(snd);
         return fields;
       }
 
-      inline Fields operator*(Fields&& fst, const Field& snd)
+      inline SNMALLOC_SLOW_PATH Fields operator*(Fields&& fst, const Field& snd)
       {
         fst.fields.push_back(snd);
         return std::move(fst);
@@ -1005,7 +1075,8 @@ namespace trieste
 
     namespace detail
     {
-      inline thread_local std::deque<const Wellformed*> wf_current;
+      using WFDeque = std::deque<const Wellformed*>;
+      inline thread_local std::vector<WFDeque> wf_current = {{}};
 
       struct WFLookup
       {
@@ -1046,24 +1117,76 @@ namespace trieste
             std::string(field.str()) + "`");
         }
       };
+
+      inline void new_context()
+      {
+        wf_current.push_back({});
+      }
+
+      inline void end_context()
+      {
+        if (wf_current.size() == 1)
+        {
+          logging::Error() << "Cannot end the base WF context" << std::endl;
+          return;
+        }
+
+        wf_current.pop_back();
+      }
     }
 
     inline const Wellformed empty;
 
     inline void push_back(const Wellformed& wf)
     {
-      detail::wf_current.push_back(&wf);
+      detail::wf_current.back().push_back(&wf);
     }
 
     inline void pop_front()
     {
-      detail::wf_current.pop_front();
+      detail::wf_current.back().pop_front();
     }
   }
 
+  struct WFContext
+  {
+    WFContext()
+    {
+      wf::detail::new_context();
+    }
+
+    WFContext(const wf::Wellformed& wf) : WFContext()
+    {
+      push_back(wf);
+    }
+
+    WFContext(std::initializer_list<const wf::Wellformed*> wfs) : WFContext()
+    {
+      for (auto& wf : wfs)
+      {
+        push_back(*wf);
+      }
+    }
+
+    ~WFContext()
+    {
+      wf::detail::end_context();
+    }
+
+    void push_back(const wf::Wellformed& wf)
+    {
+      wf::push_back(wf);
+    }
+
+    void pop_front()
+    {
+      wf::pop_front();
+    }
+  };
+
   inline wf::detail::WFLookup operator/(const Node& node, const Token& field)
   {
-    for (auto wf : wf::detail::wf_current)
+    for (auto wf : wf::detail::wf_current.back())
     {
       if (!wf)
         continue;

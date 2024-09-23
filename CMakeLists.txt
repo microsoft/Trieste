@@ -3,10 +3,14 @@ project(trieste VERSION 1.0.0 LANGUAGES CXX)
 
 # #############################################
 # Options
+option(TRIESTE_ENABLE_TESTING "Specifies whether to enable Trieste's tests" OFF)
 option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
 option(TRIESTE_BUILD_PARSERS "Specifies whether to build the parsers" ON)
 option(TRIESTE_BUILD_PARSER_TESTS "Specifies whether to build the parser tests" OFF)
+option(TRIESTE_BUILD_PARSER_TOOLS "Specifies whether to build parser tools" OFF)
 option(TRIESTE_USE_CXX17 "Specifies whether to target the C++17 standard" OFF)
+option(TRIESTE_CLEAN_INSTALL "Specifies whether to delete all files (recursively) from the install prefix before install" OFF)
+option(TRIESTE_USE_SNMALLOC "Specifies that new/delete should be overridden with snmalloc" ON)
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
@@ -24,11 +28,6 @@ endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SNMALLOC_BUILD_TESTING OFF CACHE INTERNAL "Turn off snmalloc tests")
-if (MSVC)
-  # Overriding malloc and free statically not supported on Windows.
-else()
-  set(SNMALLOC_STATIC_LIBRARY_PREFIX "")
-endif()
 set(SNMALLOC_USE_CXX17 ${TRIESTE_USE_CXX17})
 
 set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
@@ -50,8 +49,12 @@ FetchContent_MakeAvailable(cmake_utils)
 FetchContent_Declare(
   snmalloc
   GIT_REPOSITORY https://github.com/microsoft/snmalloc
-  GIT_TAG main
-  GIT_SHALLOW TRUE
+  GIT_TAG 835ab5186325736ff5aa8ef53728970d1d74c3bc
+  # per https://gitlab.kitware.com/cmake/cmake/-/issues/17770, do not use GIT_SHALLOW here
+  # or it will silently break new builds days later, once the commit hash above no longer
+  # matches a named branch, like main.
+  # Tracking a named branch with GIT_SHALLOW enabled is ok, however.
+  # GIT_SHALLOW TRUE
 )
 
 FetchContent_MakeAvailable_ExcludeFromAll(snmalloc)
@@ -89,13 +92,21 @@ target_include_directories(trieste
 
 target_link_libraries(trieste
   INTERFACE
-  snmallocshim-static
   re2::re2
   CLI11::CLI11
+  snmalloc
 )
 
+if(TRIESTE_USE_SNMALLOC)
+  if(TRIESTE_SANITIZE)
+    message(WARNING "Sanitizers are not supported with snmalloc, disabling snmalloc.")
+  else()
+    target_link_libraries(trieste INTERFACE snmalloc-new-override)
+  endif()
+endif()
+
 if(TRIESTE_USE_CXX17)
-  target_compile_definitions(trieste INTERFACE cxx_std_17)
+  target_compile_definitions(trieste INTERFACE cxx_std_17 TRIESTE_USE_CXX17)
 else()
   target_compile_definitions(trieste INTERFACE cxx_std_20)
 endif()
@@ -116,16 +127,24 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   target_compile_options(trieste INTERFACE -Wmismatched-tags -fstandalone-debug)
 endif()
 
-# Clear all existing files and folders from the install directory
-install(CODE [[
-  file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX}/.)
-  ]])
+if(TRIESTE_CLEAN_INSTALL)
+  message("${CMAKE_INSTALL_PREFIX} will be recursively cleaned before install")
+  # Clear all existing files and folders from the install directory
+  install(CODE [[
+    file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX}/.)
+    ]])
+endif()
 
 # #############################################
 # Installation instructions
 set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR}/dist)
 
-install(TARGETS trieste snmallocshim-static snmalloc re2 CLI11
+set(INSTALL_DEPS snmalloc re2 CLI11)
+if (TRIESTE_USE_SNMALLOC)
+  list(APPEND INSTALL_DEPS snmalloc-new-override)
+endif()
+
+install(TARGETS trieste ${INSTALL_DEPS}
   EXPORT ${PROJECT_NAME}_Targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -167,10 +186,18 @@ export(EXPORT ${PROJECT_NAME}_Targets
 export(PACKAGE trieste)
 
 # #############################################
+# # Add core Trieste tests
+if(TRIESTE_ENABLE_TESTING)
+  enable_testing()
+  add_subdirectory(test)
+endif()
+
+# #############################################
 # # Add samples
 if(TRIESTE_BUILD_SAMPLES)
   enable_testing()
   add_subdirectory(samples/infix)
+  add_subdirectory(samples/shrubbery)
 endif()
 
 # #############################################

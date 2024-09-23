@@ -10,6 +10,24 @@
 
 namespace trieste
 {
+  class NodeDef;
+
+  // Certain uses of the Node alias before the full definition of NodeDef can
+  // cause incomplete type errors, so this manually relocates the problematic
+  // code to after NodeDef is fully defined. See the docs on the specialized
+  // trait for details.
+  //
+  // Note: this is only needed by our C++17 implementation of NodeRange (in
+  // ast.h). If we stop supporting C++17, this can be deleted.
+  template<>
+  struct intrusive_refcounted_traits<NodeDef>
+  {
+    static constexpr void intrusive_inc_ref(NodeDef*);
+    inline static void intrusive_dec_ref(NodeDef*);
+  };
+
+  using Node = intrusive_ptr<NodeDef>;
+
   struct TokenDef;
   struct Token;
 
@@ -149,18 +167,26 @@ namespace trieste
     constexpr TokenDef::flag internal = 1 << 6;
   }
 
-  inline const auto Invalid = TokenDef("invalid");
+  // Built-in grouping
   inline const auto Top = TokenDef("top", flag::symtab);
-  inline const auto Group = TokenDef("group");
-  inline const auto File = TokenDef("file");
   inline const auto Directory = TokenDef("directory");
-  inline const auto Seq = TokenDef("seq");
+  inline const auto File = TokenDef("file");
+  inline const auto Group = TokenDef("group");
+
+  // Special tokens for effects
+  inline const auto Seq = TokenDef("seq", flag::internal);
   inline const auto Lift = TokenDef("lift", flag::internal);
-  inline const auto NoChange = TokenDef("nochange");
-  inline const auto Include = TokenDef("include");
+  inline const auto NoChange = TokenDef("nochange", flag::internal);
+  inline const auto Reapply = TokenDef("reapply", flag::internal);
+
+  // Special tokens for symbol tables
+  inline const auto Include = TokenDef("include", flag::internal);
+
+  // Special tokens for error handling
+  inline const auto Invalid = TokenDef("invalid", flag::internal);
   inline const auto Error = TokenDef("error", flag::internal);
-  inline const auto ErrorMsg = TokenDef("errormsg", flag::print);
-  inline const auto ErrorAst = TokenDef("errorast");
+  inline const auto ErrorMsg = TokenDef("errormsg", flag::print | flag::internal);
+  inline const auto ErrorAst = TokenDef("errorast", flag::internal);
 
   namespace detail
   {

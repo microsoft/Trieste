@@ -99,7 +99,7 @@ namespace
     Node node = handle_tag_anchor(os, maybe_node);
 
     os << newline;
-    for (auto child : *node)
+    for (const Node& child : *node)
     {
       if (write_event(os, newline, child))
       {
@@ -126,7 +126,7 @@ namespace
     Node node = handle_tag_anchor(os, maybe_node);
 
     os << newline;
-    for (auto child : *node)
+    for (const Node& child : *node)
     {
       if (write_event(os, newline, child))
       {
@@ -323,7 +323,7 @@ namespace
     if (node_type == Stream)
     {
       os << "+STR" << newline;
-      for (Node child : *node->back())
+      for (const Node& child : *node->back())
       {
         if (write_event(os, newline, child))
         {
@@ -423,7 +423,10 @@ namespace trieste
           auto current = node->at(i)->location().view();
           auto next = node->at(i + 1)->location().view();
           os << escape_chars(current, escape);
-          if (!std::isspace(current.front()) && !std::isspace(next.front()))
+          // an empty string view does not start with a space
+          if (
+            (current.empty() || !std::isspace(current.front())) &&
+            (next.empty() || !std::isspace(next.front())))
           {
             os << " ";
           }
@@ -453,7 +456,7 @@ namespace trieste
       }
 
       std::vector<std::string_view> lines;
-      for (auto line_node : *lines_node)
+      for (const Node& line_node : *lines_node)
       {
         auto view = line_node->location().view();
         auto maybe_comment = view.find('#');
@@ -652,7 +655,7 @@ namespace trieste
       else
       {
         auto last = node->back()->location().view();
-        if (last.empty())
+        if (last.empty() && node->size() > 1)
         {
           os << " ";
         }

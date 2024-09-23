@@ -7,11 +7,12 @@
 #include "gen.h"
 #include "logging.h"
 #include "regex.h"
+#include "trieste/intrusive_ptr.h"
 #include "wf.h"
 
-#include <random>
 #include <filesystem>
 #include <functional>
+#include <random>
 
 namespace trieste
 {
@@ -22,7 +23,7 @@ namespace trieste
     class Make;
     using ParseEffect = std::function<void(Make&)>;
 
-    class RuleDef
+    class RuleDef final : public intrusive_refcounted<RuleDef>
     {
       friend class trieste::Parse;
 
@@ -41,7 +42,7 @@ namespace trieste
       {}
     };
 
-    using Rule = std::shared_ptr<RuleDef>;
+    using Rule = intrusive_ptr<RuleDef>;
 
     class Make
     {
@@ -53,10 +54,11 @@ namespace trieste
       std::string mode_;
       REMatch re_match;
       REIterator re_iterator;
+      size_t error_count_;
 
     public:
       Make(const std::string& name, const Token& token, const Source& source)
-      : re_match(10), re_iterator(source)
+      : re_match(10), re_iterator(source), error_count_(0)
       {
         node = NodeDef::create(token, {name});
         top = node;
@@ -104,6 +106,7 @@ namespace trieste
         if (!in(Group))
           push(Group);
 
+        error_count_++;
         node->push_back(make_error(re_match.at(index), msg));
       }
 
@@ -112,6 +115,7 @@ namespace trieste
         if (!in(Group))
           push(Group);
 
+        error_count_++;
         node->push_back(make_error(location, msg));
       }
 
@@ -119,6 +123,11 @@ namespace trieste
       {
         if ((type != Group) && !in(Group))
           push(Group);
+
+        if (type == Error)
+        {
+          error_count_++;
+        }
 
         node->push_back(NodeDef::create(type, re_match.at(index)));
       }
@@ -131,7 +140,7 @@ namespace trieste
         while (node->parent()->type().in(skip))
         {
           extend();
-          node = node->parent()->shared_from_this();
+          node = node->parent();
         }
 
         extend();
@@ -139,7 +148,7 @@ namespace trieste
 
         if (p == type)
         {
-          node = p->shared_from_this();
+          node = p;
         }
         else
         {
@@ -191,7 +200,13 @@ namespace trieste
 
       void invalid()
       {
+        error_count_++;
         extend(Invalid);
+      }
+
+      size_t error_count() const
+      {
+        return error_count_;
       }
 
     private:
@@ -201,7 +216,7 @@ namespace trieste
         {
           extend();
 
-          node = node->parent()->shared_from_this();
+          node = node->parent();
           return true;
         }
 
@@ -230,7 +245,7 @@ namespace trieste
         {
           node->push_back(make_error(node->location(), "this is unclosed"));
           term();
-          node = node->parent()->shared_from_this();
+          node = node->parent();
           term();
         }
 
@@ -258,8 +273,10 @@ namespace trieste
       std::function<void(const Parse&, const std::filesystem::path&, Node)>;
 
   private:
+    const size_t default_max_errors = 100;
     depth depth_;
     const wf::Wellformed& wf_ = wf::empty;
+    size_t max_errors_;
     std::filesystem::path exe;
 
     PreF prefile_;
@@ -272,13 +289,26 @@ namespace trieste
     std::map<Token, GenLocationF> gens;
 
   public:
-    Parse(depth depth) : depth_(depth) {}
+    Parse(depth depth) : depth_(depth), max_errors_(default_max_errors) {}
 
-    Parse(depth depth, const wf::Wellformed& wf) : depth_(depth), wf_(wf) {}
+    Parse(depth depth, const wf::Wellformed& wf)
+    : depth_(depth), wf_(wf), max_errors_(default_max_errors)
+    {}
 
     const wf::Wellformed& wf() const
     {
       return wf_;
+    }
+
+    size_t max_errors() const
+    {
+      return max_errors_;
+    }
+
+    Parse& max_errors(size_t n)
+    {
+      max_errors_ = n;
+      return *this;
     }
 
     Parse& operator()(
@@ -417,7 +447,7 @@ namespace trieste
 
       auto mode = make.mode_ = find->first;
 
-      while (!make.re_iterator.empty())
+      while (!make.re_iterator.empty() && make.error_count() < max_errors_)
       {
         bool matched = false;
 
@@ -446,6 +476,12 @@ namespace trieste
           make.invalid();
           make.re_iterator.skip();
         }
+      }
+
+      if (make.error_count() >= max_errors_)
+      {
+        logging::Error() << "Too many errors (" << make.error_count() << " > "
+                         << max_errors_ << ") when parsing " << name;
       }
 
       if (done_)
@@ -498,15 +534,14 @@ namespace trieste
   inline detail::Rule
   operator>>(detail::Located<const std::string&> s, detail::ParseEffect effect)
   {
-    return std::make_shared<detail::RuleDef>(s, effect);
+    return detail::Rule::make(s, effect);
   }
 
   inline detail::Rule
   operator>>(detail::Located<const char*> s, detail::ParseEffect effect)
   {
-    return std::make_shared<detail::RuleDef>(s, effect);
+    return detail::Rule::make(s, effect);
   }
-
 
   inline std::pair<Token, GenLocationF>
   operator>>(const Token& t, GenLocationF f)

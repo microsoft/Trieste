@@ -36,40 +36,48 @@ int main(int argc, char** argv)
     output_path = mode;
   }
 
-  ProcessResult result;
-  if (mode == "calculate")
+  try
   {
-    result = reader >> infix::calculate();
+    ProcessResult result;
+    if (mode == "calculate")
+    {
+      result = reader >> infix::calculate();
+      if (!result.ok)
+      {
+        logging::Error err;
+        result.print_errors(err);
+        return 1;
+      }
+
+      Node calc = result.ast->front();
+      for (const Node& output : *calc)
+      {
+        auto str = output->front()->location().view();
+        auto val = output->back()->location().view();
+        std::cout << str << " " << val << std::endl;
+      }
+
+      return 0;
+    }
+    if (mode == "infix")
+    {
+      result = reader >> infix::writer(output_path).destination(dest);
+    }
+    else if (mode == "postfix")
+    {
+      result = reader >> infix::postfix_writer(output_path).destination(dest);
+    }
+
     if (!result.ok)
     {
       logging::Error err;
       result.print_errors(err);
       return 1;
     }
-
-    Node calc = result.ast->front();
-    for (auto& output : *calc)
-    {
-      auto str = output->front()->location().view();
-      auto val = output->back()->location().view();
-      std::cout << str << " " << val << std::endl;
-    }
-
-    return 0;
   }
-  if (mode == "infix")
+  catch (const std::exception& e)
   {
-    result = reader >> infix::writer(output_path).destination(dest);
-  }
-  else if (mode == "postfix")
-  {
-    result = reader >> infix::postfix_writer(output_path).destination(dest);
-  }
-
-  if (!result.ok)
-  {
-    logging::Error err;
-    result.print_errors(err);
+    std::cerr << e.what() << std::endl;
     return 1;
   }
 

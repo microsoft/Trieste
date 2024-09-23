@@ -258,5 +258,16 @@ namespace trieste
       input_ = SourceDef::synthetic(contents);
       return *this;
     }
+
+    Reader& postparse(Parse::PostF func)
+    {
+      parser_.postparse(func);
+      return *this;
+    }
+
+    const wf::Wellformed& output_wf() const
+    {
+      return passes_.back()->wf();
+    }
   };
 }

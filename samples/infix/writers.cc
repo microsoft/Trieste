@@ -26,15 +26,12 @@ namespace
 
   bool exists(const NodeRange& n)
   {
-    Node node = *n.first;
-    auto defs = node->lookup();
-    return defs.size() > 0;
+    return !n.front()->lookup().empty();
   }
 
   bool can_replace(const NodeRange& n)
   {
-    Node node = *n.first;
-    auto defs = node->lookup();
+    auto defs = n.front()->lookup();
     if (defs.size() == 0)
     {
       return false;
@@ -309,7 +306,7 @@ namespace
 
     if (node == Calculation)
     {
-      for (auto& step : *node)
+      for (const Node& step : *node)
       {
         if (write_infix(os, step))
         {
@@ -400,7 +397,7 @@ namespace
 
     if (node == Calculation)
     {
-      for (auto& step : *node)
+      for (const Node& step : *node)
       {
         if (write_postfix(os, step))
         {

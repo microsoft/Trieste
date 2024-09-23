@@ -1,10 +1,9 @@
 #include "internal.h"
-#include "trieste/rewrite.h"
-#include "trieste/utf8.h"
-#include "trieste/wf.h"
 #include "yaml.h"
 
 #include <string>
+#include <trieste/trieste.h>
+#include <trieste/utf8.h>
 
 namespace
 {
@@ -50,7 +49,7 @@ namespace
     }
   };
 
-  Node unwrap(Node node)
+  Node unwrap(const Node& node)
   {
     if (node->in({TagValue, AnchorValue}))
     {
@@ -60,7 +59,7 @@ namespace
     return node;
   }
 
-  bool is_complex(Node mappingitem)
+  bool is_complex(const Node& mappingitem)
   {
     Node key = unwrap(mappingitem / Key);
     if (key->in(
@@ -71,7 +70,7 @@ namespace
 
     if (key == DoubleQuote)
     {
-      for (auto line : *key)
+      for (const Node& line : *key)
       {
         if (line->location().view().find(':') != std::string::npos)
         {
@@ -83,9 +82,9 @@ namespace
     return false;
   }
 
-  bool is_in(Node node, std::set<Token> tokens)
+  bool is_in(const Node& node, std::set<Token> tokens)
   {
-    NodeDef* parent = node->parent();
+    NodeDef* parent = node->parent_unsafe();
     while (parent != Top)
     {
       if (tokens.count(parent->type()) > 0)
@@ -93,7 +92,7 @@ namespace
         return true;
       }
 
-      parent = parent->parent();
+      parent = parent->parent_unsafe();
     }
 
     return false;
@@ -102,21 +101,21 @@ namespace
   bool is_sequence_out(Node node)
   {
     bool newline = false;
-    NodeDef* current = node->parent();
+    NodeDef* current = node->parent_unsafe();
     if (current->in({AnchorValue, TagValue}))
     {
       newline = true;
-      current = current->parent();
+      current = current->parent_unsafe();
     }
 
     if (current->in({AnchorValue, TagValue}))
     {
-      current = current->parent();
+      current = current->parent_unsafe();
     }
 
     if (current->in({MappingItem, FlowMappingItem}))
     {
-      newline = newline || !is_complex(current->shared_from_this());
+      newline = newline || !is_complex(current->intrusive_ptr_from_this());
     }
 
     return newline && !current->in({Sequence, FlowSequence});
@@ -226,7 +225,10 @@ namespace
   }
 
   bool write_value(
-    std::ostream& os, WriteOptions& options, const Spaces& spaces, Node value);
+    std::ostream& os,
+    WriteOptions& options,
+    const Spaces& spaces,
+    const Node& value);
 
   bool write_sequence(
     std::ostream& os,
@@ -242,7 +244,7 @@ namespace
 
     bool not_first = false;
     Spaces new_spaces = spaces.in().indent(2);
-    for (auto item : *sequence)
+    for (const Node& item : *sequence)
     {
       if (not_first)
       {
@@ -273,7 +275,7 @@ namespace
     std::ostream& os,
     WriteOptions& options,
     const Spaces& spaces,
-    Node mappingitem,
+    const Node& mappingitem,
     bool not_first)
   {
     Node key = mappingitem / Key;
@@ -302,7 +304,10 @@ namespace
   }
 
   bool write_mapping(
-    std::ostream& os, WriteOptions& options, const Spaces& spaces, Node mapping)
+    std::ostream& os,
+    WriteOptions& options,
+    const Spaces& spaces,
+    const Node& mapping)
   {
     if (mapping->empty())
     {
@@ -312,7 +317,7 @@ namespace
 
     bool not_first = false;
     Spaces new_spaces = spaces.in().indent(options.indent);
-    for (auto mappingitem : *mapping)
+    for (const Node& mappingitem : *mapping)
     {
       if (is_complex(mappingitem))
       {
@@ -389,7 +394,7 @@ namespace
   }
 
   std::string unescape_block(
-    Node node,
+    const Node& node,
     const std::string& str,
     WriteOptions& options,
     const std::string& indent)
@@ -466,7 +471,10 @@ namespace
   }
 
   void write_block(
-    std::ostream& os, WriteOptions& options, const Spaces& spaces, Node block)
+    std::ostream& os,
+    WriteOptions& options,
+    const Spaces& spaces,
+    const Node& block)
   {
     std::ostringstream ss;
     block_to_string(ss, block);
@@ -551,8 +559,8 @@ namespace
            }) != str.end();
   }
 
-  std::string
-  plain_to_string(Node plain, WriteOptions& options, const Spaces& spaces)
+  std::string plain_to_string(
+    const Node& plain, WriteOptions& options, const Spaces& spaces)
   {
     std::ostringstream os;
     block_to_string(os, plain);
@@ -602,12 +610,20 @@ namespace
   }
 
   bool write_value(
-    std::ostream& os, WriteOptions& options, const Spaces& spaces, Node value)
+    std::ostream& os,
+    WriteOptions& options,
+    const Spaces& spaces,
+    const Node& maybe_value)
   {
-    bool tag_anchor = value->in({TagValue, AnchorValue});
+    bool tag_anchor = maybe_value->in({TagValue, AnchorValue});
+    Node value;
     if (tag_anchor)
     {
-      value = handle_tag_anchor(os, options, spaces, value);
+      value = handle_tag_anchor(os, options, spaces, maybe_value);
+    }
+    else
+    {
+      value = maybe_value;
     }
 
     if (value->in({Mapping, FlowMapping}))
@@ -693,7 +709,8 @@ namespace
     return true;
   }
 
-  bool write_directive(std::ostream& os, WriteOptions& options, Node directive)
+  bool write_directive(
+    std::ostream& os, WriteOptions& options, const Node& directive)
   {
     if (directive == VersionDirective)
     {
@@ -703,12 +720,15 @@ namespace
   }
 
   bool write_document(
-    std::ostream& os, WriteOptions& options, Node document, bool not_first)
+    std::ostream& os,
+    WriteOptions& options,
+    const Node& document,
+    bool not_first)
   {
     Node directives = document / Directives;
     if (!directives->empty() && not_first && options.canonical)
     {
-      for (auto directive : *directives)
+      for (const Node& directive : *directives)
       {
         if (write_directive(os, options, directive))
         {
@@ -765,11 +785,11 @@ namespace
     return false;
   }
 
-  bool write_stream(std::ostream& os, WriteOptions& options, Node stream)
+  bool write_stream(std::ostream& os, WriteOptions& options, const Node& stream)
   {
     Node documents = stream / Documents;
     bool not_first = false;
-    for (auto document : *documents)
+    for (const Node& document : *documents)
     {
       write_document(os, options, document, not_first);
       not_first = true;
@@ -828,11 +848,10 @@ namespace trieste
         yaml = yaml->front();
       }
 
-      wf::push_back(yaml::wf);
+      WFContext context(yaml::wf);
       std::ostringstream os;
       WriteOptions options = {newline, indent, canonical, false};
       write_stream(os, options, yaml);
-      wf::pop_front();
       return os.str();
     }
   }

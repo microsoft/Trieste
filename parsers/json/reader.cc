@@ -1,4 +1,5 @@
 #include "internal.h"
+#include "trieste/utf8.h"
 
 namespace
 {
@@ -14,7 +15,7 @@ namespace
       if (n->type() == Error)
         return false;
 
-      for (auto child : *n)
+      for (Node& child : *n)
       {
         if (token_messages.count(child->type()) > 0)
         {
@@ -142,13 +143,12 @@ namespace
             (T(File) << ((T(Group) << (ValueToken++[Value] * End)) * End)) >>
           [allow_multiple](Match& _) {
             auto values = _[Value];
-            if (values.first == values.second)
+            if (values.empty())
             {
               return err("Invalid JSON");
             }
 
-            if (
-              std::distance(values.first, values.second) > 1 && !allow_multiple)
+            if (values.size() > 1 && !allow_multiple)
             {
               return err("Multiple top-level values not allowed");
             }
@@ -188,13 +188,21 @@ namespace
 
         In(ObjectGroup) *
             (Start * T(String)[Lhs] * T(Colon) * ValueToken[Rhs]) >>
-          [](Match& _) { return (Member << _(Lhs) << _(Rhs)); },
+          [](Match& _) {
+            Location key = _(Lhs)->location();
+            key.pos += 1;
+            key.len -= 2;
+            return (Member << (Key ^ key) << _(Rhs));
+          },
 
         In(ObjectGroup) *
             (T(Member)[Member] * T(Comma) * T(String)[Lhs] * T(Colon) *
              ValueToken[Rhs]) >>
           [](Match& _) {
-            return Seq << _(Member) << (Member << _(Lhs) << _(Rhs));
+            Location key = _(Lhs)->location();
+            key.pos += 1;
+            key.len -= 2;
+            return Seq << _(Member) << (Member << (Key ^ key) << _(Rhs));
           },
 
         In(Object) * (T(ObjectGroup) << (T(Member)++[Object] * End)) >>
@@ -207,7 +215,7 @@ namespace
     });
 
     return structure;
-  };
+  }
 }
 
 namespace trieste
@@ -222,6 +230,102 @@ namespace trieste
     bool equal(Node lhs, Node rhs)
     {
       return value_equal(lhs, rhs);
+    }
+
+    std::string unescape(const std::string_view& string)
+    {
+      std::string temp = utf8::unescape_hexunicode(string);
+      std::string result;
+      result.reserve(temp.size());
+      for (auto it = temp.begin(); it != temp.end(); ++it)
+      {
+        if (*it == '\\')
+        {
+          it++;
+          switch (*it)
+          {
+            case 'b':
+              result.push_back('\b');
+              break;
+
+            case 'f':
+              result.push_back('\f');
+              break;
+
+            case 'n':
+              result.push_back('\n');
+              break;
+
+            case 'r':
+              result.push_back('\r');
+              break;
+
+            case 't':
+              result.push_back('\t');
+              break;
+
+            case '\\':
+            case '/':
+            case '"':
+              result.push_back(*it);
+              break;
+
+            default:
+              throw std::runtime_error("Invalid escape sequence");
+          }
+        }
+        else
+        {
+          result.push_back(*it);
+        }
+      }
+
+      return result;
+    }
+
+    std::string escape(const std::string_view& string)
+    {
+      std::string temp = utf8::escape_unicode(string);
+      std::ostringstream buf;
+      for (auto it = temp.begin(); it != temp.end(); ++it)
+      {
+        switch (*it)
+        {
+          case '\b':
+            buf << '\\' << 'b';
+            break;
+
+          case '\f':
+            buf << '\\' << 'f';
+            break;
+
+          case '\n':
+            buf << '\\' << 'n';
+            break;
+
+          case '\r':
+            buf << '\\' << 'r';
+            break;
+
+          case '\t':
+            buf << '\\' << 't';
+            break;
+
+          case '\\':
+            buf << '\\' << '\\';
+            break;
+
+          case '"':
+            buf << '\\' << '"';
+            break;
+
+          default:
+            buf << *it;
+            break;
+        }
+      }
+
+      return buf.str();
     }
   }
 }

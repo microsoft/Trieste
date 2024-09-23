@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
+#include "intrusive_ptr.h"
 #include "token.h"
 
 #include <iostream>
@@ -9,6 +10,10 @@
 #include <set>
 #include <sstream>
 #include <vector>
+
+#ifndef TRIESTE_USE_CXX17
+#  include <span>
+#endif
 
 namespace trieste
 {
@@ -29,13 +34,79 @@ namespace trieste
 
   using Nodes = std::vector<Node>;
   using NodeIt = Nodes::iterator;
-  using NodeRange = std::pair<NodeIt, NodeIt>;
-  using NodeSet = std::set<Node, std::owner_less<>>;
+  using NodeSet = std::set<Node>;
 
   template<typename T>
-  using NodeMap = std::map<Node, T, std::owner_less<>>;
+  using NodeMap = std::map<Node, T>;
 
-  class SymtabDef
+#ifdef TRIESTE_USE_CXX17
+  class NodeRange
+  {
+  public:
+    NodeRange() {}
+    NodeRange(NodeIt first_, NodeIt second_) : first(first_), second(second_) {}
+    NodeRange(NodeRange&& other) : first(other.first), second(other.second) {}
+    NodeRange(const NodeRange& other) : first(other.first), second(other.second)
+    {}
+
+    NodeRange& operator=(NodeRange&& other)
+    {
+      first = other.first;
+      second = other.second;
+      return *this;
+    }
+
+    NodeRange& operator=(const NodeRange& other)
+    {
+      first = other.first;
+      second = other.second;
+      return *this;
+    }
+
+    bool empty() const
+    {
+      return first == second;
+    }
+
+    std::size_t size() const
+    {
+      return std::distance(first, second);
+    }
+
+    NodeIt begin() const
+    {
+      return first;
+    }
+
+    NodeIt end() const
+    {
+      return second;
+    }
+
+    Node front() const
+    {
+      return *first;
+    }
+
+    Node back() const
+    {
+      return *(second - 1);
+    }
+
+    Node operator[](std::size_t index) const
+    {
+      return *(first + index);
+    }
+
+  private:
+    NodeIt first;
+    NodeIt second;
+  };
+#else
+  using NodeRange = std::span<Node>;
+#endif
+
+  class SymtabDef final : public intrusive_refcounted<SymtabDef>
   {
     friend class NodeDef;
 
@@ -64,7 +135,7 @@ namespace trieste
     void str(std::ostream& out, size_t level);
   };
 
-  using Symtab = std::shared_ptr<SymtabDef>;
+  using Symtab = intrusive_ptr<SymtabDef>;
 
   struct Index
   {
@@ -111,7 +182,7 @@ namespace trieste
     }
   };
 
-  class NodeDef : public std::enable_shared_from_this<NodeDef>
+  class NodeDef final : public intrusive_refcounted<NodeDef>
   {
   private:
     Token type_;
@@ -125,7 +196,7 @@ namespace trieste
     : type_(type), location_(location), parent_(nullptr)
     {
       if (type_ & flag::symtab)
-        symtab_ = std::make_shared<SymtabDef>();
+        symtab_ = Symtab::make();
     }
 
     void add_flags()
@@ -155,87 +226,23 @@ namespace trieste
     }
 
   public:
-    /**
-     * @brief Destroy the Node Def object
-     *
-     * This destructor will transitively destroy the children of the node.
-     *
-     * For deep graphs this can be a problem leading to stack overflow if we
-     * just allow arbitrary reentrancy through ~NodeDef. This design ensures
-     * there at most two calls to the destructor on the stack.
-     *
-     * There are two cases where this destructor is called:
-     *   - Outer case: there are no other calls to the destructor on the stack
-     *   - Re-entrant case: there is one more call to the destructor on the
-     * stack
-     *
-     * This destructor uses thread local state to detect which case it is in
-     * using
-     *
-     *   thread_local std::vector<Nodes>* work_list{nullptr};
-     *
-     * On entry to the destructor if the work_list is nullptr, then we are in
-     * the Outer case. The Outer case sets up a work_list, stores a pointer to
-     * it in the thread_local and processes the work_list, which includes this
-     * nodes children.  Processing the worklist can result in calls to ~NodeDef.
-     * When the work_list is empty, the thread_local is nullified. Thus the next
-     * call to NodeDef will be considered an Outer case.
-     *
-     * The Re-entrant case is detected by the work_list being non-null.
-     * In this case, the children are moved into the work_list and the
-     * destructor returns. The children will be processed by the Outer case.
-     */
-    ~NodeDef()
-    {
-      // Contains a pointer to a vector on the stack for handling the
-      // recursive destruction of the AST.
-      // We don't use an actual vector in the TLS as the destruction
-      // of the TLS can cause problems on some platforms.
-      thread_local std::vector<Nodes>* work_list{nullptr};
-
-      if (work_list)
-      {
-        // Re-entrant case, move the children into the work_list and return.
-        work_list->push_back(std::move(children));
-        return;
-      }
-
-      // Outer case, set up the work_list, and process it.
-      std::vector<Nodes> work_list_local;
-      work_list = &work_list_local;
-
-      work_list_local.push_back(std::move(children));
-
-      while (!work_list_local.empty())
-      {
-        // clear will potentially call this destructor recursively, so we need
-        // to have finished modifying the work_list before calling it, hence
-        // moving the nodes out of the work_list into a local variable.
-        auto nodes = std::move(work_list_local.back());
-        work_list_local.pop_back();
-        nodes.clear();
-      }
-
-      work_list = nullptr;
-    }
-
     static Node create(const Token& type)
     {
-      return std::shared_ptr<NodeDef>(new NodeDef(type, {nullptr, 0, 0}));
+      return Node(new NodeDef(type, Location{nullptr, 0, 0}));
     }
 
     static Node create(const Token& type, Location location)
     {
-      return std::shared_ptr<NodeDef>(new NodeDef(type, location));
+      return Node(new NodeDef(type, location));
     }
 
     static Node create(const Token& type, NodeRange range)
     {
-      if (range.first == range.second)
+      if (range.empty())
         return create(type);
 
-      return std::shared_ptr<NodeDef>(new NodeDef(
-        type, (*range.first)->location_ * (*(range.second - 1))->location_));
+      return Node(
+        new NodeDef(type, range.front()->location_ * range.back()->location_));
     }
 
     const Token& type() const
@@ -253,7 +260,12 @@ namespace trieste
       return location_;
     }
 
-    NodeDef* parent()
+    Node parent()
+    {
+      return parent_ ? parent_->intrusive_ptr_from_this() : nullptr;
+    }
+
+    NodeDef* parent_unsafe()
     {
       return parent_;
     }
@@ -270,7 +282,7 @@ namespace trieste
       while (p)
       {
         if (p->type_.in(list))
-          return p->shared_from_this();
+          return p->intrusive_ptr_from_this();
 
         p = p->parent_;
       }
@@ -334,6 +346,18 @@ namespace trieste
       return children.crend();
     }
 
+    auto find_first(Token token, NodeIt begin)
+    {
+      assert((*begin)->parent_unsafe() == this);
+      return std::find_if(
+        begin, children.end(), [token](auto& n) { return n->type() == token; });
+    }
+
+    auto contains(Token token)
+    {
+      return find_first(token, children.begin()) != children.end();
+    }
+
     auto find(Node node)
     {
       return std::find(children.begin(), children.end(), node);
@@ -391,8 +415,8 @@ namespace trieste
 
     void push_back(NodeRange range)
     {
-      for (auto it = range.first; it != range.second; ++it)
-        push_back(*it);
+      for (Node& n : range)
+        push_back(n);
     }
 
     void push_back_ephemeral(Node node)
@@ -406,8 +430,8 @@ namespace trieste
 
     void push_back_ephemeral(NodeRange range)
     {
-      for (auto it = range.first; it != range.second; ++it)
-        push_back_ephemeral(*it);
+      for (Node& n : range)
+        push_back_ephemeral(n);
     }
 
     Node pop_back()
@@ -466,7 +490,7 @@ namespace trieste
 
       while (p)
       {
-        auto node = p->shared_from_this();
+        auto node = p->intrusive_ptr_from_this();
 
         if (node->symtab_)
           return node;
@@ -573,7 +597,7 @@ namespace trieste
         throw std::runtime_error("No symbol table");
 
       auto& entry = st->symtab_->symbols[loc];
-      entry.push_back(shared_from_this());
+      entry.push_back(intrusive_ptr_from_this());
 
       // If there are multiple definitions, none can be shadowing.
       return (entry.size() == 1) ||
@@ -589,7 +613,7 @@ namespace trieste
       if (!st)
         throw std::runtime_error("No symbol table");
 
-      st->symtab_->includes.emplace_back(shared_from_this());
+      st->symtab_->includes.emplace_back(intrusive_ptr_from_this());
     }
 
     Location fresh(const Location& prefix = {})
@@ -601,7 +625,7 @@ namespace trieste
       return parent(Top)->fresh(prefix);
     }
 
-    Node clone()
+    Node clone() const
     {
       // This doesn't preserve the symbol table.
       auto node = create(type_, location_);
@@ -670,10 +694,10 @@ namespace trieste
 
       // If p and q are the same, then one is contained within the other.
       if (p == q)
-        return p->shared_from_this();
+        return p->intrusive_ptr_from_this();
 
       // Otherwise return the common parent.
-      return p->parent_->shared_from_this();
+      return p->parent_->intrusive_ptr_from_this();
     }
 
     bool precedes(Node node)
@@ -693,8 +717,8 @@ namespace trieste
 
       // Check that p is to the left of q.
       auto parent = p->parent_;
-      return parent->find(p->shared_from_this()) <
-        parent->find(q->shared_from_this());
+      return parent->find(p->intrusive_ptr_from_this()) <
+        parent->find(q->intrusive_ptr_from_this());
     }
 
     void str(std::ostream& out, size_t level = 0) const
@@ -764,7 +788,7 @@ namespace trieste
     template<typename Pre, typename Post = NopPost>
     SNMALLOC_FAST_PATH void traverse(Pre pre, Post post = NopPost())
     {
-      Node root = shared_from_this();
+      Node root = intrusive_ptr_from_this();
       if (!pre(root))
         return;
 
@@ -854,6 +878,18 @@ namespace trieste
     }
   };
 
+  constexpr void
+  intrusive_refcounted_traits<NodeDef>::intrusive_inc_ref(NodeDef* node)
+  {
+    node->intrusive_inc_ref();
+  }
+
+  inline void
+  intrusive_refcounted_traits<NodeDef>::intrusive_dec_ref(NodeDef* node)
+  {
+    node->intrusive_dec_ref();
+  }
+
   inline TokenDef::operator Node() const
   {
     return NodeDef::create(Token(*this));
@@ -930,8 +966,8 @@ namespace trieste
 
   inline std::ostream& operator<<(std::ostream& os, const NodeRange& range)
   {
-    for (auto it = range.first; it != range.second; ++it)
-      (*it)->str(os);
+    for (const Node& n : range)
+      n->str(os);
 
     return os;
   }
