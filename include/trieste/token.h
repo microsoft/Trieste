@@ -167,15 +167,23 @@ namespace trieste
     constexpr TokenDef::flag internal = 1 << 6;
   }
 
-  inline const auto Invalid = TokenDef("invalid");
+  // Built-in grouping
   inline const auto Top = TokenDef("top", flag::symtab);
-  inline const auto Group = TokenDef("group");
-  inline const auto File = TokenDef("file");
   inline const auto Directory = TokenDef("directory");
+  inline const auto File = TokenDef("file");
+  inline const auto Group = TokenDef("group");
+
+  // Special tokens for effects
   inline const auto Seq = TokenDef("seq");
   inline const auto Lift = TokenDef("lift", flag::internal);
   inline const auto NoChange = TokenDef("nochange");
+  inline const auto Reapply = TokenDef("reapply", flag::internal);
+
+  // Special tokens for symbol tables
   inline const auto Include = TokenDef("include");
+
+  // Special tokens for error handling
+  inline const auto Invalid = TokenDef("invalid");
   inline const auto Error = TokenDef("error", flag::internal);
   inline const auto ErrorMsg = TokenDef("errormsg", flag::print);
   inline const auto ErrorAst = TokenDef("errorast");
