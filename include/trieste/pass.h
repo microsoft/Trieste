@@ -26,8 +26,7 @@ namespace trieste
     using F = std::function<size_t(Node)>;
 
   private:
-    const ptrdiff_t NOCHANGE = -1;
-    const ptrdiff_t REAPPLY = -2;
+    enum : ptrdiff_t {NOCHANGE = -1, REAPPLY = -2};
 
     std::string name_;
     const wf::Wellformed& wf_ = wf::empty;
