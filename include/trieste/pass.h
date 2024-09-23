@@ -26,6 +26,9 @@ namespace trieste
     using F = std::function<size_t(Node)>;
 
   private:
+    static const int NOCHANGE = -1;
+    static const int REAPPLY = -2;
+
     std::string name_;
     const wf::Wellformed& wf_ = wf::empty;
     dir::flag direction_;
@@ -239,7 +242,7 @@ namespace trieste
       NodeIt& it,
       const Node& node)
     {
-      ptrdiff_t replaced = -1;
+      ptrdiff_t replaced = NOCHANGE;
       // Replace [start, it) with whatever the rule builds.
       auto replace = rule_replace(match);
 
@@ -258,14 +261,14 @@ namespace trieste
       {
         replaced = 0;
       }
-      else if (replace == Seq)
+      else if (replace == Seq || replace == Reapply)
       {
         // Unpack the sequence.
         std::for_each(replace->begin(), replace->end(), [&](Node n) {
           n->set_location(loc);
         });
 
-        replaced = replace->size();
+        replaced = replace == Reapply? REAPPLY: replace->size();
         it = node->insert(it, replace->begin(), replace->end());
       }
       else
@@ -293,7 +296,7 @@ namespace trieste
       // Perform matching at this level
       while (it != node->end())
       {
-        ptrdiff_t replaced = -1;
+        ptrdiff_t replaced = NOCHANGE;
 
         auto start = it;
         // Find rule set for this parent and start token combination.
@@ -306,7 +309,7 @@ namespace trieste
             SNMALLOC_LIKELY(!range_contains_error(start, it)))
           {
             replaced = replace(match, rule.second, start, it, node);
-            if (replaced != -1)
+            if (replaced != NOCHANGE)
             {
               changes += replaced;
               break;
@@ -315,10 +318,14 @@ namespace trieste
           it = start;
         }
 
-        if (replaced == -1)
+        if (replaced == NOCHANGE)
         {
           // If we didn't do anything, advance to the next node.
           ++it;
+        }
+        else if (replaced == REAPPLY)
+        {
+          // Don't advance so that we match on the inserted nodes next
         }
         else if (flag(dir::once))
         {
