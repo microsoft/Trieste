@@ -174,19 +174,19 @@ namespace trieste
   inline const auto Group = TokenDef("group");
 
   // Special tokens for effects
-  inline const auto Seq = TokenDef("seq");
+  inline const auto Seq = TokenDef("seq", flag::internal);
   inline const auto Lift = TokenDef("lift", flag::internal);
-  inline const auto NoChange = TokenDef("nochange");
+  inline const auto NoChange = TokenDef("nochange", flag::internal);
   inline const auto Reapply = TokenDef("reapply", flag::internal);
 
   // Special tokens for symbol tables
-  inline const auto Include = TokenDef("include");
+  inline const auto Include = TokenDef("include", flag::internal);
 
   // Special tokens for error handling
-  inline const auto Invalid = TokenDef("invalid");
+  inline const auto Invalid = TokenDef("invalid", flag::internal);
   inline const auto Error = TokenDef("error", flag::internal);
-  inline const auto ErrorMsg = TokenDef("errormsg", flag::print);
-  inline const auto ErrorAst = TokenDef("errorast");
+  inline const auto ErrorMsg = TokenDef("errormsg", flag::print | flag::internal);
+  inline const auto ErrorAst = TokenDef("errorast", flag::internal);
 
   namespace detail
   {
