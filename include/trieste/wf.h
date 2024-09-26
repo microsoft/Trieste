@@ -1071,6 +1071,30 @@ namespace trieste
         wf.append(shape2);
         return wf;
       }
+
+      inline Wellformed operator-(const Wellformed& wf, const Token& token) {
+        Wellformed wf2;
+        wf2.shapes.insert(wf.shapes.begin(), wf.shapes.end());
+        wf2.shapes.erase(token);
+        return wf2;
+      }
+
+      inline Wellformed operator-(const Wellformed& wf, Token&& token) {
+        Wellformed wf2;
+        wf2.shapes.insert(wf.shapes.begin(), wf.shapes.end());
+        wf2.shapes.erase(token);
+        return wf2;
+      }
+
+      inline Wellformed operator-(Wellformed&& wf, const Token& token) {
+        wf.shapes.erase(token);
+        return std::move(wf);
+      }
+
+      inline Wellformed operator-(Wellformed&& wf, Token&& token) {
+        wf.shapes.erase(token);
+        return std::move(wf);
+      }
     }
 
     namespace detail
