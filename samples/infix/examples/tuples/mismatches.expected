@@ -1,0 +1,32 @@
+//! --enable-tuples --tuples-require-parens --expect-fail calculate
+//! --enable-tuples --tuples-require-parens --use-parser-tuples --expect-fail calculate
+//! --enable-tuples --expect-fail calculate
+Invalid maths op
+-- mismatches.infix:3:14
+print "tpl +" foo + 1;
+              ~~~~~~~
+
+Invalid maths op
+-- mismatches.infix:4:14
+print "tpl -" foo - 1;
+              ~~~~~~~
+
+Invalid maths op
+-- mismatches.infix:5:14
+print "tpl *" foo * 1;
+              ~~~~~~~
+
+Invalid maths op
+-- mismatches.infix:6:14
+print "tpl /" foo / 1;
+              ~~~~~~~
+
+Invalid or unevaluatable tuple index
+-- mismatches.infix:9:16
+print "bad idx" 1 . foo;
+                ~~~~~~~
+
+Invalid maths op
+-- mismatches.infix:11:24
+print "nested bad" (42, foo + 1);
+                        ~~~~~~~

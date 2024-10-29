@@ -1,0 +1,7 @@
+//! --enable-tuples --tuples-require-parens infix
+//! --enable-tuples --tuples-require-parens --use-parser-tuples infix
+//! --enable-tuples infix
+tpl1 = (1, 2, 3,);
+print "1" (tpl1).(0);
+print "2" (((42, tpl1, 42,)).(1)).(1);
+print "3" (tpl1).((tpl1).(1));

@@ -1,0 +1,35 @@
+//! parse_only
+//! --enable-tuples parse_only
+//! --enable-tuples --tuples-require-parens parse_only
+//! --enable-tuples --tuples-require-parens --use-parser-tuples parse_only
+(top
+  {}
+  (infix-calculation
+    {
+      x = infix-assign
+      y = infix-assign}
+    (infix-assign
+      (infix-ident 1:x)
+      (infix-expression
+        (infix-int 1:5)))
+    (infix-output
+      (infix-string 3:"x")
+      (infix-expression
+        (infix-ref
+          (infix-ident 1:x))))
+    (infix-assign
+      (infix-ident 1:y)
+      (infix-expression
+        (infix-subtract
+          (infix-expression
+            (infix-int 1:2))
+          (infix-expression
+            (infix-int 1:1)))))
+    (infix-output
+      (infix-string 8:"1 + 10")
+      (infix-expression
+        (infix-add
+          (infix-expression
+            (infix-int 1:1))
+          (infix-expression
+            (infix-int 2:10)))))))
