@@ -177,7 +177,7 @@ namespace trieste
 
         if (test_start_pass.empty())
         {
-          test_start_pass = pass_names.at(1);
+          test_start_pass = pass_names.at(0);
           test_end_pass = pass_names.back();
         }
         else if (test_end_pass.empty())
