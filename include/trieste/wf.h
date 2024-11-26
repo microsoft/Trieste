@@ -313,6 +313,66 @@ namespace trieste
       }
     };
 
+    struct Option
+    {
+      Choice choice;
+
+      SNMALLOC_SLOW_PATH Option(Choice choice_) :
+        choice{choice_} {}
+      SNMALLOC_SLOW_PATH Option() = default;
+      SNMALLOC_SLOW_PATH Option(const Option&) = default;
+      SNMALLOC_SLOW_PATH Option(Option&&) = default;
+      SNMALLOC_SLOW_PATH Option& operator=(const Option&) = default;
+      SNMALLOC_SLOW_PATH Option& operator=(Option&&) = default;
+      SNMALLOC_SLOW_PATH ~Option() = default;
+
+      size_t index(const Token&) const
+      {
+        return std::numeric_limits<size_t>::max();
+      }
+
+      Option& operator[](const Token&)
+      {
+        // Do nothing.
+        return *this;
+      }
+
+      bool check(Node node) const
+      {
+        auto has_err = false;
+        auto ok = true;
+
+        for (auto& child : *node)
+        {
+          has_err = has_err || (child == Error);
+          ok = choice.check(child) && ok;
+        }
+
+        if (!has_err && (node->size() > 1))
+        {
+          logging::Error() << node->location().origin_linecol()
+                           << ": expected zero or one children, found "
+                           << node->size() << std::endl
+                           << node->location().str() << node << std::endl;
+          ok = false;
+        }
+
+        return ok;
+      }
+
+      bool build_st(Node&) const
+      {
+        // Do nothing.
+        return true;
+      }
+
+      void gen(Gen& g, size_t depth, Node node) const
+      {
+        if (g.next() % 2)
+          choice.gen(g, depth, node);
+      }
+    };
+
     struct Field
     {
       Token name;
@@ -466,7 +526,7 @@ namespace trieste
       }
     };
 
-    using ShapeT = std::variant<Sequence, Fields>;
+    using ShapeT = std::variant<Sequence, Option, Fields>;
 
     template<class... Ts>
     struct overload : Ts...
@@ -654,7 +714,7 @@ namespace trieste
           distance[token] = std::visit(
             [&](auto&& arg) {
               using T = std::decay_t<decltype(arg)>;
-              if constexpr (std::is_same_v<T, Sequence>)
+              if constexpr (std::is_same_v<T, Sequence> || std::is_same_v<T, Option>)
               {
                 return arg.choice.expected_distance_to_terminal(
                   current,
@@ -843,6 +903,21 @@ namespace trieste
         return Sequence{choice, 0};
       }
 
+      inline Option operator~(const Token& type)
+      {
+        return Option{Choice{std::vector<Token>{type}}};
+      }
+
+      inline Option operator~(const Choice& choice)
+      {
+        return Option{choice};
+      }
+
+      inline Option operator~(Choice&& choice)
+      {
+        return Option{choice};
+      }
+
       inline Field operator>>=(const Token& name, const Token& type)
       {
         return Field{name, Choice{std::vector<Token>{type}}};
@@ -929,6 +1004,11 @@ namespace trieste
       inline Shape operator<<=(const Token& type, const Sequence& seq)
       {
         return Shape{type, seq};
+      }
+
+      inline Shape operator<<=(const Token& type, const Option& opt)
+      {
+        return Shape{type, opt};
       }
 
       inline Shape operator<<=(const Token& type, const Field& field)

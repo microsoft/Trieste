@@ -19,7 +19,7 @@ namespace trieste
     // clang-format off
     inline const auto wf_parse =
       (Top <<= File)
-      | (File <<= Group++)
+      | (File <<= ~Group)
       | (Value <<= Group)
       | (Array <<= Group)
       | (Object <<= Group)
