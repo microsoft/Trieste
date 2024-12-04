@@ -246,12 +246,13 @@ namespace trieste
     struct Sequence
     {
       Choice choice;
-      size_t minlen;
-      size_t maxlen;
+      size_t min_len;
+      size_t max_len;
       bool has_minlen = false;
+      bool has_maxlen = false;
 
       SNMALLOC_SLOW_PATH Sequence(Choice choice_, size_t minlen_, size_t maxlen_) :
-        choice{choice_}, minlen{minlen_}, maxlen(maxlen_) {}
+        choice{choice_}, min_len{minlen_}, max_len(maxlen_) {}
       SNMALLOC_SLOW_PATH Sequence() = default;
       SNMALLOC_SLOW_PATH Sequence(const Sequence&) = default;
       SNMALLOC_SLOW_PATH Sequence(Sequence&&) = default;
@@ -266,14 +267,27 @@ namespace trieste
 
       Sequence& operator[](size_t new_len)
       {
+        if (has_minlen && has_maxlen)
+          throw std::runtime_error(
+            "Too many bounds when building sequence: ["
+            + std::to_string(min_len) + "]["
+            + std::to_string(max_len) + "]["
+            + std::to_string(new_len) + "]");
+
+        if (has_minlen && !has_maxlen && new_len < min_len)
+          throw std::runtime_error(
+            "Upper bound is below lower bound when building sequence: ["
+            + std::to_string(min_len) + "][" + std::to_string(new_len) + "]");
+
         if (!has_minlen)
         {
-          minlen = new_len;
+          min_len = new_len;
           has_minlen = true;
         }
         else
         {
-          maxlen = new_len;
+          max_len = new_len;
+          has_maxlen = true;
         }
         return *this;
       }
@@ -295,19 +309,19 @@ namespace trieste
           ok = choice.check(child) && ok;
         }
 
-        if (!has_err && (node->size() < minlen))
+        if (!has_err && (node->size() < min_len))
         {
           logging::Error() << node->location().origin_linecol()
-                           << ": expected at least " << minlen
+                           << ": expected at least " << min_len
                            << " children, found " << node->size() << std::endl
                            << node->location().str() << node << std::endl;
           ok = false;
         }
 
-        if (!has_err && (node->size() > maxlen))
+        if (!has_err && (node->size() > max_len))
         {
           logging::Error() << node->location().origin_linecol()
-                           << ": expected at most " << maxlen
+                           << ": expected at most " << max_len
                            << " children, found " << node->size() << std::endl
                            << node->location().str() << node << std::endl;
           ok = false;
@@ -325,10 +339,10 @@ namespace trieste
       void gen(Gen& g, size_t depth, Node node) const
       {
         size_t i;
-        for (i = 0; i < minlen; ++i)
+        for (i = 0; i < min_len; ++i)
           choice.gen(g, depth, node);
 
-        while (i++ < maxlen && g.next() % 2)
+        while (i++ < max_len && g.next() % 2)
           choice.gen(g, depth, node);
       }
     };
