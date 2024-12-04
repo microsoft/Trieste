@@ -247,9 +247,11 @@ namespace trieste
     {
       Choice choice;
       size_t minlen;
+      size_t maxlen;
+      bool has_minlen = false;
 
-      SNMALLOC_SLOW_PATH Sequence(Choice choice_, size_t minlen_) :
-        choice{choice_}, minlen{minlen_} {}
+      SNMALLOC_SLOW_PATH Sequence(Choice choice_, size_t minlen_, size_t maxlen_) :
+        choice{choice_}, minlen{minlen_}, maxlen(maxlen_) {}
       SNMALLOC_SLOW_PATH Sequence() = default;
       SNMALLOC_SLOW_PATH Sequence(const Sequence&) = default;
       SNMALLOC_SLOW_PATH Sequence(Sequence&&) = default;
@@ -262,9 +264,17 @@ namespace trieste
         return std::numeric_limits<size_t>::max();
       }
 
-      Sequence& operator[](size_t new_minlen)
+      Sequence& operator[](size_t new_len)
       {
-        minlen = new_minlen;
+        if (!has_minlen)
+        {
+          minlen = new_len;
+          has_minlen = true;
+        }
+        else
+        {
+          maxlen = new_len;
+        }
         return *this;
       }
 
@@ -294,65 +304,11 @@ namespace trieste
           ok = false;
         }
 
-        return ok;
-      }
-
-      bool build_st(Node&) const
-      {
-        // Do nothing.
-        return true;
-      }
-
-      void gen(Gen& g, size_t depth, Node node) const
-      {
-        for (size_t i = 0; i < minlen; ++i)
-          choice.gen(g, depth, node);
-
-        while (g.next() % 2)
-          choice.gen(g, depth, node);
-      }
-    };
-
-    struct Option
-    {
-      Choice choice;
-
-      SNMALLOC_SLOW_PATH Option(Choice choice_) :
-        choice{choice_} {}
-      SNMALLOC_SLOW_PATH Option() = default;
-      SNMALLOC_SLOW_PATH Option(const Option&) = default;
-      SNMALLOC_SLOW_PATH Option(Option&&) = default;
-      SNMALLOC_SLOW_PATH Option& operator=(const Option&) = default;
-      SNMALLOC_SLOW_PATH Option& operator=(Option&&) = default;
-      SNMALLOC_SLOW_PATH ~Option() = default;
-
-      size_t index(const Token&) const
-      {
-        return std::numeric_limits<size_t>::max();
-      }
-
-      Option& operator[](const Token&)
-      {
-        // Do nothing.
-        return *this;
-      }
-
-      bool check(Node node) const
-      {
-        auto has_err = false;
-        auto ok = true;
-
-        for (auto& child : *node)
-        {
-          has_err = has_err || (child == Error);
-          ok = choice.check(child) && ok;
-        }
-
-        if (!has_err && (node->size() > 1))
+        if (!has_err && (node->size() > maxlen))
         {
           logging::Error() << node->location().origin_linecol()
-                           << ": expected zero or one children, found "
-                           << node->size() << std::endl
+                           << ": expected at most " << maxlen
+                           << " children, found " << node->size() << std::endl
                            << node->location().str() << node << std::endl;
           ok = false;
         }
@@ -368,7 +324,11 @@ namespace trieste
 
       void gen(Gen& g, size_t depth, Node node) const
       {
-        if (g.next() % 2)
+        size_t i;
+        for (i = 0; i < minlen; ++i)
+          choice.gen(g, depth, node);
+
+        while (i++ < maxlen && g.next() % 2)
           choice.gen(g, depth, node);
       }
     };
@@ -526,7 +486,7 @@ namespace trieste
       }
     };
 
-    using ShapeT = std::variant<Sequence, Option, Fields>;
+    using ShapeT = std::variant<Sequence, Fields>;
 
     template<class... Ts>
     struct overload : Ts...
@@ -714,7 +674,7 @@ namespace trieste
           distance[token] = std::visit(
             [&](auto&& arg) {
               using T = std::decay_t<decltype(arg)>;
-              if constexpr (std::is_same_v<T, Sequence> || std::is_same_v<T, Option>)
+              if constexpr (std::is_same_v<T, Sequence>)
               {
                 return arg.choice.expected_distance_to_terminal(
                   current,
@@ -890,32 +850,32 @@ namespace trieste
 
       inline Sequence operator++(const Token& type, int)
       {
-        return Sequence{Choice{std::vector<Token>{type}}, 0};
+        return Sequence{Choice{std::vector<Token>{type}}, 0, std::numeric_limits<size_t>::max()};
       }
 
       inline Sequence operator++(const Choice& choice, int)
       {
-        return Sequence{choice, 0};
+        return Sequence{choice, 0, std::numeric_limits<size_t>::max()};
       }
 
       inline Sequence operator++(Choice&& choice, int)
       {
-        return Sequence{choice, 0};
+        return Sequence{choice, 0, std::numeric_limits<size_t>::max()};
       }
 
-      inline Option operator~(const Token& type)
+      inline Sequence operator~(const Token& type)
       {
-        return Option{Choice{std::vector<Token>{type}}};
+        return Sequence{Choice{std::vector<Token>{type}}, 0, 1};
       }
 
-      inline Option operator~(const Choice& choice)
+      inline Sequence operator~(const Choice& choice)
       {
-        return Option{choice};
+        return Sequence{choice, 0, 1};
       }
 
-      inline Option operator~(Choice&& choice)
+      inline Sequence operator~(Choice&& choice)
       {
-        return Option{choice};
+        return Sequence{choice, 0, 1};
       }
 
       inline Field operator>>=(const Token& name, const Token& type)
@@ -1004,11 +964,6 @@ namespace trieste
       inline Shape operator<<=(const Token& type, const Sequence& seq)
       {
         return Shape{type, seq};
-      }
-
-      inline Shape operator<<=(const Token& type, const Option& opt)
-      {
-        return Shape{type, opt};
       }
 
       inline Shape operator<<=(const Token& type, const Field& field)
