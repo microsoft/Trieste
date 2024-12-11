@@ -134,6 +134,11 @@ namespace trieste
         auto& wf = pass->wf();
         auto& prev = i > 1 ? passes_.at(i - 2)->wf() : *input_wf_;
 
+        size_t stat_passed = 0;
+        size_t stat_error = 0;
+        size_t stat_failed = 0;
+        std::map<std::string, size_t> error_msgs;
+
         if (!prev || !wf)
         {
           logging::Info() << "Skipping pass: " << pass->name() << std::endl;
@@ -158,14 +163,25 @@ namespace trieste
           logging::Trace() << new_ast << "------------" << std::endl
                            << std::endl;
 
+          // TODO: Why are we building the symbol tables here?
           auto ok = wf.build_st(new_ast);
           if (ok)
           {
             Nodes errors;
             new_ast->get_errors(errors);
             if (!errors.empty())
+            {
               // Pass added error nodes, so doesn't need to satisfy wf.
+              stat_error++;
+              Node error = errors.front();
+              for (auto& c : *error) {
+                  if(c->type() == ErrorMsg) {
+                      error_msgs[std::string(c->location().view())]++;
+                      break;
+                  }
+              }
               continue;
+            }
           }
           ok = wf.check(new_ast) && ok;
 
@@ -189,10 +205,24 @@ namespace trieste
                 << std::endl;
             ret = 1;
 
+            stat_failed++;
+
             if (failfast_)
               return ret;
           }
+          if (ok) stat_passed++;
         }
+
+        logging::Info info;
+
+        if (stat_failed) info << "  not WF " << stat_failed << " times." << std::endl;
+
+        if (stat_error) info << "  errored " << stat_error << " times." << std::endl;
+        for (auto [msg, count] : error_msgs) {
+          info << "    " << msg << ": " << count << std::endl;
+        }
+
+        if (stat_error && stat_passed) info << "  passed " << stat_passed << " times." << std::endl;
 
         context.pop_front();
         context.pop_front();
