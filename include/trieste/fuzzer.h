@@ -134,9 +134,10 @@ namespace trieste
         auto& wf = pass->wf();
         auto& prev = i > 1 ? passes_.at(i - 2)->wf() : *input_wf_;
 
-        size_t stat_passed = 0;
-        size_t stat_error = 0;
-        size_t stat_failed = 0;
+        size_t passed_count = 0;
+        size_t trivial_count = 0;
+        size_t error_count = 0;
+        size_t failed_count = 0;
         std::map<std::string, size_t> error_msgs;
 
         if (!prev || !wf)
@@ -172,7 +173,7 @@ namespace trieste
             if (!errors.empty())
             {
               // Pass added error nodes, so doesn't need to satisfy wf.
-              stat_error++;
+              error_count++;
               Node error = errors.front();
               for (auto& c : *error) {
                   if(c->type() == ErrorMsg) {
@@ -205,24 +206,29 @@ namespace trieste
                 << std::endl;
             ret = 1;
 
-            stat_failed++;
+            failed_count++;
 
             if (failfast_)
               return ret;
           }
-          if (ok) stat_passed++;
+          if (ok) passed_count++;
+          if (ok && changes == 0) trivial_count++;
         }
 
         logging::Info info;
 
-        if (stat_failed) info << "  not WF " << stat_failed << " times." << std::endl;
+        if (failed_count > 0) info << "  not WF " << failed_count << " times." << std::endl;
 
-        if (stat_error) info << "  errored " << stat_error << " times." << std::endl;
+        if (error_count > 0) info << "  errored " << error_count << " times." << std::endl;
         for (auto [msg, count] : error_msgs) {
           info << "    " << msg << ": " << count << std::endl;
         }
 
-        if (stat_error && stat_passed) info << "  passed " << stat_passed << " times." << std::endl;
+        if ((error_count > 0 && passed_count > 0) || trivial_count > 0)
+        {
+          info << "  passed " << passed_count << " times." << std::endl;
+          if (trivial_count > 0) info << "    trivial: " << trivial_count << std::endl;
+        }
 
         context.pop_front();
         context.pop_front();
