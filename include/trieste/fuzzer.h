@@ -139,6 +139,7 @@ namespace trieste
         size_t error_count = 0;
         size_t failed_count = 0;
         std::map<std::string, size_t> error_msgs;
+        std::set<size_t> ast_hashes;
 
         if (!prev || !wf)
         {
@@ -163,6 +164,8 @@ namespace trieste
           auto [new_ast, count, changes] = pass->run(ast);
           logging::Trace() << new_ast << "------------" << std::endl
                            << std::endl;
+
+          ast_hashes.insert(new_ast->hash());
 
           // TODO: Why are we building the symbol tables here?
           auto ok = wf.build_st(new_ast);
@@ -229,6 +232,10 @@ namespace trieste
           info << "  passed " << passed_count << " times." << std::endl;
           if (trivial_count > 0) info << "    trivial: " << trivial_count << std::endl;
         }
+
+        size_t hash_unique = ast_hashes.size();
+        info << "  " << ast_hashes.size() << " hash unique "
+             << (hash_unique > 1? "trees": "tree") << "." << std::endl;
 
         context.pop_front();
         context.pop_front();
