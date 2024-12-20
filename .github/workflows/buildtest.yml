@@ -26,7 +26,7 @@ jobs:
           compiler: "clang"
           cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_BUILD_PARSER_TESTS=1"
           generator: "-G Ninja"
-          dependencies: "sudo apt install ninja-build"
+          dependencies: "sudo apt install ninja-build clang-15"
 
         - platform: "windows-latest"
           variant:  "build-parser-tests"
@@ -42,6 +42,7 @@ jobs:
           variant: "asan"
           build-type: "Release"
           cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANITIZE=address -DTRIESTE_BUILD_PARSER_TESTS=1"
+          dependencies: "sudo apt install ninja-build clang-15"
 
         - platform: "macos-latest"
           variant: "asan"
@@ -52,6 +53,7 @@ jobs:
           variant: "ubsan"
           build-type: "Release"
           cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANITIZE=undefined -DTRIESTE_BUILD_PARSER_TESTS=1"
+          dependencies: "sudo apt install ninja-build clang-15"
 
         exclude:
         # Mac is already using clang.
