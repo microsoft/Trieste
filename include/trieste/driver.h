@@ -109,6 +109,11 @@ namespace trieste
       bool test_failfast = false;
       test->add_flag("-f,--failfast", test_failfast, "Stop on first failure");
 
+      // Test passes in sequence
+      bool test_sequence = false; 
+      test->add_flag("--sequence", 
+                     test_sequence, 
+                     "Run all passes on generated tree from start pass");
       try
       {
         app.parse(argc, argv);
@@ -185,14 +190,15 @@ namespace trieste
           test_end_pass = test_start_pass;
         }
 
-        return Fuzzer(reader)
+        Fuzzer fuzzer = Fuzzer(reader)
           .max_depth(test_max_depth)
           .failfast(test_failfast)
           .seed_count(test_seed_count)
           .start_index(reader.pass_index(test_start_pass))
           .end_index(reader.pass_index(test_end_pass))
-          .start_seed(test_seed)
-          .test();
+          .start_seed(test_seed); 
+
+        return test_sequence ? fuzzer.test_sequence() : fuzzer.test();
       }
 
       return ret;
