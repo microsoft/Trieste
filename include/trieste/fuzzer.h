@@ -246,7 +246,7 @@ namespace trieste
 
 
     int test_sequence()
-      { 
+      {
         WFContext context;
         int ret = 0;
         size_t passed_count = 0;
@@ -255,43 +255,43 @@ namespace trieste
         // Passes that resulted in error and their count of different error msgs
         std::map<std::string, std::map<std::string,size_t>> error_passes;
 
-        // Starting pass 
+        // Starting pass
         auto& init_pass = passes_.at(start_index_ - 1);
         auto& init_wf = init_pass->wf();
-        auto& gen_wf = start_index_ > 1 
-              ? passes_.at(start_index_ - 2)->wf() 
+        auto& gen_wf = start_index_ > 1
+              ? passes_.at(start_index_ - 2)->wf()
               : *input_wf_;
 
         if (!gen_wf || !init_wf){
             logging::Error() << "cannot generate tree without a specification!"
-                             << std::endl; 
-          return 1; 
+                             << std::endl;
+          return 1;
         }
 
-        logging::Info() << "Fuzzing sequence from " 
-                  << passes_.at(start_index_ - 1)->name() 
+        logging::Info() << "Fuzzing sequence from "
+                  << passes_.at(start_index_ - 1)->name()
                   << " to "
-                  << passes_.at(end_index_ - 1)->name() 
+                  << passes_.at(end_index_ - 1)->name()
                   << std::endl
                   << "============" << std::endl;
 
-        for (size_t seed = start_seed_; 
+        for (size_t seed = start_seed_;
              seed < start_seed_ + seed_count_;
              seed++)
-        {               
+        {
           bool changed = false; //True if at least one passed run changed the tree
-          bool seq_ok = true;   //False if no WF-errors occured 
-          bool errored = false; //True if Error nodes were added to the tree 
+          bool seq_ok = true;   //False if no WF-errors occured
+          bool errored = false; //True if Error nodes were added to the tree
 
-          // Generate initial ast  
+          // Generate initial ast
           auto ast = gen_wf.gen(generators_, seed, max_depth_);
 
-          for (auto i = start_index_; i < end_index_; i++)
-          { 
+          for (auto i = start_index_; i <= end_index_; i++)
+          {
             auto& pass = passes_.at(i - 1);
             auto& wf = pass->wf();
-            auto& prev = i > 1 
-                ? passes_.at(i - 2)->wf() 
+            auto& prev = i > 1
+                ? passes_.at(i - 2)->wf()
                 : *input_wf_;
 
               if (!prev || !wf)
@@ -301,18 +301,18 @@ namespace trieste
               }
               context.push_back(prev);
               context.push_back(wf);
-              
-              auto ast_copy = ast->clone(); //Save clone before running pass 
-            
+
+              auto ast_copy = ast->clone(); //Save clone before running pass
+
               auto [new_ast, count, changes] = pass->run(ast);
               ast = new_ast;
 
               if (changes > 0) changed = true;
 
               logging::Trace() << "============" << std::endl
-                           << "applying pass " << pass->name() 
+                           << "applying pass " << pass->name()
                            << std::endl
-                           << ast_copy 
+                           << ast_copy
                            << "------------" << std::endl
                            << new_ast << "------------" << std::endl;
 
@@ -324,11 +324,11 @@ namespace trieste
                 new_ast->get_errors(errors);
                 if (!errors.empty()) {
                   Node error = errors.front();
-                  errored = true; 
+                  errored = true;
                   for (auto& c : *error) {
                     if(c->type() == ErrorMsg) {
                       auto err_msg = std::string(c->location().view());
-                      error_passes[pass->name()][err_msg]++; 
+                      error_passes[pass->name()][err_msg]++;
                       break;
                     }
                   }
@@ -360,32 +360,36 @@ namespace trieste
               context.pop_front();
               context.pop_front();
 
-          } //End sequence loop 
+          } //End sequence loop
 
           if (seq_ok && !errored) passed_count++;
           if (!seq_ok) failed_count++;
-          // TODO: Need different criteria for trivial 
-          // e.g. (Top File) --> (Top Calculation) is a change but is not very 
-          // interesting 
+          // TODO: Need different criteria for trivial
+          // e.g. (Top File) --> (Top Calculation) is a change but is not very
+          // interesting
           if (seq_ok && !changed) trivial_count++;
-          
-        } //End tree generating loop 
 
-        // Log stats 
+        } //End tree generating loop
+
+        // Log stats
         logging::Info info;
         if (failed_count > 0) info << "  not WF " << failed_count << " times." << std::endl;
 
         if (!error_passes.empty())
         {
-          for (auto [pass_name, err_msgs] : error_passes) 
+          for (auto i = start_index_; i <= end_index_; i++)
           {
+            auto pass_name = passes_.at(i - 1)->name();
+
+            auto err_msgs = error_passes[pass_name];
+
             const std::size_t sum = std::accumulate(
               std::begin(err_msgs),
               std::end(err_msgs),
               static_cast<std::size_t>(0),
               [](const std::size_t acc, const std::pair<const std::string, std::size_t>& c)
               { return acc + c.second; });
-            info << "pass " << pass_name << " resulted in error : " << sum << " times." << std::endl; 
+            info << "pass " << pass_name << " resulted in error " << sum << " times." << std::endl;
             for (auto [msg,count] : err_msgs)
             {
               info << "    " << msg << ": " << count << std::endl;
@@ -394,7 +398,7 @@ namespace trieste
         }
         if ((!error_passes.empty() && passed_count > 0) || trivial_count > 0)
         {
-          info << "passed sequence: " << passed_count << " times." << std::endl;
+          info << "passed sequence " << passed_count << " times." << std::endl;
           if (trivial_count > 0) info << "trivial: " << trivial_count << std::endl;
         }
         return ret;
