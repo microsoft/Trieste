@@ -13,7 +13,7 @@ jobs:
   build-test:
     strategy:
       matrix:
-        platform: [ "ubuntu-latest", "macos-latest", "windows-latest" ]
+        platform: [ "ubuntu-22.04", "macos-latest", "windows-latest" ]
         build-type: [ "Release", "Debug" ]
         # Note: cmake-options is missing here on purpose to let it be overridden by includes
         standard: [ "", "-DTRIESTE_USE_CXX17=ON" ]
@@ -21,8 +21,8 @@ jobs:
         variant: [""]
         
         include:
-        # ensures ubuntu-latest clang uses Ninja (modifies the matrix entry)
-        - platform: "ubuntu-latest"
+        # ensures ubuntu-22.04 clang uses Ninja (modifies the matrix entry)
+        - platform: "ubuntu-22.04"
           compiler: "clang"
           cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_BUILD_PARSER_TESTS=1"
           generator: "-G Ninja"
@@ -38,12 +38,12 @@ jobs:
           build-type: "Release"
           cmake-options: "-DTRIESTE_BUILD_PARSER_TESTS=1"
 
-        - platform: "ubuntu-latest"
+        - platform: "ubuntu-22.04"
           variant: "asan"
           build-type: "Release"
           cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANITIZE=address -DTRIESTE_BUILD_PARSER_TESTS=1"
 
-        - platform: "ubuntu-latest"
+        - platform: "ubuntu-22.04"
           variant: "ubsan"
           build-type: "Release"
           cmake-options: "-DCMAKE_CXX_COMPILER=clang++-15 -DCMAKE_C_COMPILER=clang-15 -DTRIESTE_SANITIZE=undefined -DTRIESTE_BUILD_PARSER_TESTS=1"
@@ -82,7 +82,7 @@ jobs:
   all-checks:
     # Join of all build-test jobs
     needs: [build-test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - name: Check all jobs
       run: echo "All jobs passed"
