@@ -52,5 +52,13 @@ namespace trieste
     bool equal(Node lhs_json, Node rhs_json);
     std::string unescape(const std::string_view& string);
     std::string escape(const std::string_view& string);
+
+    Node object(const Nodes& members);
+    Node member(Node key, Node value);
+    Node array(const Nodes& elements);
+    Node value(const std::string& value);
+    Node value(double value);
+    Node boolean(bool value);
+    Node null();
   }
 }
