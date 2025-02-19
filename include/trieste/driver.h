@@ -109,6 +109,10 @@ namespace trieste
       bool test_failfast = false;
       test->add_flag("-f,--failfast", test_failfast, "Stop on first failure");
 
+      ssize_t test_max_retries = -1;
+      test->add_option("-r,--max_retries", test_max_retries,
+                       "Maximum number of retries for finding unique trees");
+
       // Test passes in sequence
       bool test_sequence = false;
       test->add_flag("--sequence",
@@ -197,6 +201,7 @@ namespace trieste
         }
 
         Fuzzer fuzzer = Fuzzer(reader)
+          .max_retries(test_max_retries == -1? test_seed_count * 2: test_max_retries)
           .max_depth(test_max_depth)
           .failfast(test_failfast)
           .seed_count(test_seed_count)
