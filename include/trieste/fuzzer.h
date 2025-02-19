@@ -124,6 +124,76 @@ namespace trieste
       return *this;
     }
 
+    double calculate_entropy(std::vector<uint8_t>& byte_values) {
+      std::map<uint8_t, double> freq;
+      int total = byte_values.size();
+
+      // Count occurrences of each byte value
+      for (uint8_t byte : byte_values) {
+        freq[byte]++;
+      }
+
+      // Compute probabilities and entropy
+      double entropy = 0.0;
+      for (const auto& [byte, count] : freq) {
+        double p = count / total;
+        entropy -= p * std::log2(p);
+      }
+
+      return entropy;
+    }
+
+    int test_entropy() {
+      const uint8_t NO_BYTES = 4;
+      const size_t no_samples = max_depth_;
+      std::vector<std::vector<uint32_t>> seed_samples;
+      for (size_t seed = start_seed_; seed < start_seed_ + seed_count_; seed++) {
+        Rand rand = Rand(seed);
+        std::vector<uint32_t> samples;
+        for (size_t count = 0; count < no_samples; count++) {
+          samples.push_back(rand());
+        }
+        seed_samples.push_back(samples);
+      }
+
+      for (size_t count = 0; count < no_samples; count++) {
+        std::vector<uint8_t> byte_samples[NO_BYTES];
+        for (size_t i = 0; i < seed_count_; i++) {
+            uint32_t sample = seed_samples.at(i).at(count);
+            for (int b = 0; b < NO_BYTES; b++) {
+              uint8_t byte = (sample >> (8 * b)) & 0xFF;
+              byte_samples[b].push_back(byte);
+            }
+        }
+
+        std::string nth = count % 10 == 0 ? "1st" : count % 10 == 1 ? "2nd" : count % 10 == 2 ? "3rd" : std::to_string(count + 1) + "th";
+
+        std::cout << "Entropy when sampling the " << nth << " value from " << seed_count_ << " adjacent starting seeds" << std::endl;
+        for (int b = 0; b < NO_BYTES; b++) {
+          double entropy = calculate_entropy(byte_samples[b]);
+          std::cout << "== Entropy for byte " << b << ": " << entropy << " bits" << std::endl;
+        }
+      }
+
+      std::vector<uint8_t> byte_samples[NO_BYTES];
+      Rand rand = Rand(start_seed_);
+
+      for (size_t count = 0; count < seed_count_; count++) {
+        uint32_t sample = rand();
+        for (int b = 0; b < NO_BYTES; b++) {
+          uint8_t byte = (sample >> (8 * b)) & 0xFF;
+          byte_samples[b].push_back(byte);
+        }
+      }
+
+      std::cout << "Entropy when sampling " << seed_count_ << " values from the first seed" << std::endl;
+      for (int b = 0; b < NO_BYTES; b++) {
+        double entropy = calculate_entropy(byte_samples[b]);
+        std::cout << "== Entropy for byte " << b << ": " << entropy << " bits" << std::endl;
+      }
+      return 0;
+    }
+
     int test()
     {
       WFContext context;
