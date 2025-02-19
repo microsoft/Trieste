@@ -110,10 +110,16 @@ namespace trieste
       test->add_flag("-f,--failfast", test_failfast, "Stop on first failure");
 
       // Test passes in sequence
-      bool test_sequence = false; 
-      test->add_flag("--sequence", 
-                     test_sequence, 
+      bool test_sequence = false;
+      test->add_flag("--sequence",
+                     test_sequence,
                      "Run all passes on generated tree from start pass");
+
+      bool test_entropy = false;
+      test->add_flag("--entropy",
+                     test_entropy,
+                     "Test entropy of random number generation, using seed_count seeds and max_depth warm-up");
+
       try
       {
         app.parse(argc, argv);
@@ -196,9 +202,10 @@ namespace trieste
           .seed_count(test_seed_count)
           .start_index(reader.pass_index(test_start_pass))
           .end_index(reader.pass_index(test_end_pass))
-          .start_seed(test_seed); 
+          .start_seed(test_seed);
 
-        return test_sequence ? fuzzer.test_sequence() : fuzzer.test();
+        return test_sequence ? fuzzer.test_sequence() :
+               test_entropy ? fuzzer.test_entropy() : fuzzer.test();
       }
 
       return ret;
