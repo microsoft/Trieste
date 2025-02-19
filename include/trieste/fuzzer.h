@@ -21,6 +21,7 @@ namespace trieste
     bool failfast_;
     size_t start_index_;
     size_t end_index_;
+    size_t max_retries_;
 
   public:
     Fuzzer() {}
@@ -37,7 +38,8 @@ namespace trieste
       seed_count_(100),
       failfast_(false),
       start_index_(1),
-      end_index_(passes.size() - 1)
+      end_index_(passes.size() - 1),
+      max_retries_(100)
     {}
 
     Fuzzer(const Reader& reader)
@@ -121,6 +123,17 @@ namespace trieste
     Fuzzer& end_index(size_t end_index)
     {
       end_index_ = end_index;
+      return *this;
+    }
+
+    size_t max_retries() const
+    {
+      return max_retries_;
+    }
+
+    Fuzzer& max_retries(size_t max_retries)
+    {
+      max_retries_ = max_retries;
       return *this;
     }
 
@@ -221,12 +234,29 @@ namespace trieste
         context.push_back(prev);
         context.push_back(wf);
 
+        size_t retry_seed = start_seed_ + seed_count_;
+        size_t retries = 0;
+
         for (size_t seed = start_seed_; seed < start_seed_ + seed_count_;
              seed++)
         {
-          auto ast = prev.gen(generators_, seed, max_depth_);
+          size_t actual_seed = seed;
+
+          auto ast = prev.gen(generators_, actual_seed, max_depth_);
+
+          size_t hash = ast->hash();
+          while (ast_hashes.find(hash) != ast_hashes.end() && retries < max_retries_) {
+            actual_seed = retry_seed;
+            ast = prev.gen(generators_, actual_seed, max_depth_);
+            hash = ast->hash();
+            retry_seed++;
+            retries++;
+          }
+
+          ast_hashes.insert(hash);
+
           logging::Trace() << "============" << std::endl
-                           << "Pass: " << pass->name() << ", seed: " << seed
+                           << "Pass: " << pass->name() << ", seed: " << actual_seed
                            << std::endl
                            << "------------" << std::endl
                            << ast << "------------" << std::endl;
@@ -235,9 +265,6 @@ namespace trieste
           logging::Trace() << new_ast << "------------" << std::endl
                            << std::endl;
 
-          ast_hashes.insert(new_ast->hash());
-
-          // TODO: Why are we building the symbol tables here?
           auto ok = wf.build_st(new_ast);
           if (ok)
           {
@@ -267,15 +294,15 @@ namespace trieste
               // We haven't printed what failed with Trace earlier, so do it
               // now. Regenerate the start Ast for the error message.
               err << "============" << std::endl
-                  << "Pass: " << pass->name() << ", seed: " << seed << std::endl
+                  << "Pass: " << pass->name() << ", seed: " << actual_seed << std::endl
                   << "------------" << std::endl
-                  << prev.gen(generators_, seed, max_depth_) << "------------"
+                  << prev.gen(generators_, actual_seed, max_depth_) << "------------"
                   << std::endl
                   << new_ast;
             }
 
             err << "============" << std::endl
-                << "Failed pass: " << pass->name() << ", seed: " << seed
+                << "Failed pass: " << pass->name() << ", seed: " << actual_seed
                 << std::endl;
             ret = 1;
 
@@ -305,7 +332,8 @@ namespace trieste
 
         size_t hash_unique = ast_hashes.size();
         info << "  " << ast_hashes.size() << " hash unique "
-             << (hash_unique > 1? "trees": "tree") << "." << std::endl;
+             << (hash_unique == 1? "tree": "trees")
+             << " (" << retries << (retries == 1? " retry": " retries") << ")." << std::endl;
 
         context.pop_front();
         context.pop_front();
@@ -322,6 +350,7 @@ namespace trieste
         size_t passed_count = 0;
         size_t failed_count = 0;
         size_t trivial_count = 0;
+        std::set<size_t> ast_hashes;
         // Passes that resulted in error and their count of different error msgs
         std::map<std::string, std::map<std::string,size_t>> error_passes;
 
@@ -345,16 +374,31 @@ namespace trieste
                   << std::endl
                   << "============" << std::endl;
 
+        size_t retry_seed = start_seed_ + seed_count_;
+        size_t retries = 0;
+
         for (size_t seed = start_seed_;
              seed < start_seed_ + seed_count_;
              seed++)
         {
+          size_t actual_seed = seed;
           bool changed = false; //True if at least one passed run changed the tree
           bool seq_ok = true;   //False if no WF-errors occured
           bool errored = false; //True if Error nodes were added to the tree
 
           // Generate initial ast
-          auto ast = gen_wf.gen(generators_, seed, max_depth_);
+          auto ast = gen_wf.gen(generators_, actual_seed, max_depth_);
+
+          size_t hash = ast->hash();
+          while (ast_hashes.find(hash) != ast_hashes.end() && retries < max_retries_) {
+            actual_seed = retry_seed;
+            ast = gen_wf.gen(generators_, actual_seed, max_depth_);
+            hash = ast->hash();
+            retry_seed++;
+            retries++;
+          }
+
+          ast_hashes.insert(hash);
 
           for (auto i = start_index_; i <= end_index_; i++)
           {
@@ -386,7 +430,6 @@ namespace trieste
                            << "------------" << std::endl
                            << new_ast << "------------" << std::endl;
 
-              // TODO: Why are we building the symbol tables here?
               auto ok = wf.build_st(new_ast);
               if (ok)
               {
@@ -415,9 +458,11 @@ namespace trieste
                   // We haven't printed what failed with Trace earlier, so do it
                   // now.
                   err << "============" << std::endl
+                      << "Pass: " << pass->name()
+                      << ", starting from pass " << passes_.at(start_index_ - 1)->name()
+                      << " with seed: " << actual_seed << std::endl
                       << "------------" << std::endl
                       << ast_copy << "------------" << std::endl
-                      << "resulted in ill-formed tree: " << std::endl
                       << new_ast << "------------" << std::endl;
                 }
                 seq_ok = false;
@@ -434,9 +479,6 @@ namespace trieste
 
           if (seq_ok && !errored) passed_count++;
           if (!seq_ok) failed_count++;
-          // TODO: Need different criteria for trivial
-          // e.g. (Top File) --> (Top Calculation) is a change but is not very
-          // interesting
           if (seq_ok && !changed) trivial_count++;
 
         } //End tree generating loop
@@ -471,6 +513,12 @@ namespace trieste
           info << "passed sequence " << passed_count << " times." << std::endl;
           if (trivial_count > 0) info << "trivial: " << trivial_count << std::endl;
         }
+
+        size_t hash_unique = ast_hashes.size();
+        info << "  " << ast_hashes.size() << " hash unique "
+             << (hash_unique == 1? "tree": "trees")
+             << " (" << retries << (retries == 1? " retry": " retries") << ")." << std::endl;
+
         return ret;
       }
   };
