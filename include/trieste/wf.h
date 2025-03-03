@@ -62,7 +62,11 @@ namespace trieste
         target_depth(target_depth_),
         ceiling_depth(ceiling_multiplier_ * target_depth),
         alpha(alpha_)
-      {}
+      {
+        // Warm up RNG
+        for(int i = 0; i < 10; i++)
+          rand();
+      }
 
       Token choose(const std::vector<Token>& tokens, std::size_t depth)
       {

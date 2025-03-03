@@ -109,6 +109,21 @@ namespace trieste
       bool test_failfast = false;
       test->add_flag("-f,--failfast", test_failfast, "Stop on first failure");
 
+      std::optional<size_t> test_max_retries = std::nullopt;
+      test->add_option("-r,--max_retries", test_max_retries,
+                       "Maximum number of retries for finding unique trees");
+
+      // Test passes in sequence
+      bool test_sequence = false;
+      test->add_flag("--sequence",
+                     test_sequence,
+                     "Run all passes on generated tree from start pass");
+
+      bool test_entropy = false;
+      test->add_flag("--entropy",
+                     test_entropy,
+                     "Test entropy of random number generation, using seed_count seeds and max_depth warm-up");
+
       try
       {
         app.parse(argc, argv);
@@ -185,14 +200,17 @@ namespace trieste
           test_end_pass = test_start_pass;
         }
 
-        return Fuzzer(reader)
+        Fuzzer fuzzer = Fuzzer(reader)
+          .max_retries(test_max_retries? *test_max_retries: test_seed_count * 2)
           .max_depth(test_max_depth)
           .failfast(test_failfast)
           .seed_count(test_seed_count)
           .start_index(reader.pass_index(test_start_pass))
           .end_index(reader.pass_index(test_end_pass))
-          .start_seed(test_seed)
-          .test();
+          .start_seed(test_seed);
+
+        return test_sequence ? fuzzer.test_sequence() :
+               test_entropy ? fuzzer.test_entropy() : fuzzer.test();
       }
 
       return ret;
