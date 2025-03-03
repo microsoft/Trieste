@@ -84,12 +84,25 @@ namespace trieste
         return node == type;
       }
 
+      bool in(const std::initializer_list<Token>& types) const
+      {
+        return node->type().in(types);
+      }
+
       bool group_in(const Token& type) const
       {
         if (!in(Group))
           return false;
 
         return node->parent() == type;
+      }
+
+      bool group_in(const std::initializer_list<Token>& types) const
+      {
+        if (!in(Group))
+          return false;
+
+        return node->parent()->type().in(types);
       }
 
       bool previous(const Token& type) const
@@ -164,6 +177,17 @@ namespace trieste
       {
         add(type, index);
         node = node->back();
+      }
+
+      Token pop()
+      {
+        if (in(Top))
+          throw std::runtime_error("cannot pop top node");
+
+        auto type = node->type();
+        pop(type);
+
+        return type;
       }
 
       void pop(const Token& type)
