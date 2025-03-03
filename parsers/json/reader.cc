@@ -327,5 +327,44 @@ namespace trieste
 
       return buf.str();
     }
+
+    Node object(const Nodes& members)
+    {
+      return Object << members;
+    }
+
+    Node member(Node key, Node value)
+    {
+      return Member << key << value;
+    }
+
+    Node array(const Nodes& elements)
+    {
+      return Array << elements;
+    }
+
+    Node value(const std::string& value)
+    {
+      std::ostringstream os;
+      os << '"' << value << '"';
+      return String ^ os.str();
+    }
+
+    Node value(const double value)
+    {
+      std::ostringstream os;
+      os << std::noshowpoint << value;
+      return Number ^ os.str();
+    }
+
+    Node boolean(bool value)
+    {
+      return value ? (True ^ "true") : (False ^ "false");
+    }
+
+    Node null()
+    {
+      return (Null ^ "null");
+    }
   }
 }

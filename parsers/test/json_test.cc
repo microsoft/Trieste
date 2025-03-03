@@ -261,7 +261,9 @@ struct TestCase
     {
       const std::filesystem::path dir_path = file_or_dir;
       auto dir_iter = std::filesystem::directory_iterator{dir_path};
-      for(auto it = std::filesystem::begin(dir_iter); it != std::filesystem::end(dir_iter); ++it)
+      for (auto it = std::filesystem::begin(dir_iter);
+           it != std::filesystem::end(dir_iter);
+           ++it)
       {
         load(test_cases, it->path());
       }
@@ -293,6 +295,45 @@ struct TestCase
     }
   }
 };
+
+int manual_construction_test()
+{
+  using namespace trieste;
+  std::string name = "manual construction";
+  auto start = std::chrono::steady_clock::now();
+  Node object = json::object(
+    {json::member(json::value("key_a_str"), json::value("value")),
+     json::member(json::value("key_b_number"), json::value(42)),
+     json::member(json::value("key_c_bool"), json::boolean(true)),
+     json::member(json::value("key_d_null"), json::null()),
+     json::member(
+       json::value("key_e_array"),
+       json::array({json::value(1), json::value(2)})),
+     json::member(
+       json::value("key_f_object"),
+       json::object(
+         {json::member(json::value("key"), json::value("value"))}))});
+  auto end = std::chrono::steady_clock::now();
+  const std::chrono::duration<double> elapsed = end - start;
+  std::string expected =
+    R"({"key_a_str":"value","key_b_number":42,"key_c_bool":true,"key_d_null":null,"key_e_array":[1,2],"key_f_object":{"key":"value"}})";
+  std::string actual = json::to_string(object);
+  if (expected != actual)
+  {
+    logging::Error() << Red << "  FAIL: " << Reset << name << std::fixed
+                     << std::setw(62 - name.length()) << std::internal
+                     << std::setprecision(3) << elapsed.count() << " sec"
+                     << std::endl
+                     << "  Expected: " << expected << std::endl
+                     << "  Actual:   " << actual;
+    return 1;
+  }
+
+  logging::Output() << Green << "  PASS: " << Reset << name << std::fixed
+                    << std::setw(62 - name.length()) << std::internal
+                    << std::setprecision(3) << elapsed.count() << " sec";
+  return 0;
+}
 
 int main(int argc, char* argv[])
 {
@@ -364,6 +405,13 @@ int main(int argc, char* argv[])
   int total = 0;
   int failures = 0;
   int warnings = 0;
+
+  total++;
+  if (manual_construction_test() != 0)
+  {
+    failures++;
+  }
+
   for (auto& testcase : test_cases)
   {
     if (
