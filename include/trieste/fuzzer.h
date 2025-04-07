@@ -382,9 +382,9 @@ namespace trieste
              seed++)
         {
           size_t actual_seed = seed;
-          bool changed = false; //True if at least one passed run changed the tree
-          bool seq_ok = true;   //False if no WF-errors occured
-          bool errored = false; //True if Error nodes were added to the tree
+          bool changed = false; // true if at least one passed run changed the tree
+          bool seq_ok = true;   // false if no WF errors occured
+          bool errored = false; // true if Error nodes were added to the tree
 
           // Generate initial ast
           auto ast = gen_wf.gen(generators_, actual_seed, max_depth_);
