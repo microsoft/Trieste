@@ -139,7 +139,7 @@ namespace trieste
 
     double calculate_entropy(std::vector<uint8_t>& byte_values) {
       std::map<uint8_t, double> freq;
-      int total = byte_values.size();
+      size_t total = byte_values.size();
 
       // Count occurrences of each byte value
       for (uint8_t byte : byte_values) {
