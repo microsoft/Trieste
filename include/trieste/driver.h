@@ -113,12 +113,6 @@ namespace trieste
       test->add_option("-r,--max_retries", test_max_retries,
                        "Maximum number of retries for finding unique trees");
 
-      // Test passes in sequence
-      bool test_sequence = false;
-      test->add_flag("--sequence",
-                     test_sequence,
-                     "Run all passes on generated tree from start pass");
-
       bool test_entropy = false;
       test->add_flag("--entropy",
                      test_entropy,
@@ -209,8 +203,7 @@ namespace trieste
           .end_index(reader.pass_index(test_end_pass))
           .start_seed(test_seed);
 
-        return test_sequence ? fuzzer.test_sequence() :
-               test_entropy ? fuzzer.test_entropy() : fuzzer.test();
+        return test_entropy ? fuzzer.test_entropy() : fuzzer.test();
       }
 
       return ret;
