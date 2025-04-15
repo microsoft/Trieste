@@ -1,0 +1,22 @@
+//! --enable-tuples --tuples-require-parens expect_parse_fail
+//! --enable-tuples --tuples-require-parens --use-parser-tuples expect_parse_fail
+//! --enable-tuples expect_parse_fail
+Invalid append
+-- appends_bad.infix:0:16
+print "no args" append;
+                ~~~~~~
+
+Invalid append
+-- appends_bad.infix:1:18
+print "duplicate" append append((1, 2));
+                  ~~~~~~
+
+Invalid append
+-- appends_bad.infix:2:19
+print "arithmetic" append + append;
+                   ~~~~~~
+
+Invalid append
+-- appends_bad.infix:2:28
+print "arithmetic" append + append;
+                            ~~~~~~

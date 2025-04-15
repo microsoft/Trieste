@@ -1,0 +1,12 @@
+foo = (1, 2, 3);
+
+// every one of these should error in the calc stage due to type mismatch
+print "tpl +" foo + 1;
+print "tpl -" foo - 1;
+print "tpl *" foo * 1;
+print "tpl /" foo / 1;
+
+// wrong way round... (should just report invalid types though)
+print "bad idx" 1 . foo;
+
+print "nested bad" (42, foo + 1);

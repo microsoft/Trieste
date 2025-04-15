@@ -1,0 +1,6 @@
+//! --enable-tuples --tuples-require-parens calculate
+//! --enable-tuples --tuples-require-parens --use-parser-tuples calculate
+//! --enable-tuples calculate
+1 <- 1
+2 <- 2
+3 <- 3
