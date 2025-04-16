@@ -762,6 +762,26 @@ namespace trieste
       return out.str();
     }
 
+    size_t hash()
+    {
+      // FNV-1a hash function
+      // http://www.isthe.com/chongo/tech/comp/fnv/
+      uint64_t constexpr fnv_prime = 1099511628211ULL;
+      uint64_t constexpr offset_basis = 14695981039346656037ULL;
+      uint64_t hash = offset_basis;
+
+      traverse([&](Node& node) {
+        for (auto c : node->type().str() + node->location().str())
+        {
+          hash ^= c;
+          hash *= fnv_prime;
+        }
+        return true;
+      });
+
+      return hash;
+    }
+
     class NopPost
     {
     public:
