@@ -23,6 +23,25 @@ namespace trieste
     size_t end_index_;
     size_t max_retries_;
 
+    double calculate_entropy(std::vector<uint8_t>& byte_values) {
+      std::map<uint8_t, double> freq;
+      size_t total = byte_values.size();
+
+      // Count occurrences of each byte value
+      for (uint8_t byte : byte_values) {
+        freq[byte]++;
+      }
+
+      // Compute probabilities and entropy
+      double entropy = 0.0;
+      for (const auto& [byte, count] : freq) {
+        double p = count / total;
+        entropy -= p * std::log2(p);
+      }
+
+      return entropy;
+    }
+
   public:
     Fuzzer() {}
 
@@ -137,26 +156,7 @@ namespace trieste
       return *this;
     }
 
-    double calculate_entropy(std::vector<uint8_t>& byte_values) {
-      std::map<uint8_t, double> freq;
-      size_t total = byte_values.size();
-
-      // Count occurrences of each byte value
-      for (uint8_t byte : byte_values) {
-        freq[byte]++;
-      }
-
-      // Compute probabilities and entropy
-      double entropy = 0.0;
-      for (const auto& [byte, count] : freq) {
-        double p = count / total;
-        entropy -= p * std::log2(p);
-      }
-
-      return entropy;
-    }
-
-    int test_entropy() {
+    int debug_entropy() {
       const uint8_t NO_BYTES = 4;
       const size_t no_samples = max_depth_;
       std::vector<std::vector<uint32_t>> seed_samples;
@@ -172,11 +172,11 @@ namespace trieste
       for (size_t count = 0; count < no_samples; count++) {
         std::vector<uint8_t> byte_samples[NO_BYTES];
         for (size_t i = 0; i < seed_count_; i++) {
-            uint32_t sample = seed_samples.at(i).at(count);
-            for (int b = 0; b < NO_BYTES; b++) {
-              uint8_t byte = (sample >> (8 * b)) & 0xFF;
-              byte_samples[b].push_back(byte);
-            }
+          uint32_t sample = seed_samples.at(i).at(count);
+          for (int b = 0; b < NO_BYTES; b++) {
+            uint8_t byte = (sample >> (8 * b)) & 0xFF;
+            byte_samples[b].push_back(byte);
+          }
         }
 
         std::string nth = count % 10 == 0 ? "1st" : count % 10 == 1 ? "2nd" : count % 10 == 2 ? "3rd" : std::to_string(count + 1) + "th";
