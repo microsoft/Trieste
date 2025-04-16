@@ -311,7 +311,7 @@ namespace trieste
             replaced = replace(match, rule.second, start, it, node);
             if (replaced != NOCHANGE)
             {
-              changes += replaced;
+              changes++;
               break;
             }
           }
