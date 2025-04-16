@@ -118,6 +118,7 @@ namespace trieste
     std::string last_pass;
     Node ast;
     Nodes errors;
+    size_t total_changes;
 
     void print_errors(logging::Log& err) const
     {
@@ -275,6 +276,7 @@ namespace trieste
     ProcessResult run(Node& ast)
     {
       size_t index = 1;
+      size_t total_changes = 0;
 
       WFContext context(pass_range.input_wf());
 
@@ -296,6 +298,7 @@ namespace trieste
         context.push_back(pass->wf());
 
         auto [new_ast, count, changes] = pass->run(ast);
+        total_changes += changes;
         ast = new_ast;
         context.pop_front();
 
@@ -314,7 +317,7 @@ namespace trieste
         last_pass = pass->name();
       }
 
-      return {ok, last_pass, ast, errors};
+      return {ok, last_pass, ast, errors, total_changes};
     }
   };
 } // namespace trieste
