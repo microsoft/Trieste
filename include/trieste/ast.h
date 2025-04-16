@@ -764,7 +764,26 @@ namespace trieste
 
     size_t hash()
     {
-      return std::hash<std::string>{}(str());
+      // FNV-1a hash function
+      // http://www.isthe.com/chongo/tech/comp/fnv/
+      uint64_t constexpr fnv_prime = 1099511628211ULL;
+      uint64_t constexpr offset_basis = 14695981039346656037ULL;
+      uint64_t hash = offset_basis;
+
+      traverse([&](Node& node) {
+        uint64_t token_hash = std::hash<std::string>{}(node->type().str());
+        uint64_t node_hash = std::hash<std::string_view>{}(node->location().view());
+        for (size_t i = 0; i < sizeof(node_hash); i++)
+        {
+          hash ^= (token_hash >> (i * 8)) & 0xFF;
+          hash *= fnv_prime;
+          hash ^= (node_hash >> (i * 8)) & 0xFF;
+          hash *= fnv_prime;
+        }
+        return true;
+      });
+
+      return hash;
     }
 
     class NopPost
