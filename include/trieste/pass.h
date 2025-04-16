@@ -117,9 +117,10 @@ namespace trieste
       post_once = f;
     }
 
-    void cond(CondF f)
+    PassDef cond(CondF f)
     {
       cond_run = f;
+      return *this;
     }
 
     void pre(const Token& type, F f)
@@ -169,8 +170,7 @@ namespace trieste
 
       if (cond_run && !cond_run(node))
       {
-        logging::Debug()
-          << "Pass was not executed due to cond function returning false.";
+        logging::Debug() << "Pass skipped: cond() returned false.";
         return {node, count, changes_sum};
       }
       if (pre_once)
