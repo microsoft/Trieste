@@ -764,7 +764,6 @@ namespace trieste
 
     size_t hash()
     {
-      // TODO: Implement something that doesn't go via a string
       return std::hash<std::string>{}(str());
     }
 
