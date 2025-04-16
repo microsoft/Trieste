@@ -771,13 +771,9 @@ namespace trieste
       uint64_t hash = offset_basis;
 
       traverse([&](Node& node) {
-        uint64_t token_hash = std::hash<std::string>{}(node->type().str());
-        uint64_t node_hash = std::hash<std::string_view>{}(node->location().view());
-        for (size_t i = 0; i < sizeof(node_hash); i++)
+        for (auto c : std::string_view(node->type().str() + node->location().str()))
         {
-          hash ^= (token_hash >> (i * 8)) & 0xFF;
-          hash *= fnv_prime;
-          hash ^= (node_hash >> (i * 8)) & 0xFF;
+          hash ^= c;
           hash *= fnv_prime;
         }
         return true;
