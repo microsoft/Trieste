@@ -118,7 +118,7 @@ namespace trieste
     std::string last_pass;
     Node ast;
     Nodes errors;
-    size_t total_changes;
+    size_t total_changes = 0;
 
     void print_errors(logging::Log& err) const
     {
