@@ -113,7 +113,7 @@ namespace trieste
       test->add_option("-r,--max_retries", test_max_retries,
                        "Maximum number of retries for finding unique trees");
 
-      auto entropy = test->add_subcommand("entropy",
+      auto entropy = test->add_subcommand("debug_entropy",
                                           "Test entropy of random number generation, using seed_count seeds and max_depth warm-up");
 
       try
@@ -201,7 +201,7 @@ namespace trieste
           .end_index(reader.pass_index(test_end_pass))
           .start_seed(test_seed);
 
-        return *entropy ? fuzzer.test_entropy() : fuzzer.test();
+        return *entropy ? fuzzer.debug_entropy() : fuzzer.test();
       }
 
       return ret;
