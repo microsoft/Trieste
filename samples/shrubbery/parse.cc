@@ -163,23 +163,16 @@ namespace shrubbery
 
     // Terminate a given set of Tokens
     auto close_all = [pop_indentation, expect_indent, indent](auto& m, std::initializer_list<Token> tokens) {
-      bool progress = true;
-      while (progress) {
-        progress = false;
-        for (auto& token : tokens) {
-          if (m.in(token) || m.group_in(token)) {
-            m.term({token});
-            progress = true;
-            // Blocks and alternatives will have established new indentation
-            // levels (unless they were just opened), so these need to be popped
-            if (!indent->empty() && !*expect_indent && (token == Block || token == Alt)) {
-                pop_indentation();
-            } else if (*expect_indent) {
-                *expect_indent = false;
-            }
-            break;
+      while (m.in(tokens) || m.group_in(tokens)) {
+          m.term();
+          auto token = m.pop();
+          // Blocks and alternatives will have established new indentation
+          // levels (unless they were just opened), so these need to be popped
+          if (!indent->empty() && !*expect_indent && (token == Block || token == Alt)) {
+            pop_indentation();
+          } else if (*expect_indent) {
+            *expect_indent = false;
           }
-        }
       }
       *expect_indent = false;
     };
