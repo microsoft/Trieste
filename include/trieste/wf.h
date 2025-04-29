@@ -469,6 +469,11 @@ namespace trieste
         {
           if (field.name == binding)
           {
+            if (index >= node->size())
+              // Node does not have enough children. Pretend all is fine to
+              // allow error nodes, otherwise WF check will sort it out.
+              return true;
+
             auto name = node->at(index)->location();
 
             if (!node->bind(name))
