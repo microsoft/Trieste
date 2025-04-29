@@ -24,6 +24,7 @@ namespace trieste
   {
   public:
     using F = std::function<size_t(Node)>;
+    using CondF = std::function<bool(Node)>;
 
   private:
     static const int NOCHANGE = -1;
@@ -40,6 +41,7 @@ namespace trieste
 
     F pre_once;
     F post_once;
+    CondF cond_run;
     std::map<Token, F> pre_;
     std::map<Token, F> post_;
 
@@ -115,6 +117,12 @@ namespace trieste
       post_once = f;
     }
 
+    PassDef cond(CondF f)
+    {
+      cond_run = f;
+      return *this;
+    }
+
     void pre(const Token& type, F f)
     {
       pre_[type] = f;
@@ -160,6 +168,11 @@ namespace trieste
       size_t changes_sum = 0;
       size_t count = 0;
 
+      if (cond_run && !cond_run(node))
+      {
+        logging::Debug() << "Pass skipped: cond() returned false.";
+        return {node, count, changes_sum};
+      }
       if (pre_once)
         changes_sum += pre_once(node);
 
