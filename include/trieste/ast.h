@@ -762,6 +762,14 @@ namespace trieste
       return out.str();
     }
 
+    /**
+     * @brief Calculate a hash for the tree
+     *
+     * We use a bespoke hash function rather than calling
+     * `std::hash<std::string>{}(str())` to avoid having to
+     * allocate the string for the whole tree. This also gives us
+     * constistent behaviour across platforms.
+     */
     size_t hash()
     {
       // FNV-1a hash function
