@@ -762,6 +762,34 @@ namespace trieste
       return out.str();
     }
 
+    /**
+     * @brief Calculate a hash for the tree
+     *
+     * We use a bespoke hash function rather than calling
+     * `std::hash<std::string>{}(str())` to avoid having to
+     * allocate the string for the whole tree. This also gives us
+     * constistent behaviour across platforms.
+     */
+    size_t hash()
+    {
+      // FNV-1a hash function
+      // http://www.isthe.com/chongo/tech/comp/fnv/
+      uint64_t constexpr fnv_prime = 1099511628211ULL;
+      uint64_t constexpr offset_basis = 14695981039346656037ULL;
+      uint64_t hash = offset_basis;
+
+      traverse([&](Node& node) {
+        for (auto c : node->type().str() + node->location().str())
+        {
+          hash ^= c;
+          hash *= fnv_prime;
+        }
+        return true;
+      });
+
+      return hash;
+    }
+
     class NopPost
     {
     public:
