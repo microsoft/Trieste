@@ -1,0 +1,19 @@
+//! --expect-fail calculate
+//! --enable-tuples --expect-fail calculate
+//! --enable-tuples --tuples-require-parens --expect-fail calculate
+//! --enable-tuples --tuples-require-parens --use-parser-tuples --expect-fail calculate
+(top
+  {}
+  (infix-calculation
+    {
+      x =
+        infix-assign
+        infix-assign}
+    (infix-assign
+      (infix-ident 1:x)
+      (infix-expression
+        (infix-int 1:5)))
+    (infix-assign
+      (infix-ident 1:x)
+      (infix-expression
+        (infix-int 1:6)))))

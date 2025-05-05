@@ -1,0 +1,7 @@
+//! --enable-tuples --tuples-require-parens calculate
+//! --enable-tuples --tuples-require-parens --use-parser-tuples calculate
+//! --enable-tuples calculate
+empty and empty <- (,)
+empty append <- (,)
+unary append <- (,)
+nested appends <- (1, 2, 3, 4,)

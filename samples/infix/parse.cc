@@ -1,72 +1,123 @@
+#include "infix.h"
 #include "internal.h"
+#include "trieste/token.h"
+
+#include <memory>
 
 namespace infix
 {
-  const std::initializer_list<Token> terminators = {Equals};
+  const std::initializer_list<Token> terminators = {ParserTuple};
 
-  Parse parser()
+  Parse parser(bool use_parser_tuples)
   {
     Parse p(depth::file, wf_parser);
-    auto indent = std::make_shared<std::vector<size_t>>();
 
-    p("start", // this indicates the 'mode' these rules are associated with
-      {
-        // Whitespace between tokens.
-        "[[:blank:]]+" >> [](auto&) {}, // no-op
+    std::shared_ptr<size_t> parentheses_level = std::make_shared<size_t>(0);
 
-        // Equals.
-        "=" >> [](auto& m) { m.seq(Equals); },
+    auto make_mode = [=, &p](std::string name, bool in_parentheses) -> void {
+      p(name, // this indicates the 'mode' these rules are associated with
+        {
+          // Whitespace between tokens.
+          R"(\s+)" >> [](auto&) {}, // no-op
 
-        // Terminator.
-        ";[\n]*" >> [](auto& m) { m.term(terminators); },
+          // Equals.
+          R"(=)" >> [](auto& m) { m.add(Equals); },
 
-        // Parens.
-        R"((\()[[:blank:]]*)" >>
-          [indent](auto& m) {
-            // we push a Paren node. Subsequent nodes will be added
-            // as its children.
-            m.push(Paren, 1);
-          },
+          // [tuples only] Commas: might be tuple literals, function calls.
+          R"(,)" >>
+            [=](auto& m) {
+              if (use_parser_tuples)
+              {
+                if (in_parentheses)
+                {
+                  m.seq(ParserTuple);
+                }
+                else
+                {
+                  m.error("Invalid use of comma");
+                }
+              }
+              else
+              {
+                m.add(Comma);
+              }
+            },
 
-        R"(\))" >>
-          [indent](auto& m) {
-            // terminate the current group
-            m.term(terminators);
-            // pop back up out of the Paren
-            m.pop(Paren);
-          },
+          // [tuples only] Tuple indexing.
+          R"(\.)" >> [](auto& m) { m.add(TupleIdx); },
 
-        // Float.
-        R"([[:digit:]]+\.[[:digit:]]+(?:e[+-]?[[:digit:]]+)?\b)" >>
-          [](auto& m) { m.add(Float); },
+          // Terminator.
+          R"(;)" >> [](auto& m) { m.term(terminators); },
 
-        // String.
-        R"("[^"]*")" >> [](auto& m) { m.add(String); },
+          // Parens.
+          R"(\()" >>
+            [=](auto& m) {
+              // we push a Paren node. Subsequent nodes will be added
+              // as its children.
+              m.push(Paren);
 
-        // Int.
-        R"([[:digit:]]+\b)" >> [](auto& m) { m.add(Int); },
+              // We are inside parenthese: shift to that mode
+              ++*parentheses_level;
+              m.mode("parentheses");
+            },
 
-        // Line comment.
-        "//[^\n]*" >> [](auto&) {}, // another no-op
+          R"(\))" >>
+            [=](auto& m) {
+              // terminate the current group
+              m.term(terminators);
+              // pop back up out of the Paren
+              m.pop(Paren);
 
-        // Print.
-        R"(print\b)" >> [](auto& m) { m.add(Print); },
+              if (*parentheses_level > 0)
+              {
+                --*parentheses_level;
+              }
 
-        // Identifier.
-        R"([_[:alpha:]][_[:alnum:]]*\b)" >> [](auto& m) { m.add(Ident); },
+              if (*parentheses_level == 0)
+              {
+                m.mode("start");
+              }
+            },
 
-        // Add ('+' is a reserved RegEx character)
-        R"(\+)" >> [](auto& m) { m.add(Add); },
+          // Float.
+          R"([[:digit:]]+\.[[:digit:]]+(?:e[+-]?[[:digit:]]+)?\b)" >>
+            [](auto& m) { m.add(Float); },
 
-        // Subtract
-        "-" >> [](auto& m) { m.add(Subtract); },
+          // String.
+          R"("[^"]*")" >> [](auto& m) { m.add(String); },
 
-        // Multiply ('*' is a reserved RegEx character)
-        R"(\*)" >> [](auto& m) { m.add(Multiply); },
+          // Int.
+          R"([[:digit:]]+\b)" >> [](auto& m) { m.add(Int); },
 
-        // Divide
-        "/" >> [](auto& m) { m.add(Divide); },
-      });
+          // Line comment.
+          // Note: care is taken to handle all possible line endings: \n, \r\n
+          R"(//[^\n\r]*(\r\n|\n))" >> [](auto&) {}, // another no-op
+
+          // Print.
+          R"re(print\b)re" >> [](auto& m) { m.add(Print); },
+
+          // Append.
+          R"(append\b)" >> [](auto& m) { m.add(Append); },
+
+          // Identifier.
+          R"([_[:alpha:]][_[:alnum:]]*\b)" >> [](auto& m) { m.add(Ident); },
+
+          // Add ('+' is a reserved RegEx character)
+          R"(\+)" >> [](auto& m) { m.add(Add); },
+
+          // Subtract
+          R"(-)" >> [](auto& m) { m.add(Subtract); },
+
+          // Multiply ('*' is a reserved RegEx character)
+          R"(\*)" >> [](auto& m) { m.add(Multiply); },
+
+          // Divide
+          R"(/)" >> [](auto& m) { m.add(Divide); },
+        });
+    };
+
+    make_mode("start", false);
+    make_mode("parentheses", true);
 
     p.gen({
       Int >> [](auto& rnd) { return std::to_string(rnd() % 100); },
@@ -76,6 +127,9 @@ namespace infix
           return std::to_string(dist(rnd));
         },
     });
+
+    // Remember to reset any parser data you manage after parsing!
+    p.postparse([=](auto, auto, auto) { *parentheses_level = 0; });
 
     return p;
   }

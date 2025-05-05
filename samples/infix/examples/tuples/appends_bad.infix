@@ -1,0 +1,3 @@
+print "no args" append;
+print "duplicate" append append((1, 2));
+print "arithmetic" append + append;

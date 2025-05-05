@@ -1,0 +1,8 @@
+print "arity 0" ,;
+print "arity 1" 1,;
+print "arity 1 op" 2-1,;
+print "arity 2" 1, 2;
+print "arity 2 trailing" 1, 2,;
+print "arity 3" 1, 2, 3;
+print "arity 3 trailing" 1, 2, 3,;
+print "arity 3 op" 1, 3-1, 1+4-2;

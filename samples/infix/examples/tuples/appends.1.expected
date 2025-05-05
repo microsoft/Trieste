@@ -1,0 +1,45 @@
+//! --enable-tuples --tuples-require-parens parse_only
+//! --enable-tuples --tuples-require-parens --use-parser-tuples parse_only
+//! --enable-tuples parse_only
+(top
+  {}
+  (infix-calculation
+    {}
+    (infix-output
+      (infix-string 17:"empty and empty")
+      (infix-expression
+        (infix-append
+          (infix-expression
+            (infix-tuple))
+          (infix-expression
+            (infix-tuple)))))
+    (infix-output
+      (infix-string 14:"empty append")
+      (infix-expression
+        (infix-append)))
+    (infix-output
+      (infix-string 14:"unary append")
+      (infix-expression
+        (infix-append
+          (infix-expression
+            (infix-tuple)))))
+    (infix-output
+      (infix-string 16:"nested appends")
+      (infix-expression
+        (infix-append
+          (infix-expression
+            (infix-tuple
+              (infix-expression
+                (infix-int 1:1))
+              (infix-expression
+                (infix-int 1:2))))
+          (infix-expression
+            (infix-append
+              (infix-expression
+                (infix-tuple
+                  (infix-expression
+                    (infix-int 1:3))))
+              (infix-expression
+                (infix-tuple
+                  (infix-expression
+                    (infix-int 1:4)))))))))))
