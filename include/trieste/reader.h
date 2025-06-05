@@ -58,7 +58,11 @@ namespace trieste
 
       if (!end_pass_.empty())
       {
-        if (!pass_range.move_end(end_pass_))
+        if (end_pass_ == parse_only)
+        {
+          pass_range.disable();
+        }
+        else if (!pass_range.move_end(end_pass_))
         {
           return {
             false,
@@ -144,6 +148,7 @@ namespace trieste
     std::vector<std::string> pass_names() const
     {
       std::vector<std::string> names;
+      names.push_back(parse_only);
       std::transform(
         passes_.begin(),
         passes_.end(),

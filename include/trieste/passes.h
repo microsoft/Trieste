@@ -57,6 +57,11 @@ namespace trieste
       return true;
     }
 
+    void disable()
+    {
+      start = end;
+    }
+
     Pass& operator()()
     {
       return *start;
