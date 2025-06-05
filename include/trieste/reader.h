@@ -73,6 +73,7 @@ namespace trieste
       }
 
       Node ast;
+      auto parse_start = std::chrono::high_resolution_clock::now();
       if (!start_pass_.empty())
       {
         if (!pass_range.move_start(start_pass_))
@@ -112,6 +113,7 @@ namespace trieste
       {
         std::visit([&](auto x) { ast = parser_.parse(x); }, input);
       }
+      auto parse_end = std::chrono::high_resolution_clock::now();
 
       logging::Info summary;
       std::filesystem::path debug_path;
@@ -121,6 +123,11 @@ namespace trieste
       }
 
       summary << "---------" << std::endl;
+      summary << "Parse time (us): "
+              << std::chrono::duration_cast<std::chrono::microseconds>(
+                   parse_end - parse_start).count()
+              << std::endl;
+
       auto result =
         Process(pass_range)
           .set_check_well_formed(wf_check_enabled_)
