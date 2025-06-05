@@ -84,13 +84,15 @@ namespace trieste
       uint32_t test_seed = std::random_device()();
       test->add_option("-s,--seed", test_seed, "Random seed for testing");
 
+      auto pass_names_no_parse = std::vector(pass_names.begin() + 1, pass_names.end());
+
       std::string test_start_pass;
       test->add_option("start", test_start_pass, "Start at this pass.")
-        ->transform(CLI::IsMember(pass_names));
+        ->transform(CLI::IsMember(pass_names_no_parse));
 
       std::string test_end_pass;
       test->add_option("end", test_end_pass, "End at this pass.")
-        ->transform(CLI::IsMember(pass_names));
+        ->transform(CLI::IsMember(pass_names_no_parse));
 
       test
         ->add_option(
@@ -179,13 +181,19 @@ namespace trieste
       }
       else if (*test)
       {
+        if (pass_names_no_parse.empty())
+        {
+          logging::Error() << "No passes available for testing." << std::endl;
+          return 1;
+        }
+
         logging::Output() << "Testing x" << test_seed_count
                           << ", seed: " << test_seed << std::endl;
 
         if (test_start_pass.empty())
         {
-          test_start_pass = pass_names.at(0);
-          test_end_pass = pass_names.back();
+          test_start_pass = pass_names_no_parse.at(0);
+          test_end_pass = pass_names_no_parse.back();
         }
         else if (test_end_pass.empty())
         {

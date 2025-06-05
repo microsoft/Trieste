@@ -57,6 +57,11 @@ namespace trieste
       return true;
     }
 
+    void disable()
+    {
+      start = end;
+    }
+
     Pass& operator()()
     {
       return *start;
@@ -198,9 +203,12 @@ namespace trieste
           summary << "Pass" << delim << "Iterations" << delim << "Changes"
                   << delim << "Time (us)" << std::endl;
         }
+        else
+        {
+          summary << pass_name << delim << count << delim << changes << delim
+                  << static_cast<size_t>(duration.count()) << std::endl;
+        }
 
-        summary << pass_name << delim << count << delim << changes << delim
-                << static_cast<size_t>(duration.count()) << std::endl;
         if (output_directory.empty())
           return true;
 
