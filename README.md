@@ -1,10 +1,14 @@
 # Project Trieste
 
-Project Trieste is an experimental term rewriting system for experimental programming language development.
+Project Trieste is a term rewriting system designed for rapidly prototyping programming languages.
+Trieste provides three C++ DSLs to enable the rapid prototyping:
 
-This research project is at an early stage and is open sourced to facilitate academic collaborations. We are keen to engage in research collaborations on this project, please do reach out to discuss this.
+* Parsing - Enables generation of an untyped abstract syntax tree (AST) from one or many input files.
+* Rewriting - Enables the restructuring of the AST to simplify, analyse, and elaborate to alternative representations.
+* Well-formedness - Trieste provides a DSL for checking that the current AST conforms to a specification. 
 
-The project is not ready to be used outside of research.
+Using the well-formedness definitions Trieste can rapidly harden a language by automatically checking conformance to the specification,
+and additionally fuzz testing each rewriting pass conforms with its specification.
 
 ## Getting Started
 
