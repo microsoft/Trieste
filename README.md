@@ -4,11 +4,11 @@ Project Trieste is a term rewriting system designed for rapidly prototyping prog
 Trieste provides three C++ DSLs to enable the rapid prototyping:
 
 * Parsing - Enables generation of an untyped abstract syntax tree (AST) from one or many input files.
-* Rewriting - Enables the restructuring of the AST to simplify, analyse, and elaborate to alternative representations.
+* Rewriting - Enables the restructuring and analysis of the AST. It can be used to simplify, elaborate to alternative representations, and lower to backend IRs or bytecodes.
 * Well-formedness - Trieste provides a DSL for checking that the current AST conforms to a specification. 
 
-Using the well-formedness definitions Trieste can rapidly harden a language by automatically checking conformance to the specification,
-and additionally fuzz testing each rewriting pass conforms with its specification.
+Using the well-formedness definitions Trieste can rapidly harden a language by automatically checking conformance to the specification.
+Additionally, Trieste uses the well-formedness definitions to generate test cases to fuzz each rewriting pass conforms with its specification.
 
 ## Getting Started
 
