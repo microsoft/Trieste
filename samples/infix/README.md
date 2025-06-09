@@ -487,7 +487,7 @@ graph TD;
   A[Top]-->B[File]
   B-->C[Group]
   C-->D[Int 1]
-  C-->E[+]
+  C-->E[Add]
   C-->F(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -507,7 +507,7 @@ graph TD;
   A[Top]-->B[File]
   B-->C[Group]
   C-->D[Int 1]
-  C-->E[+]
+  C-->E[Add]
   C-->F[Paren]
   F-->G[cursor]:::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
@@ -528,11 +528,11 @@ graph TD;
   A[Top]-->B[File]
   B-->C[Group]
   C-->D[Int 1]
-  C-->E[+]
+  C-->E[Add]
   C-->F[Paren]
   F-->G[Group]
   G-->H[Int 2]
-  G-->I[*]
+  G-->I[Multiply]
   G-->J[Int 3]
   G-->K(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
@@ -553,11 +553,12 @@ graph TD;
   A[tTp]-->B[File]
   B-->C[Group]
   C-->D[Int 1]
-  C-->E[+]
+  C-->E[Add]
   C-->F[Paren]
-  F-->G[Int 2]
-  F-->H[*]
-  F-->I[Int 3]
+  F-->K[Group]
+  K-->G[Int 2]
+  K-->H[Multiply]
+  K-->I[Int 3]
   C-->J(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -577,12 +578,13 @@ graph TD;
   A[Top]-->B[File]
   B-->C[Group]
   C-->D[Int 1]
-  C-->E[+]
+  C-->E[Add]
   C-->F[Paren]
-  F-->G[Int 2]
-  F-->H[*]
-  F-->I[Int 3]
-  C-->J[+]
+  F-->M[Group]
+  M-->G[Int 2]
+  M-->H[Multiply]
+  M-->I[Int 3]
+  C-->J[Add]
   C-->K[Int 4]
   C-->L(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
@@ -603,12 +605,13 @@ graph TD;
   A[Top]-->B[File]
   B-->C[Group]
   C-->D[Int 1]
-  C-->E[+]
+  C-->E[Add]
   C-->F[Paren]
-  F-->G[Int 2]
-  F-->H[*]
-  F-->I[Int 3]
-  C-->J[+]
+  F-->M[Group]
+  M-->G[Int 2]
+  M-->H[Multiply]
+  M-->I[Int 3]
+  C-->J[Add]
   C-->K[Int 4]
   B-->L(cursor):::cursor
   classDef cursor stroke-width:4px,stroke-dasharray:5 5;
@@ -1092,16 +1095,16 @@ and how its tree evolves over time:
 ``` mermaid
 flowchart TD
   A[Expr]-->B[Int 1]
-  A-->C[+]
+  A-->C[Add]
   A-->D[Int 2]
-  A-->E[*]
+  A-->E[Multiply]
   A-->F[Int 3]
-  A-->G[-]
+  A-->G[Subtract]
   A-->H[Int 4]
   A-->I["#47;"]
   A-->J[Expr]
   J-->K[Int 6]
-  J-->L[-]
+  J-->L[Subtract]
   J-->M[Int 7]
 ```
 
@@ -1111,19 +1114,19 @@ flowchart TD
 ``` mermaid
 flowchart TD
   A[Expr]-->B[Int 1]
-  A-->C[+]
+  A-->C[Add]
   A-.->N[Expr]:::current
-  N-.->E[*]
+  N-.->E[Multiply]
   E-.->DD[Expr]:::current
   DD-.->D[Int 2]
   E-.->FF[Expr]:::current
   FF-.->F[Int 3]
-  A-->G[-]
+  A-->G[Subtract]
   A-->H[Int 4]
   A-->I["#47;"]
   A-->J[Expr]
   J-->K[Int 6]
-  J-->L[-]
+  J-->L[Subtract]
   J-->M[Int 7]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -1134,21 +1137,21 @@ flowchart TD
 ``` mermaid
 flowchart TD
   A[Expr]-->B[Int 1]
-  A-->C[+]
+  A-->C[Add]
   A-->N[Expr]
-  N-->E[*]
+  N-->E[Multiply]
   E-->DD[Expr]
   DD-->D[Int 2]
   E-->FF[Expr]
   FF-->F[Int 3]
-  A-->G[-]
+  A-->G[Subtract]
   A-.->O[Expr]:::current
   O-.->I["#47;"]
   I-.->HH[Expr]:::current
   HH-.->H[Int 4]
   I-.->J[Expr]
   J-->K[Int 6]
-  J-->L[-]
+  J-->L[Subtract]
   J-->M[Int 7]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -1159,23 +1162,23 @@ flowchart TD
 ``` mermaid
 flowchart TD
   A[Expr]-.->CC[Expr]:::current
-  CC-.->C[+]
+  CC-.->C[Add]
   C-.->BB[Expr]:::current
   BB-.->B[Int 1]
   C-.->N[Expr]
-  N-->E[*]
+  N-->E[Multiply]
   E-->DD[Expr]
   DD-->D[Int 2]
   E-->FF[Expr]
   FF-->F[Int 3]
-  A-->G[-]
+  A-->G[Subtract]
   A-->O[Expr]
   O-->I["#47;"]
   I-->HH[Expr]
   HH-->H[Int 4]
   I-->J[Expr]
   J-->K[Int 6]
-  J-->L[-]
+  J-->L[Subtract]
   J-->M[Int 7]
   classDef current stroke-width:4px,stroke-dasharray:5 5;
 ```
@@ -1185,13 +1188,13 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[Expr]-->GG[-]
+  A[Expr]-->GG[Subtract]
   GG-.->CC[Expr]
-  CC-->C[+]
+  CC-->C[Add]
   C-->BB[Expr]
   BB-->B[Int 1]
   C-->N[Expr]
-  N-->E[*]
+  N-->E[Multiply]
   E-->DD[Expr]
   DD-->D[Int 2]
   E-->FF[Expr]
@@ -1202,7 +1205,7 @@ flowchart TD
   HH-->H[Int 4]
   I-->J[Expr]
   J-->K[Int 6]
-  J-->L[-]
+  J-->L[Subtract]
   J-->M[Int 7]
 ```
 
@@ -1211,13 +1214,13 @@ flowchart TD
 
 ``` mermaid
 flowchart TD
-  A[Expr]-->GG[-]
+  A[Expr]-->GG[Subtract]
   GG-->CC[Expr]
-  CC-->C[+]
+  CC-->C[Add]
   C-->BB[Expr]
   BB-->B[Int 1]
   C-->N[Expr]
-  N-->E[*]
+  N-->E[Multiply]
   E-->DD[Expr]
   DD-->D[Int 2]
   E-->FF[Expr]
@@ -1227,7 +1230,7 @@ flowchart TD
   I-->HH[Expr]
   HH-->H[Int 4]
   I-->J[Expr]
-  J-->L[-]
+  J-->L[Subtract]
   L-.->KK[Expr]:::current
   KK-.->K[Int 6]
   L-.->MM[Expr]:::current
