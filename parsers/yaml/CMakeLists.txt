@@ -11,6 +11,7 @@ if( BUILD_SHARED_LIBS )
 else()
   add_library(yaml STATIC ${SOURCES})
 endif()
+enable_warnings(yaml)
 
 add_library(trieste::yaml ALIAS yaml)
 
@@ -53,6 +54,7 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include/trieste/yaml.h DESTINATION 
 
 if( TRIESTE_BUILD_PARSER_TOOLS )
   add_executable(yamlc yamlc.cc)
+  enable_warnings(yamlc)
 
   target_link_libraries(yamlc
     PRIVATE

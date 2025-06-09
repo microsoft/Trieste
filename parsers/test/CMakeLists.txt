@@ -1,12 +1,14 @@
 ## JSON
 
 add_executable(json_fuzzer json_fuzzer.cc)
+enable_warnings(json_fuzzer)
 
 target_link_libraries(json_fuzzer
   PRIVATE
   trieste::json)
 
 add_executable(json_test json_test.cc)
+enable_warnings(json_test)
 
 target_link_libraries(json_test
   PRIVATE
@@ -23,12 +25,14 @@ install(TARGETS json_fuzzer json_test RUNTIME DESTINATION parsers)
 ## YAML
 
 add_executable(yaml_fuzzer yaml_fuzzer.cc)
+enable_warnings(yaml_fuzzer)
 
 target_link_libraries(yaml_fuzzer
   PRIVATE
   trieste::yaml)
 
 add_executable(yaml_test yaml_test.cc)
+enable_warnings(yaml_test)
 
 target_link_libraries(yaml_test
   PRIVATE

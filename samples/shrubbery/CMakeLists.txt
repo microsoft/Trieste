@@ -3,6 +3,7 @@ add_executable(shrubbery
   parse.cc
   shrubbery.cc
   )
+enable_warnings(shrubbery)
 
 target_link_libraries(shrubbery
   trieste::trieste

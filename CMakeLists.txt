@@ -116,12 +116,14 @@ if (TRIESTE_SANITIZE)
   target_link_libraries(trieste INTERFACE -fsanitize=${TRIESTE_SANITIZE})
 endif()
 
-if(MSVC)
-  target_compile_options(trieste INTERFACE /W4 /WX /wd5030 /bigobj)
-else()
-  target_compile_options(trieste INTERFACE
-    -Wall -Wextra -Wpedantic -Werror -Wshadow)
-endif()
+function(enable_warnings target)
+  if(MSVC)
+    target_compile_options(${target} PRIVATE /W4 /WX /wd5030 /bigobj)
+  else()
+    target_compile_options(${target} PRIVATE
+      -Wall -Wextra -Wpedantic -Werror -Wshadow)
+  endif()
+endfunction()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   target_compile_options(trieste INTERFACE -Wmismatched-tags -fstandalone-debug)
