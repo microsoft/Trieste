@@ -9,6 +9,7 @@ if( BUILD_SHARED_LIBS )
 else()
   add_library(json STATIC ${SOURCES})
 endif()
+enable_warnings(json)
 
 add_library(trieste::json ALIAS json)
 

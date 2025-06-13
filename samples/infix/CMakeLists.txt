@@ -3,6 +3,7 @@ add_executable(infix_trieste
   infix_trieste.cc
   parse.cc
   )
+enable_warnings(infix_trieste)
 
 target_link_libraries(infix_trieste
   trieste::trieste
@@ -18,6 +19,7 @@ add_executable(infix
   infix.cc
   parse.cc
 )
+enable_warnings(infix)
 
 target_link_libraries(infix
   trieste::trieste
