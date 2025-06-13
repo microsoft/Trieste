@@ -71,7 +71,7 @@ FetchContent_MakeAvailable_ExcludeFromAll(re2)
 FetchContent_Declare(
   cli11
   GIT_REPOSITORY https://github.com/CLIUtils/CLI11
-  GIT_TAG b9be5b9444772324459989177108a6a65b8b2769
+  GIT_TAG 4160d259d961cd393fd8d67590a8c7d210207348
   GIT_SHALLOW TRUE
 )
 
