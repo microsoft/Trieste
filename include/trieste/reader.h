@@ -170,6 +170,12 @@ namespace trieste
       return *this;
     }
 
+    Reader& language_name(const std::string& name)
+    {
+      language_name_ = name;
+      return *this;
+    }
+
     const std::string& language_name() const
     {
       return language_name_;
