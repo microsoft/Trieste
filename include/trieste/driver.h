@@ -145,10 +145,13 @@ namespace trieste
           auto pos2 = std::min(view.find_first_of('\n', pos + 1), view.size());
           auto pass = view.substr(pos + 1, pos2 - pos - 1);
 
-          if (view.compare(0, pos, reader.language_name()) == 0)
+          if (view.compare(0, pos, reader.language_name()) != 0)
           {
-            reader.start_pass(pass).offset(pos2 + 1);
+            logging::Debug() << "File " << path
+                             << " does not start with the language name \""
+                             << reader.language_name() << "\"" << std::endl;
           }
+          reader.start_pass(pass).offset(pos2 + 1);
         }
 
         auto result = reader.read();
