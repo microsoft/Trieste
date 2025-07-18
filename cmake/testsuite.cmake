@@ -58,7 +58,6 @@ function(testsuite name)
           -DTEST_EXE=${TESTSUITE_EXE}
           -DWORKING_DIR=${CMAKE_CURRENT_SOURCE_DIR}
           -DCOLLECTION=${CMAKE_CURRENT_SOURCE_DIR}/${test_collection}
-          -DCMAKE_EXECUTABLE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}
           -DOUTPUT_DIR=${output_dir}
           -P ${DIR_OF_TESTSUITE_CMAKE}/runcommand.cmake
       )

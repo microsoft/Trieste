@@ -7,7 +7,7 @@ endmacro()
 # This regex matches files with the .infix extension
 set(TESTSUITE_REGEX ".*\\.infix")
 
-set(TESTSUITE_EXE "$<TARGET_FILE:infix>${CMAKE_EXECUTABLE_SUFFIX}")
+set(TESTSUITE_EXE "$<TARGET_FILE:infix>")
 
 function (test_output_dir out test)
   # Use get_filename_component to remove the file extension and keep the directory structure
