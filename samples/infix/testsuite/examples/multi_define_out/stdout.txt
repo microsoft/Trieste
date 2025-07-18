@@ -1,4 +1,4 @@
-examples/multi_define.infix:2:1: conflicting definitions of `x`:
+multi_define.infix:2:1: conflicting definitions of `x`:
 x = 5;
 ~~~~~
 x = 6;

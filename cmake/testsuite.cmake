@@ -50,13 +50,15 @@ function(testsuite name)
 
     foreach(test ${tests})
       test_output_dir(output_dir_relative ${test})
+      get_filename_component(test_dir ${test} DIRECTORY)
+      get_filename_component(test_file ${test} NAME)
       # Create command to create the output for this test.
       set (output_dir ${CMAKE_CURRENT_BINARY_DIR}/${output_dir_relative})
       set (test_output_cmd 
         ${CMAKE_COMMAND}
-          -DTESTFILE=${test}
+          -DTESTFILE=${test_file}
           -DTEST_EXE=${TESTSUITE_EXE}
-          -DWORKING_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+          -DWORKING_DIR=${CMAKE_CURRENT_SOURCE_DIR}/${test_dir}
           -DCOLLECTION=${CMAKE_CURRENT_SOURCE_DIR}/${test_collection}
           -DOUTPUT_DIR=${output_dir}
           -P ${DIR_OF_TESTSUITE_CMAKE}/runcommand.cmake
@@ -75,7 +77,7 @@ function(testsuite name)
       list(APPEND test_set "${output_dir_relative}_fake")
 
       # Make json for debugging.
-      toolinvoke(launch_json_args ${test} ${output_dir})
+      toolinvoke(launch_json_args ${test_file} ${output_dir})
       list(POP_FRONT launch_json_args launch_json_prog)
       # Convert to a json format list.
       string(REPLACE "\"" "\\\"" launch_json_args "${launch_json_args}")
@@ -88,7 +90,7 @@ function(testsuite name)
         \"program\": \"${launch_json_prog}\",
         \"args\": [\"${launch_json_args}\"],
         \"stopAtEntry\": false,
-        \"cwd\": \"${TOOL_FOLDER}/${test_dir}\",
+        \"cwd\": \"${CMAKE_CURRENT_SOURCE_DIR}/${test_dir}\",
       },")
 
       # Add output comparison for each golden / output file
