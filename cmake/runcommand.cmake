@@ -7,12 +7,11 @@ make_directory(${OUTPUT_DIR})
 
 include(${COLLECTION})
 
-message("Verona Local dist: ${VERONA_LOCAL_DIST}")
-toolinvoke(TOOLINVOKE ${LOCAL_BUILD} ${TESTFILE} ${OUTPUT_DIR})
+toolinvoke(TOOLINVOKE ${TESTFILE} ${OUTPUT_DIR})
 
 list(JOIN TOOLINVOKE " " TOOLINVOKE_SEP)
 message ("Running")
-message ("   ${TOOLINVOKE_SEP}")
+message ("   ${TEST_EXE} ${TOOLINVOKE_SEP}")
 message ("in working directory")
 message ("   ${WORKING_DIR}")
 message ("output sent to")
@@ -20,7 +19,7 @@ message ("   ${OUTPUT_DIR}")
 
 # Run command
 execute_process(
-    COMMAND ${TOOLINVOKE}
+    COMMAND ${TEST_EXE} ${TOOLINVOKE}
     WORKING_DIRECTORY ${WORKING_DIR}
     OUTPUT_FILE ${OUTPUT_DIR}/stdout.txt
     ERROR_FILE ${OUTPUT_DIR}/stderr.txt

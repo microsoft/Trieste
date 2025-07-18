@@ -20,6 +20,8 @@ endif()
 #  *  A variable TESTSUITE_REGEX, which specifies which files are to be considered a test.
 #     This should be a regular expression that matches the test files. E.g. "test_type/.*\\.infix"
 #     which matches all files with the .infix extension in the test_type directory.
+#  *  A variable TESTSUITE_EXE which is the executable to run for the tests.  This can be a generator expression
+#     to allow for different executables in different configurations.
 #  *  A macro toolinvoke which takes the arguments ARGS, local_build, testfile and outputdir.
 #     This macro should set ARGS to the command line arguments for the tool.
 #  *  A function test_output_dir which takes the output directory out and the test file test.
@@ -53,10 +55,10 @@ function(testsuite name)
       set (test_output_cmd 
         ${CMAKE_COMMAND}
           -DTESTFILE=${test}
+          -DTEST_EXE=${TESTSUITE_EXE}
           -DWORKING_DIR=${CMAKE_CURRENT_SOURCE_DIR}
           -DCOLLECTION=${CMAKE_CURRENT_SOURCE_DIR}/${test_collection}
           -DCMAKE_EXECUTABLE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}
-          -DLOCAL_BUILD=${CMAKE_CURRENT_BINARY_DIR}
           -DOUTPUT_DIR=${output_dir}
           -P ${DIR_OF_TESTSUITE_CMAKE}/runcommand.cmake
       )
@@ -74,7 +76,7 @@ function(testsuite name)
       list(APPEND test_set "${output_dir_relative}_fake")
 
       # Make json for debugging.
-      toolinvoke(launch_json_args ${CMAKE_CURRENT_BINARY_DIR} ${test} ${output_dir})
+      toolinvoke(launch_json_args ${test} ${output_dir})
       list(POP_FRONT launch_json_args launch_json_prog)
       # Convert to a json format list.
       string(REPLACE "\"" "\\\"" launch_json_args "${launch_json_args}")

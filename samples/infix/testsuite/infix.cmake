@@ -1,11 +1,13 @@
 # Arguments for testing infix samples
-macro(toolinvoke ARGS local_build testfile outputdir)
-  set(${ARGS} "${local_build}/../infix${CMAKE_EXECUTABLE_SUFFIX}" ${testfile})
+macro(toolinvoke ARGS testfile outputdir)
+  set(${ARGS} ${testfile})
 endmacro()
 
 # Regular expression to match test files
 # This regex matches files with the .infix extension
 set(TESTSUITE_REGEX ".*\\.infix")
+
+set(TESTSUITE_EXE "$<TARGET_FILE:infix>${CMAKE_EXECUTABLE_SUFFIX}")
 
 function (test_output_dir out test)
   # Use get_filename_component to remove the file extension and keep the directory structure
