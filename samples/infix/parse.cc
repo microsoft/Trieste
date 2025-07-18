@@ -18,7 +18,7 @@ namespace infix
         "=" >> [](auto& m) { m.seq(Equals); },
 
         // Terminator.
-        ";[\n]*" >> [](auto& m) { m.term(terminators); },
+        ";[\r\n]*" >> [](auto& m) { m.term(terminators); },
 
         // Parens.
         R"((\()[[:blank:]]*)" >>
@@ -47,7 +47,7 @@ namespace infix
         R"([[:digit:]]+\b)" >> [](auto& m) { m.add(Int); },
 
         // Line comment.
-        "//[^\n]*" >> [](auto&) {}, // another no-op
+        "//[^\r\n]*" >> [](auto&) {}, // another no-op
 
         // Print.
         R"(print\b)" >> [](auto& m) { m.add(Print); },

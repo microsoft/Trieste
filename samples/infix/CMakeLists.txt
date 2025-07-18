@@ -25,5 +25,7 @@ target_link_libraries(infix
   trieste::trieste
 )
 
+add_subdirectory(testsuite)
+
 install(TARGETS infix infix_trieste RUNTIME DESTINATION infix)
 install(DIRECTORY examples DESTINATION infix)
