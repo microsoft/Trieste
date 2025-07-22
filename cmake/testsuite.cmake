@@ -1,7 +1,7 @@
 find_program(DIFF_TOOL NAMES
   diff)
 
-set(DIR_OF_TESTSUITE_CMAKE ${CMAKE_CURRENT_LIST_DIR})  
+set(DIR_OF_TESTSUITE_CMAKE ${CMAKE_CURRENT_LIST_DIR})
 
 if (DIFF_TOOL STREQUAL DIFF_TOOL-NOTFOUND)
   set(DIFF_TOOL "")
@@ -101,14 +101,14 @@ function(testsuite name)
       if(res_length EQUAL 0)
         message(WARNING "Test does not have results directory: ${golden_dir}\nRun `update-dump` to generate golden files.")
         # Add to generate golden output target
-        add_custom_command(OUTPUT ${output_dir_relative}
+        add_custom_command(OUTPUT ${output_dir_relative}_fake
           COMMAND
             ${CMAKE_COMMAND}
             -E make_directory
             ${golden_dir}
           APPEND
         )
-        add_custom_command(OUTPUT ${output_dir_relative}
+        add_custom_command(OUTPUT ${output_dir_relative}_fake
           COMMAND
             ${CMAKE_COMMAND}
             -E copy_if_different
