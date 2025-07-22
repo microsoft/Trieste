@@ -127,7 +127,7 @@ function(testsuite name)
                 -Ddiff_tool=${DIFF_TOOL}
                 -P ${DIR_OF_TESTSUITE_CMAKE}/compare.cmake
           )
-          set_tests_properties(${output_dir_relative}/${result} PROPERTIES DEPENDS ${output_dir_relative}_fake)
+          set_tests_properties(${output_dir_relative}/${result} PROPERTIES DEPENDS ${output_dir_relative})
 
           # Override out of date files.
           add_custom_command(OUTPUT "${output_dir_relative}_fake"
