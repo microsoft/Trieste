@@ -2,6 +2,7 @@
 
 #include "pass.h"
 #include "wf.h"
+#include "wf_meta.h"
 
 #include <chrono>
 #include <filesystem>
@@ -167,7 +168,8 @@ namespace trieste
 
     bool check_well_formed{true};
 
-    std::function<bool(Node&, std::string, size_t index, PassStatistics&)>
+    std::function<bool(
+      Node&, std::string, const wf::Wellformed&, size_t index, PassStatistics&)>
       pass_complete;
 
     std::function<Nodes(Nodes&, std::string)> error_pass;
@@ -180,9 +182,24 @@ namespace trieste
      * AST and details of the pass that has just completed.
      */
     Process& set_pass_complete(
-      std::function<bool(Node&, std::string, size_t, PassStatistics&)> f)
+      std::function<bool(
+        Node&, std::string, const wf::Wellformed&, size_t, PassStatistics&)> f)
     {
       pass_complete = f;
+      return *this;
+    }
+
+    Process& set_pass_complete(
+      std::function<bool(Node&, std::string, size_t, PassStatistics&)> f)
+    {
+      pass_complete = [f](
+                        Node& ast,
+                        std::string pass_name,
+                        const wf::Wellformed&,
+                        size_t index,
+                        PassStatistics& stats) {
+        return f(ast, pass_name, index, stats);
+      };
       return *this;
     }
 
@@ -194,6 +211,7 @@ namespace trieste
       pass_complete = [output_directory, language_name, &summary](
                         Node& ast,
                         std::string pass_name,
+                        const wf::Wellformed& wf,
                         size_t index,
                         PassStatistics& stats) {
         auto [count, changes, duration] = stats;
@@ -223,28 +241,43 @@ namespace trieste
           }
         }
 
-        std::filesystem::path output;
-        if (index < 10)
-        {
-          output = output_directory /
-            ("0" + std::to_string(index) + "_" + pass_name + ".trieste");
-        }
-        else
-        {
-          output = output_directory /
-            (std::to_string(index) + "_" + pass_name + ".trieste");
-        }
+        auto open_dbg_file =
+          [&](const std::string& ext) -> std::pair<std::ofstream, bool> {
+          std::filesystem::path output;
+          if (index < 10)
+          {
+            output = output_directory /
+              ("0" + std::to_string(index) + "_" + pass_name + ext);
+          }
+          else
+          {
+            output = output_directory /
+              (std::to_string(index) + "_" + pass_name + ext);
+          }
 
-        std::ofstream f(output, std::ios::binary | std::ios::out);
+          std::ofstream f(output, std::ios::binary | std::ios::out);
+          bool ok = true;
+          if (!f)
+          {
+            logging::Error() << "Could not open " << output << " for writing.";
+            ok = false;
+          }
+          return {std::move(f), ok};
+        };
 
-        if (!f)
-        {
-          logging::Error() << "Could not open " << output << " for writing.";
+        auto [f, ok] = open_dbg_file(".trieste");
+        if (!ok)
           return false;
-        }
-
         // Write the AST to the output file.
         f << language_name << std::endl << pass_name << std::endl << ast;
+
+        std::tie(f, ok) = open_dbg_file(".trieste_wf");
+        if (!ok)
+          return false;
+        // Write the well-formedness definition to a neighboring output file.
+        f << language_name << std::endl << pass_name << std::endl;
+        wf::meta::write_wf_node(f, wf::meta::wf_to_node(wf));
+
         return true;
       };
 
@@ -295,7 +328,10 @@ namespace trieste
 
       PassStatistics stats;
       std::string last_pass = pass_range.entry_pass_name();
-      ok = pass_complete(ast, pass_range.entry_pass_name(), 0, stats) && ok;
+      ok =
+        pass_complete(
+          ast, pass_range.entry_pass_name(), pass_range.input_wf(), 0, stats) &&
+        ok;
 
       for (; ok && pass_range.has_next(); index++)
       {
@@ -320,7 +356,7 @@ namespace trieste
           changes,
           std::chrono::duration_cast<std::chrono::microseconds>(then - now)};
 
-        ok = pass_complete(ast, pass->name(), index, stats) && ok;
+        ok = pass_complete(ast, pass->name(), pass->wf(), index, stats) && ok;
 
         last_pass = pass->name();
       }
