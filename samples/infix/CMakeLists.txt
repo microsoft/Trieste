@@ -28,4 +28,4 @@ target_link_libraries(infix
 add_subdirectory(testsuite)
 
 install(TARGETS infix infix_trieste RUNTIME DESTINATION infix)
-install(DIRECTORY examples DESTINATION infix)
+install(DIRECTORY testsuite/examples DESTINATION infix)

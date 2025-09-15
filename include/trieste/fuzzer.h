@@ -57,7 +57,7 @@ namespace trieste
       seed_count_(100),
       failfast_(false),
       start_index_(1),
-      end_index_(passes.size() - 1),
+      end_index_(passes.size()),
       max_retries_(100)
     {}
 
