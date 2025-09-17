@@ -111,15 +111,6 @@ namespace trieste
             }
           });
 
-        if (depth >= ceiling_depth)
-        {
-          // if we have reached this point P(c | d, p) as high entropy.
-          // In order to encourage termination, we will start to manually choose
-          // the child with the highest likelihood of terminating.
-          auto max = std::max_element(offsets.begin(), offsets.end());
-          return tokens[std::distance(offsets.begin(), max)];
-        }
-
         if (depth >= 2 * ceiling_depth)
         {
           logging::Warn()
@@ -128,11 +119,20 @@ namespace trieste
           logging::Warn()
             << "This can indicate an issue with the WF definition (for "
                "example, a cycle), or that the target depth is too shallow.";
-          logging::Trace() << "P(d | c, p):";
+          logging::Debug() << "P(d | c, p):";
           for (size_t i = 0; i < tokens.size(); i++)
           {
-            logging::Trace() << "  " << tokens[i].str() << ": " << offsets[i];
+            logging::Debug() << "  " << tokens[i].str() << ": " << offsets[i];
           }
+        }
+
+        if (depth >= ceiling_depth)
+        {
+          // if we have reached this point P(c | d, p) as high entropy.
+          // In order to encourage termination, we will start to manually choose
+          // the child with the highest likelihood of terminating.
+          auto max = std::max_element(offsets.begin(), offsets.end());
+          return tokens[std::distance(offsets.begin(), max)];
         }
 
         // compute the cumulative distribution of P(d | c, p)
@@ -345,6 +345,10 @@ namespace trieste
         size_t i;
         for (i = 0; i < min_len; ++i)
           choice.gen(g, depth, node);
+
+        if(depth >= g.target_depth){
+          return;
+        }
 
         while (i++ < max_len && g.next() % 2)
           choice.gen(g, depth, node);

@@ -75,7 +75,7 @@ namespace
   // clang-format off
   inline const auto wf_value =
     wf_strings
-    | (Top <<= json::Value++)
+    | (Top <<= json::Value++[1])
     | (Sequence <<= json::Value++)
     | (FlowSequence <<= json::Value++)
     | (FlowMapping <<= json::Member++)
@@ -236,7 +236,14 @@ namespace
         T(Stream)
             << (T(Directives) *
                 (T(Documents) << (T(json::Value)++[Stream] * End))) >>
-          [](Match& _) { return Seq << _[Stream]; },
+          [](Match& _) {
+            if (_[Stream].empty())
+            {
+              return json::Value << Mapping;
+            }
+
+            return Seq << _[Stream];
+          },
 
         // errors
 
