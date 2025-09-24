@@ -337,7 +337,7 @@ namespace trieste
 
       virtual PatternPtr clone() const& = 0;
 
-      void set_continuation(PatternPtr next)
+      virtual void set_continuation(PatternPtr next)
       {
         if (!continuation)
         {
@@ -752,9 +752,13 @@ namespace trieste
         throw std::runtime_error("Rep(Last) not allowed! (End)++");
       }
 
+      virtual void set_continuation(PatternPtr) override
+      {
+        throw std::runtime_error("Continuation not allowed after `End`");
+      }
+
       bool match(NodeIt& it, const Node& parent, Match&) const& override
       {
-        assert(no_continuation());
         return it == parent->end();
       }
     };
