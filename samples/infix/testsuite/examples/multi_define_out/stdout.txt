@@ -1,0 +1,8 @@
+multi_define.infix:2:1: conflicting definitions of `x`:
+x = 5;
+~~~~~
+x = 6;
+~~~~~
+
+Errors:Pass expressions failed with 0 error!
+

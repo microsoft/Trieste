@@ -66,6 +66,10 @@ namespace trieste
       std::filesystem::path output;
       build->add_option("-o,--output", output, "Output path.");
 
+      std::string language_name = reader.language_name();
+      build->add_option(
+        "-n,--language_name", language_name, "Language name to use for the output file.");
+
       std::filesystem::path dump_passes;
       build->add_option(
         "--dump_passes", dump_passes, "Dump passes to the supplied directory.");
@@ -133,6 +137,7 @@ namespace trieste
       {
         reader.executable(argv[0])
           .file(path)
+          .language_name(language_name)
           .debug_enabled(!dump_passes.empty())
           .debug_path(dump_passes)
           .wf_check_enabled(wfcheck)
@@ -145,10 +150,13 @@ namespace trieste
           auto pos2 = std::min(view.find_first_of('\n', pos + 1), view.size());
           auto pass = view.substr(pos + 1, pos2 - pos - 1);
 
-          if (view.compare(0, pos, reader.language_name()) == 0)
+          if (view.compare(0, pos, reader.language_name()) != 0)
           {
-            reader.start_pass(pass).offset(pos2 + 1);
+            logging::Debug() << "File " << path
+                             << " does not start with the language name \""
+                             << reader.language_name() << "\"" << std::endl;
           }
+          reader.start_pass(pass).offset(pos2 + 1);
         }
 
         auto result = reader.read();
