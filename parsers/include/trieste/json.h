@@ -51,6 +51,7 @@ namespace trieste
       const std::string& indent = "  ");
     bool equal(Node lhs_json, Node rhs_json);
     std::string unescape(const std::string_view& string);
+    std::string escape_unicode(const std::string_view& string);
     std::string escape(const std::string_view& string);
 
     Node object(const Nodes& members);
