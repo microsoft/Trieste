@@ -283,11 +283,10 @@ namespace trieste
       return result;
     }
 
-    std::string escape(const std::string_view& string)
+std::string escape(const std::string_view& string)
     {
-      std::string temp = utf8::escape_unicode(string);
       std::ostringstream buf;
-      for (auto it = temp.begin(); it != temp.end(); ++it)
+      for (auto it = string.begin(); it != string.end(); ++it)
       {
         switch (*it)
         {
@@ -326,6 +325,70 @@ namespace trieste
       }
 
       return buf.str();
+    }
+
+    std::string escape_unicode(const std::string_view& string)
+    {
+      std::ostringstream os;
+      std::size_t pos = 0;
+      while (pos < string.size())
+      {
+        auto [r, s] = utf8::utf8_to_rune(string.substr(pos), false);
+        if (r.value > 0x7FFF)
+        {
+          // JSON does not support escaping UTF-16 runes
+          os << "\\uFFFD";  // BAD
+          pos += s.size();
+          continue;
+        }
+
+        if (r.value > 0x7F)
+        {
+          os << "\\u" << std::uppercase << std::setfill('0') << std::setw(4)
+             << std::hex << r.value;
+          pos += s.size();
+          continue;
+        }
+
+        switch ((char)r.value)
+        {
+          case '\b':
+            os << '\\' << 'b';
+            break;
+
+          case '\f':
+            os << '\\' << 'f';
+            break;
+
+          case '\n':
+            os << '\\' << 'n';
+            break;
+
+          case '\r':
+            os << '\\' << 'r';
+            break;
+
+          case '\t':
+            os << '\\' << 't';
+            break;
+
+          case '\\':
+            os << '\\' << '\\';
+            break;
+
+          case '"':
+            os << '\\' << '"';
+            break;
+
+          default:
+            os << (char)r.value;
+            break;
+        }
+
+        pos += s.size();
+      }
+
+      return os.str();
     }
 
     Node object(const Nodes& members)
