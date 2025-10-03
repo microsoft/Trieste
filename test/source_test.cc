@@ -99,7 +99,11 @@ namespace
 
     bool check_all() const
     {
-      auto source = trieste::SourceDef::synthetic(input);
+      auto source = trieste::SourceDef::synthetic(input, "test");
+      if (source->origin() != "test")
+      {
+        std::cout << "origin mismatch: '" << source->origin() << "' != 'test'";
+      }
 
       for (const auto& check : expected_linepos)
       {
