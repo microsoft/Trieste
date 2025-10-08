@@ -130,8 +130,7 @@ namespace trieste::logging
 
     SNMALLOC_SLOW_PATH void start(detail::LogLevel level)
     {
-      if (
-        detail::report_level == detail::LogLevel::Uninitialized)
+      if (detail::report_level == detail::LogLevel::Uninitialized)
       {
         detail::report_level =
           detail::default_report_level == detail::LogLevel::Uninitialized ?
@@ -352,6 +351,7 @@ namespace trieste::logging
   using Info = detail::LogImpl<detail::LogLevel::Info>;
   using Debug = detail::LogImpl<detail::LogLevel::Debug>;
   using Trace = detail::LogImpl<detail::LogLevel::Trace>;
+  using Uninitialized = detail::LogImpl<detail::LogLevel::Uninitialized>;
 
   // Append to the string stream.  Defined in global namespace so that it can be
   // overridden by ADL.
@@ -437,18 +437,20 @@ namespace trieste::logging
    * @brief RAII class for setting the report level of the current thread for
    * all logging.
    */
-  template<typename L>
   class LocalLogLevel
   {
   private:
     detail::LogLevel previous;
 
   public:
-    LocalLogLevel()
+    LocalLogLevel(detail::LogLevel level)
     {
       previous = detail::report_level;
-      detail::report_level = L::level;
+      detail::report_level = level;
     }
+
+    LocalLogLevel(const LocalLogLevel&) = delete;
+    LocalLogLevel(LocalLogLevel&&) = delete;
 
     ~LocalLogLevel()
     {
@@ -468,6 +470,38 @@ namespace trieste::logging
     if (SNMALLOC_UNLIKELY(trieste::logging::param::active())) \
     trieste::logging::param()
 #endif
+
+  template<typename L>
+  inline LocalLogLevel local_log_level()
+  {
+    return LocalLogLevel(L::level);
+  }
+
+  inline LocalLogLevel local_log_level_from_string(const std::string& s)
+  {
+    std::string name;
+    name.resize(s.size());
+    std::transform(s.begin(), s.end(), name.begin(), ::tolower);
+    if (name == "none")
+      return local_log_level<None>();
+    if (name == "error")
+      return local_log_level<Error>();
+    if (name == "output")
+      return local_log_level<Output>();
+    if (name == "warn")
+      return local_log_level<Warn>();
+    if (name == "info")
+      return local_log_level<Info>();
+    if (name == "debug")
+      return local_log_level<Debug>();
+    if (name == "trace")
+      return local_log_level<Trace>();
+
+    std::stringstream ss;
+    ss << "Unknown log level: " << s
+       << " should be on of None, Error, Output, Warn, Info, Debug, Trace";
+    throw std::runtime_error(ss.str());
+  }
 
   /**
    * @brief Sets the level of logging that should be reported.
