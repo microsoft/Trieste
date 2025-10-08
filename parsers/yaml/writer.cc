@@ -1,5 +1,4 @@
 #include "internal.h"
-#include "yaml.h"
 
 #include <string>
 #include <trieste/trieste.h>
