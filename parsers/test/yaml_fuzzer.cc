@@ -14,7 +14,7 @@ int main(int argc, char** argv)
 
   std::string transform;
   app.add_option("transform", transform, "Transform to test")
-    ->check(CLI::IsMember({"reader", "writer", "event_writer", "to_json"}))
+    ->check(CLI::IsMember({"reader", "writer", "event_writer", "to_json", "all"}))
     ->required(true);
 
   uint32_t seed = std::random_device()();
@@ -22,6 +22,9 @@ int main(int argc, char** argv)
 
   uint32_t count = 100;
   app.add_option("-c,--count", count, "Number of seed to test");
+
+  bool sequence = false;
+  app.add_flag("--sequence", sequence, "Run passes in sequence");
 
   bool failfast = false;
   app.add_flag("-f,--failfast", failfast, "Stop on first failure");
@@ -65,7 +68,16 @@ int main(int argc, char** argv)
   else if (transform == "to_json")
   {
     fuzzer = Fuzzer(yaml::to_json(), reader.parser().generators());
+  } 
+  else if (transform == "all")
+  {
+    std::vector<Pass> passes = reader.passes();
+    std::vector<Pass> to_json_passes = yaml::to_json().passes();
+    passes.insert(passes.end(), to_json_passes.begin(), to_json_passes.end());
+    fuzzer = Fuzzer(passes, reader.parser().wf(), reader.parser().generators());
   }
 
-  return fuzzer.start_seed(seed).seed_count(count).failfast(failfast).test();
+  return sequence 
+    ? fuzzer.start_seed(seed).seed_count(count).failfast(failfast).test_sequence() 
+    : fuzzer.start_seed(seed).seed_count(count).failfast(failfast).test();
 }

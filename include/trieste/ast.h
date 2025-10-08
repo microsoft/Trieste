@@ -899,6 +899,34 @@ namespace trieste
       flags_.reset_contains_lift();
       return result;
     }
+    
+    size_t tree_size()
+    {
+      size_t size = 1;
+      traverse([&](Node& current) {
+          size += current->size();
+          return true;
+      }); 
+    return size;
+  }
+
+  size_t tree_height()
+    {
+      if(children.size() == 0)
+      {
+        return 0;
+      }
+      else //If not a leaf node
+      {
+        size_t max_height = 0;
+        for(Node& child : children)
+        {
+          size_t child_height = child->tree_height();
+          max_height = std::max(max_height,child_height+1);
+        }
+        return max_height;
+      } 
+  }
 
   private:
     std::pair<NodeDef*, NodeDef*> same_parent(NodeDef* q)
