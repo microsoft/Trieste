@@ -4,7 +4,7 @@ event_writer.cc
 writer.cc
 reader.cc
 to_json.cc
-utils.cc
+yaml.cc
 )
 
 if( BUILD_SHARED_LIBS )
