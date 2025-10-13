@@ -271,9 +271,9 @@ namespace trieste
       return *this;
     }
 
-    Reader& synthetic(const std::string& contents)
+    Reader& synthetic(const std::string& contents, const std::string& origin="")
     {
-      input_ = SourceDef::synthetic(contents);
+      input_ = SourceDef::synthetic(contents, origin);
       return *this;
     }
 

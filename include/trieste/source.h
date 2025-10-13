@@ -50,10 +50,11 @@ namespace trieste
       return source;
     }
 
-    static Source synthetic(const std::string& contents)
+    static Source synthetic(const std::string& contents, const std::string& origin="")
     {
       auto source = Source::make();
       source->contents = contents;
+      source->origin_ = origin;
       source->find_lines();
       return source;
     }

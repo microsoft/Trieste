@@ -1,11 +1,13 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <functional>
 #include <iomanip>
 #include <iostream>
 #include <snmalloc/ds_core/defines.h>
 #include <sstream>
+#include <stdexcept>
 
 namespace trieste::logging
 {
@@ -63,11 +65,15 @@ namespace trieste::logging
       // Represents same as Info and debug messages should also be
       Debug = 6,
       // Represents same as Debug and trace messages should also be printed
-      Trace = 7
+      Trace = 7,
+      // Represents an uninitialized logging level.
+      Uninitialized = 8,
     };
 
-    // Used to set which level of message should be reported.
-    inline LogLevel report_level{LogLevel::Output};
+    // Used to set which default level of message should be reported.
+    inline LogLevel default_report_level{LogLevel::Uninitialized};
+
+    inline thread_local LogLevel report_level{LogLevel::Uninitialized};
 
     class Indent
     {};
@@ -124,6 +130,19 @@ namespace trieste::logging
 
     SNMALLOC_SLOW_PATH void start(detail::LogLevel level)
     {
+      if (detail::report_level == detail::LogLevel::Uninitialized)
+      {
+        detail::report_level =
+          detail::default_report_level == detail::LogLevel::Uninitialized ?
+          detail::LogLevel::Output :
+          detail::default_report_level;
+
+        if (level > detail::report_level)
+        {
+          return;
+        }
+      }
+
       strstream.init();
       if (level == detail::LogLevel::String)
       {
@@ -156,7 +175,8 @@ namespace trieste::logging
       strstream.destruct();
     }
 
-    SNMALLOC_SLOW_PATH void operation(decltype(std::endl<char, std::char_traits<char>>) f)
+    SNMALLOC_SLOW_PATH void
+    operation(decltype(std::endl<char, std::char_traits<char>>) f)
     {
       auto endl_func = std::endl<char, std::char_traits<char>>;
       // Intercept std::endl and indent the next line.
@@ -331,6 +351,7 @@ namespace trieste::logging
   using Info = detail::LogImpl<detail::LogLevel::Info>;
   using Debug = detail::LogImpl<detail::LogLevel::Debug>;
   using Trace = detail::LogImpl<detail::LogLevel::Trace>;
+  using Uninitialized = detail::LogImpl<detail::LogLevel::Uninitialized>;
 
   // Append to the string stream.  Defined in global namespace so that it can be
   // overridden by ADL.
@@ -395,7 +416,7 @@ namespace trieste::logging
   }
 
   /**
-   * @brief RAII class for increase the indent level of the current thread for
+   * @brief RAII class for increasing the indent level of the current thread for
    * all logging.
    */
   class LocalIndent
@@ -412,6 +433,31 @@ namespace trieste::logging
     }
   };
 
+  /**
+   * @brief RAII class for setting the report level of the current thread for
+   * all logging.
+   */
+  class LocalLogLevel
+  {
+  private:
+    detail::LogLevel previous;
+
+  public:
+    LocalLogLevel(detail::LogLevel level)
+    {
+      previous = detail::report_level;
+      detail::report_level = level;
+    }
+
+    LocalLogLevel(const LocalLogLevel&) = delete;
+    LocalLogLevel(LocalLogLevel&&) = delete;
+
+    ~LocalLogLevel()
+    {
+      detail::report_level = previous;
+    }
+  };
+
 #ifdef TRIESTE_EXPOSE_LOG_MACRO
 // This macro is used to expose the logging to uses in a way that
 // guarantees no evaluation of the pipe sequence:
@@ -425,6 +471,38 @@ namespace trieste::logging
     trieste::logging::param()
 #endif
 
+  template<typename L>
+  inline LocalLogLevel local_log_level()
+  {
+    return LocalLogLevel(L::level);
+  }
+
+  inline LocalLogLevel local_log_level_from_string(const std::string& s)
+  {
+    std::string name;
+    name.resize(s.size());
+    std::transform(s.begin(), s.end(), name.begin(), ::tolower);
+    if (name == "none")
+      return local_log_level<None>();
+    if (name == "error")
+      return local_log_level<Error>();
+    if (name == "output")
+      return local_log_level<Output>();
+    if (name == "warn")
+      return local_log_level<Warn>();
+    if (name == "info")
+      return local_log_level<Info>();
+    if (name == "debug")
+      return local_log_level<Debug>();
+    if (name == "trace")
+      return local_log_level<Trace>();
+
+    std::stringstream ss;
+    ss << "Unknown log level: " << s
+       << " should be on of None, Error, Output, Warn, Info, Debug, Trace";
+    throw std::runtime_error(ss.str());
+  }
+
   /**
    * @brief Sets the level of logging that should be reported.
    *
@@ -433,7 +511,15 @@ namespace trieste::logging
   template<typename L>
   inline void set_level()
   {
-    detail::report_level = L::level;
+    if (detail::default_report_level != detail::LogLevel::Uninitialized)
+    {
+      throw std::runtime_error(
+        "The default report level has already been initialised. Use "
+        "LocalLogLevel for granular report level changes during program "
+        "runtime.");
+    }
+
+    detail::default_report_level = L::level;
   }
 
   /**
@@ -443,19 +529,22 @@ namespace trieste::logging
    */
   inline std::string set_log_level_from_string(const std::string& s)
   {
-    if (s == "None")
+    std::string name;
+    name.resize(s.size());
+    std::transform(s.begin(), s.end(), name.begin(), ::tolower);
+    if (name == "none")
       set_level<None>();
-    else if (s == "Error")
+    else if (name == "error")
       set_level<Error>();
-    else if (s == "Output")
+    else if (name == "output")
       set_level<Output>();
-    else if (s == "Warn")
+    else if (name == "warn")
       set_level<Warn>();
-    else if (s == "Info")
+    else if (name == "info")
       set_level<Info>();
-    else if (s == "Debug")
+    else if (name == "debug")
       set_level<Debug>();
-    else if (s == "Trace")
+    else if (name == "trace")
       set_level<Trace>();
     else
     {
