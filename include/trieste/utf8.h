@@ -127,8 +127,8 @@ namespace trieste
       uint32_t value;
     };
 
-    using runestring = std::basic_string<uint32_t>;
-    using runestring_view = std::basic_string_view<uint32_t>;
+    using runestring = std::basic_string<char32_t>;
+    using runestring_view = std::basic_string_view<char32_t>;
 
     inline std::pair<rune, std::string_view>
     utf8_to_rune(const std::string_view& utf8, bool unescape_unicode)
