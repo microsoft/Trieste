@@ -2,6 +2,7 @@ set( SOURCES
 parse.cc
 reader.cc
 writer.cc
+json.cc
 )
 
 if( BUILD_SHARED_LIBS )
