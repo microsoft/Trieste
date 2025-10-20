@@ -189,7 +189,6 @@ namespace
 
   PassDef to_file(const std::filesystem::path& path)
   {
-    Node dir = Directory;
     return {
       "to_file",
       wf_to_file,

@@ -1,5 +1,9 @@
+#include "json.h"
+
 #include "internal.h"
 #include "trieste/utf8.h"
+
+#include <optional>
 
 // clang format on
 namespace
@@ -82,6 +86,664 @@ namespace
     }
     return lhs->location().view() == rhs->location().view();
   }
+
+  struct DebugJson
+  {
+    Node value;
+  };
+
+  static std::ostream& operator<<(std::ostream& os, const DebugJson& debug)
+  {
+    return os << json::to_string(debug.value);
+  }
+
+  namespace pointer
+  {
+    std::optional<std::string> unescape_pointer(const std::string_view& pointer)
+    {
+      std::ostringstream os;
+      size_t index = 0;
+      while (index < pointer.size())
+      {
+        char c = pointer[index];
+        if (c == '~')
+        {
+          if (index + 1 == pointer.size())
+          {
+            logging::Error() << "Invalid `~` in pointer";
+            return std::nullopt;
+          }
+
+          char i = pointer[index + 1];
+          if (i == '0')
+          {
+            os << '~';
+          }
+          else if (i == '1')
+          {
+            os << '/';
+          }
+          else
+          {
+            logging::Error() << "Invalid escape value '" << i << "'";
+            return std::nullopt;
+          }
+
+          index += 2;
+          continue;
+        }
+
+        os << c;
+        index += 1;
+      }
+
+      return os.str();
+    }
+
+    enum class Action
+    {
+      Insert,
+      Read,
+      Replace,
+      Remove,
+      Compare
+    };
+
+    struct DebugAction
+    {
+      Action action;
+    };
+
+    static std::ostream& operator<<(std::ostream& os, const DebugAction debug)
+    {
+      switch (debug.action)
+      {
+        case Action::Insert:
+          return os << "insert";
+
+        case Action::Read:
+          return os << "read";
+
+        case Action::Replace:
+          return os << "replace";
+
+        case Action::Remove:
+          return os << "remove";
+
+        case Action::Compare:
+          return os << "compare";
+      }
+    }
+
+    class Pointer
+    {
+    public:
+      Pointer(Location path, Action action, Node value)
+      : m_path(path), m_path_view(path.view()), m_action(action), m_value(value)
+      {}
+
+      Pointer(Location path, Action action) : Pointer(path, action, nullptr) {}
+
+      Node lookup(Node document) const
+      {
+        WFContext ctx(json::wf);
+
+        if (m_path.len == 0)
+        {
+          switch (m_action)
+          {
+            case Action::Read:
+              return document;
+
+            case Action::Replace:
+              return m_value;
+
+            case Action::Remove:
+              return err(json::String ^ m_path, "Cannot remove the root node");
+
+            case Action::Compare:
+              return compare(document, m_value);
+
+            case Action::Insert:
+              return m_value;
+          }
+        }
+
+        size_t pos = 0;
+        std::vector<Location> keys;
+        while (pos < m_path.len)
+        {
+          auto maybe_key = next_key(pos);
+          if (!maybe_key.has_value())
+          {
+            return err(json::String ^ m_path, "Invalid pointer");
+          }
+
+          logging::Trace() << "Pointer[" << keys.size()
+                           << "] = " << maybe_key.value().view();
+
+          keys.push_back(maybe_key.value());
+        }
+
+        Node current = document;
+        for (size_t i = 0; i < keys.size() - 1; ++i)
+        {
+          const Location& key = keys[i];
+
+          if (!current->in({json::Array, json::Object}))
+          {
+            return err(current, "Cannot index into value");
+          }
+
+          if (current == json::Object)
+          {
+            Nodes results = current->lookdown(key);
+            if (results.empty())
+            {
+              return err(
+                current, "No child at path: " + std::string(key.view()));
+            }
+
+            current = results.front() / json::Value;
+            continue;
+          }
+
+          size_t index = 0;
+          current = array_lookup(current, key, index);
+          if (current == Error)
+          {
+            return current;
+          }
+        }
+
+        if (!current->in({Object, Array}))
+        {
+          return err(current, "Cannot index into value");
+        }
+
+        const Location& key = keys.back();
+        if (current == json::Object)
+        {
+          return object_action(current, key);
+        }
+
+        return array_action(current, key);
+      }
+
+    private:
+      static Node compare(Node actual, Node expected)
+      {
+        if (actual == Error)
+        {
+          return actual;
+        }
+
+        if (!equal(actual, expected))
+        {
+          std::string actual_json = json::to_string(actual, false, true);
+          std::string expected_json = json::to_string(expected, false, true);
+          std::ostringstream os;
+          os << actual_json << " != " << expected_json;
+          return err(actual, os.str());
+        }
+
+        return actual;
+      }
+
+      Node object_action(Node object, const Location& key) const
+      {
+        assert(object == Object);
+
+        logging::Trace() << "Pointer: Object action " << DebugAction{m_action}
+                         << " on object " << object << " at key " << key.view();
+
+        Node existing;
+        Node member;
+        Nodes results = object->lookdown(key);
+        if (results.empty())
+        {
+          existing = nullptr;
+        }
+        else
+        {
+          member = results.front();
+          existing = member / json::Value;
+        }
+
+        switch (m_action)
+        {
+          case Action::Compare:
+            if (results.empty())
+            {
+              return err(
+                object,
+                "Member does not exist with key: " + std::string(key.view()));
+            }
+            return compare(existing, m_value);
+
+          case Action::Insert:
+            if (existing == nullptr)
+            {
+              object << (Member << (Key ^ key) << m_value->clone());
+              return m_value;
+            }
+            else
+            {
+              member / json::Value = m_value->clone();
+              return existing;
+            }
+
+          case Action::Read:
+            if (existing == nullptr)
+            {
+              return err(
+                object,
+                "Member does not exist with key: " + std::string(key.view()));
+            }
+            return existing;
+
+          case Action::Remove:
+            if (existing == nullptr)
+            {
+              return err(
+                object,
+                "Member does not exist with key: " + std::string(key.view()));
+            }
+            object->replace(member);
+            return existing;
+
+          case Action::Replace:
+            if (results.empty())
+            {
+              return err(
+                object,
+                "Member does not exist with key: " + std::string(key.view()));
+            }
+            member / json::Value = m_value->clone();
+            return existing;
+        }
+      }
+
+      Node array_action(Node array, const Location& key) const
+      {
+        assert(array == Array);
+        size_t index = 0;
+
+        logging::Trace() << "Pointer: Array action " << DebugAction{m_action}
+                         << " on array " << array << " at index " << key.view();
+
+        Node element = array_lookup(array, key, index);
+
+        if (m_action == Action::Insert && index == array->size())
+        {
+          array << m_value->clone();
+          return m_value;
+        }
+
+        if (element == Error)
+        {
+          return element;
+        }
+
+        switch (m_action)
+        {
+          case Action::Compare:
+            return compare(element, m_value->clone());
+
+          case Action::Insert:
+            array->insert(array->begin() + index, m_value->clone());
+            return m_value;
+
+          case Action::Read:
+            return element;
+
+          case Action::Remove:
+            array->replace(element);
+            return element;
+
+          case Action::Replace:
+            array->replace_at(index, m_value->clone());
+            return element;
+        }
+      }
+
+      std::optional<Location> next_key(size_t& pos) const
+      {
+        if (m_path_view[pos] != '/')
+        {
+          return std::nullopt;
+        }
+
+        bool needs_replacement = false;
+        size_t end = pos + 1;
+        while (end < m_path.len)
+        {
+          if (m_path_view[end] == '/')
+          {
+            break;
+          }
+
+          if (m_path_view[end] == '~')
+          {
+            needs_replacement = true;
+          }
+
+          end += 1;
+        }
+
+        pos += 1; // remove the prepending `/`
+        Location key(m_path.source, m_path.pos + pos, end - pos);
+        pos = end;
+        if (!needs_replacement)
+        {
+          return key;
+        }
+
+        auto maybe_unescaped = unescape_pointer(key.view());
+        if (!maybe_unescaped.has_value())
+        {
+          return std::nullopt;
+        }
+
+        return Location(maybe_unescaped.value());
+      }
+
+      static Node array_lookup(Node current, Location key, size_t& index)
+      {
+        std::string_view index_view = key.view();
+        if (index_view == "-")
+        {
+          index = current->size();
+          return err(
+            json::String ^ key,
+            "End-of-array selector `-` cannot appear inside a pointer, only "
+            "at the end");
+        }
+
+        if (index_view.front() == '-')
+        {
+          return err(
+            json::String ^ key,
+            "unable to parse array index (prepended by `-`)");
+        }
+
+        if (index_view.front() == '0' && index_view.size() > 1)
+        {
+          return err(json::String ^ key, "Leading zeros");
+        }
+
+        index = 0;
+        for (auto it = index_view.begin(); it < index_view.end(); ++it)
+        {
+          char c = *it;
+          if (!std::isdigit(c))
+          {
+            return err(
+              json::String ^ key, "unable to parse array index (not a digit)");
+          }
+
+          index =
+            index * 10 + static_cast<size_t>(c) - static_cast<size_t>('0');
+        }
+
+        if (index >= current->size())
+        {
+          return err(
+            json::Number ^ key,
+            "index is greater than number of items in array");
+        }
+
+        return current->at(index);
+      }
+
+      Location m_path;
+      std::string_view m_path_view;
+      Action m_action;
+      Node m_value;
+    };
+  }
+
+  namespace patch
+  {
+    const Location OpKey{"/op"};
+    const Location PathKey{"/path"};
+    const Location ValueKey{"/value"};
+    const Location FromKey{"/from"};
+    const Location MissingOp{"missing `op`"};
+    const Location InvalidOp{"invalid `op` value"};
+    const Location MissingPath{"missing `path`"};
+    const Location MissingValue{"missing `value`"};
+    const Location MissingFrom{"missing `from`"};
+
+    enum class Type
+    {
+      Error,
+      Test,
+      Add,
+      Remove,
+      Replace,
+      Copy,
+      Move
+    };
+
+    const std::map<Location, Type> TypeLookup{
+      {{"test"}, Type::Test},
+      {{"add"}, Type::Add},
+      {{"remove"}, Type::Remove},
+      {{"replace"}, Type::Replace},
+      {{"copy"}, Type::Copy},
+      {{"move"}, Type::Move}};
+
+    class Op
+    {
+    public:
+      static Op from_node(Node node)
+      {
+        auto maybe_type = select_string(node, OpKey);
+        if (!maybe_type.has_value())
+        {
+          return Op(node, Type::Error, MissingOp);
+        }
+
+        auto it = TypeLookup.find(maybe_type.value());
+        if (it == TypeLookup.end())
+        {
+          return Op(node, Type::Error, InvalidOp);
+        }
+
+        Type type = it->second;
+
+        auto maybe_path = select_string(node, PathKey);
+        if (!maybe_path.has_value())
+        {
+          return Op(node, Type::Error, MissingPath);
+        }
+
+        const Location& path = maybe_path.value();
+
+        switch (type)
+        {
+          case Type::Remove:
+            return Op(node, Type::Remove, path);
+
+          case Type::Add:
+          case Type::Replace:
+          case Type::Test:
+          {
+            Node value = select(node, ValueKey);
+            if (value == Error)
+            {
+              return Op(node, Type::Error, MissingValue);
+            }
+
+            return Op(node, type, path, value);
+          }
+
+          case Type::Copy:
+          case Type::Move:
+          {
+            auto maybe_from = select_string(node, FromKey);
+            if (!maybe_from.has_value())
+            {
+              return Op(node, Type::Error, MissingFrom);
+            }
+
+            return Op(node, type, path, maybe_from.value());
+          }
+
+          default:
+            return {node, Type::Error, {"Unknown error"}};
+        }
+      }
+
+      bool operator<(const Op& other) const
+      {
+        return m_type < other.m_type;
+      }
+
+      Node apply(const Node& document) const
+      {
+        logging::Debug() << "Applying patch " << DebugJson{m_node};
+        switch (m_type)
+        {
+          case Type::Test:
+            return test(document);
+
+          case Type::Add:
+            return add(document);
+
+          case Type::Remove:
+            return remove(document);
+
+          case Type::Replace:
+            return replace(document);
+
+          case Type::Move:
+            return move(document);
+
+          case Type::Copy:
+            return copy(document);
+
+          default:
+            return err(m_node, "Unsupported operation");
+        }
+      }
+
+      Type type() const
+      {
+        return m_type;
+      }
+
+      Node node() const
+      {
+        return m_node;
+      }
+
+      Location path() const
+      {
+        return m_path;
+      }
+
+    private:
+      Op(Node node, Type type, Location path)
+      : m_node(node), m_type(type), m_path(path)
+      {}
+
+      Op(Node node, Type type, Location path, Node value)
+      : m_node(node), m_type(type), m_path(path), m_value(value)
+      {}
+
+      Op(Node node, Type type, Location path, Location from)
+      : m_node(node), m_type(type), m_path(path), m_from(from)
+      {}
+
+      Node test(Node document) const
+      {
+        Node result =
+          pointer::Pointer(m_path, pointer::Action::Compare, m_value)
+            .lookup(document);
+        return result == Error ? result : document;
+      }
+
+      Node add(Node document) const
+      {
+        if (m_path.len == 0)
+        {
+          return m_value->clone();
+        }
+
+        Node result = pointer::Pointer(m_path, pointer::Action::Insert, m_value)
+                        .lookup(document);
+        return result == Error ? result : document;
+      }
+
+      Node remove(Node document) const
+      {
+        Node result =
+          pointer::Pointer(m_path, pointer::Action::Remove).lookup(document);
+        return result == Error ? result : document;
+      }
+
+      Node replace(Node document) const
+      {
+        if (m_path.len == 0)
+        {
+          return m_value->clone();
+        }
+
+        Node result =
+          pointer::Pointer(m_path, pointer::Action::Replace, m_value)
+            .lookup(document);
+        return result == Error ? result : document;
+      }
+
+      Node move(Node document) const
+      {
+        if (m_path == m_from)
+        {
+          return document;
+        }
+
+        Node existing =
+          pointer::Pointer(m_from, pointer::Action::Remove).lookup(document);
+        if (existing == Error)
+        {
+          return existing;
+        }
+
+        Node result =
+          pointer::Pointer(m_path, pointer::Action::Insert, existing)
+            .lookup(document);
+        return result == Error ? result : document;
+      }
+
+      Node copy(Node document) const
+      {
+        if (m_path == m_from)
+        {
+          return document;
+        }
+
+        Node existing =
+          pointer::Pointer(m_from, pointer::Action::Read).lookup(document);
+        if (existing == Error)
+        {
+          return existing;
+        }
+
+        Node result =
+          pointer::Pointer(m_path, pointer::Action::Insert, existing)
+            .lookup(document);
+        return result == Error ? result : document;
+      }
+
+      Node m_node;
+      Type m_type;
+      Location m_path;
+      Node m_value;
+      Location m_from;
+    };
+  }
 }
 
 namespace trieste
@@ -146,7 +808,8 @@ namespace trieste
         auto [r, s] = utf8::utf8_to_rune(string.substr(pos), false);
         if (r.value > 0x7FFF)
         {
-          // JSON does not support escaping UTF-16 runes
+          // JSON does not support escaping runes which require more than 2
+          // bytes
           os << "\\uFFFD"; // BAD
           pos += s.size();
           continue;
@@ -242,29 +905,183 @@ namespace trieste
     {
       return Member << key << value;
     }
+
     Node array(const Nodes& elements)
     {
       return Array << elements;
     }
+
     Node value(const std::string& value)
     {
       std::ostringstream os;
       os << '"' << value << '"';
       return String ^ os.str();
     }
+
     Node value(const double value)
     {
       std::ostringstream os;
       os << std::noshowpoint << value;
       return Number ^ os.str();
     }
+
     Node boolean(bool value)
     {
       return value ? (True ^ "true") : (False ^ "false");
     }
+
     Node null()
     {
       return (Null ^ "null");
+    }
+
+    std::optional<double> get_number(const Node& node)
+    {
+      if (node == json::Number)
+      {
+        try
+        {
+          std::string value(node->location().view());
+          return std::stod(value);
+        }
+        catch (const std::exception& ex)
+        {
+          logging::Error() << "Unable to parse double: " << ex.what();
+          return std::nullopt;
+        }
+      }
+
+      logging::Error() << "Attempted to get double from " << node;
+      return std::nullopt;
+    }
+
+    std::optional<bool> get_boolean(const Node& node)
+    {
+      if (node == json::True)
+      {
+        return true;
+      }
+
+      if (node == json::False)
+      {
+        return false;
+      }
+
+      logging::Error() << "Attempted to get boolean from " << node;
+      return std::nullopt;
+    }
+
+    std::optional<Location> get_string(const Node& node)
+    {
+      if (node == json::String)
+      {
+        Location result = node->location();
+        result.pos += 1;
+        result.len -= 2;
+        return result;
+      }
+
+      logging::Debug() << "Attempted to get string from " << node;
+      return std::nullopt;
+    }
+
+    Node select(const Node& document, const Location& path)
+    {
+      return pointer::Pointer(path, pointer::Action::Read).lookup(document);
+    }
+
+    std::optional<double>
+    select_number(const Node& document, const Location& path)
+    {
+      Node node = select(document, path);
+      if (node == Error)
+      {
+        logging::Debug() << node;
+        return std::nullopt;
+      }
+
+      return get_number(node);
+    }
+
+    std::optional<bool>
+    select_boolean(const Node& document, const Location& path)
+    {
+      Node node = select(document, path);
+      if (node == Error)
+      {
+        logging::Debug() << node;
+        return std::nullopt;
+      }
+
+      return get_boolean(node);
+    }
+
+    std::optional<Location>
+    select_string(const Node& document, const Location& path)
+    {
+      Node node = select(document, path);
+      if (node == Error)
+      {
+        logging::Debug() << node;
+        return std::nullopt;
+      }
+
+      return get_string(node);
+    }
+
+    Node patch(const Node& document, const Node& patch)
+    {
+      if (patch != json::Array)
+      {
+        return err(patch, "Not a JSON array");
+      }
+
+      if (patch->empty())
+      {
+        return document;
+      }
+
+      std::vector<patch::Op> ops;
+
+      for (const auto& node : *patch)
+      {
+        auto op = patch::Op::from_node(node);
+        if (op.type() == patch::Type::Error)
+        {
+          return err(op.node(), op.path());
+        }
+
+        if (op.type() == patch::Type::Test)
+        {
+          Node result = op.apply(document);
+          if (result == Error)
+          {
+            return result;
+          }
+
+          continue;
+        }
+
+        ops.push_back(op);
+      }
+
+      Node patched = document->clone();
+      wf.build_st(patched);
+
+      for (const patch::Op& op : ops)
+      {
+        patched = op.apply(patched);
+        if (patched == Error)
+        {
+          return patched;
+        }
+
+        wf.build_st(patched);
+
+        logging::Debug() << "After: " << DebugJson{patched};
+      }
+
+      return patched;
     }
   }
 }

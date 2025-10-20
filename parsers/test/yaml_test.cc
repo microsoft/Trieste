@@ -554,16 +554,6 @@ int main(int argc, char* argv[])
     return app.exit(e);
   }
 
-  if (verbose)
-  {
-    trieste::logging::set_level<trieste::logging::Debug>();
-    trieste::logging::Output() << "Verbose output enabled";
-  }
-  else
-  {
-    trieste::logging::set_level<trieste::logging::Output>();
-  }
-
   trieste::logging::Output() << "Loading test cases:";
   std::vector<TestCase> test_cases;
   for (auto path : case_paths)
@@ -572,7 +562,9 @@ int main(int argc, char* argv[])
     {
       const std::filesystem::path dir_path = path;
       auto dir_iter = std::filesystem::directory_iterator{dir_path};
-      for(auto it = std::filesystem::begin(dir_iter); it != std::filesystem::end(dir_iter); ++it)
+      for (auto it = std::filesystem::begin(dir_iter);
+           it != std::filesystem::end(dir_iter);
+           ++it)
       {
         const std::filesystem::path file_or_dir = it->path();
         if (std::filesystem::is_directory(file_or_dir))
@@ -581,8 +573,7 @@ int main(int argc, char* argv[])
         }
         else
         {
-          trieste::logging::Error()
-            << "Not a directory: " << file_or_dir;
+          trieste::logging::Error() << "Not a directory: " << file_or_dir;
           return 1;
         }
       }
@@ -604,6 +595,16 @@ int main(int argc, char* argv[])
       return lhs.id < rhs.id;
     });
   trieste::logging::Output() << test_cases.size() << " loaded";
+
+  if (verbose)
+  {
+    trieste::logging::set_level<trieste::logging::Debug>();
+    trieste::logging::Output() << "Verbose output enabled";
+  }
+  else
+  {
+    trieste::logging::set_level<trieste::logging::Output>();
+  }
 
   int total = 0;
   int failures = 0;
