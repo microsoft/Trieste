@@ -99,46 +99,131 @@ namespace
 
   namespace pointer
   {
-    std::optional<std::string> unescape_pointer(const std::string_view& pointer)
+    class Pointer : public std::vector<Location>
     {
-      std::ostringstream os;
-      size_t index = 0;
-      while (index < pointer.size())
+    public:
+      Pointer(Location path) noexcept : m_path(path)
       {
-        char c = pointer[index];
-        if (c == '~')
+        size_t pos = 0;
+        while (pos < path.len)
         {
-          if (index + 1 == pointer.size())
+          auto maybe_key = next_key(path, pos);
+          if (!maybe_key.has_value())
           {
-            logging::Error() << "Invalid `~` in pointer";
-            return std::nullopt;
+            m_error = err(json::String ^ path, "Invalid pointer");
+            break;
           }
 
-          char i = pointer[index + 1];
-          if (i == '0')
-          {
-            os << '~';
-          }
-          else if (i == '1')
-          {
-            os << '/';
-          }
-          else
-          {
-            logging::Error() << "Invalid escape value '" << i << "'";
-            return std::nullopt;
-          }
+          logging::Trace() << "Pointer[" << size()
+                           << "] = " << maybe_key.value().view();
 
-          index += 2;
-          continue;
+          push_back(maybe_key.value());
         }
-
-        os << c;
-        index += 1;
       }
 
-      return os.str();
-    }
+      const Location& path() const
+      {
+        return m_path;
+      }
+
+      bool is_valid() const
+      {
+        return m_error == nullptr;
+      }
+
+      Node error() const
+      {
+        return m_error;
+      }
+
+    private:
+      static std::optional<Location> next_key(const Location& path, size_t& pos)
+      {
+        const std::string_view& path_view = path.view();
+        if (path_view[pos] != '/')
+        {
+          return std::nullopt;
+        }
+
+        bool needs_replacement = false;
+        size_t end = pos + 1;
+        while (end < path.len)
+        {
+          if (path_view[end] == '/')
+          {
+            break;
+          }
+
+          if (path_view[end] == '~')
+          {
+            needs_replacement = true;
+          }
+
+          end += 1;
+        }
+
+        pos += 1; // remove the prepending `/`
+        Location key(path.source, path.pos + pos, end - pos);
+        pos = end;
+        if (!needs_replacement)
+        {
+          return key;
+        }
+
+        auto maybe_unescaped = unescape_key(key.view());
+        if (!maybe_unescaped.has_value())
+        {
+          return std::nullopt;
+        }
+
+        return Location(maybe_unescaped.value());
+      }
+
+      static std::optional<std::string>
+      unescape_key(const std::string_view& pointer)
+      {
+        std::ostringstream os;
+        size_t index = 0;
+        while (index < pointer.size())
+        {
+          char c = pointer[index];
+          if (c == '~')
+          {
+            if (index + 1 == pointer.size())
+            {
+              logging::Error() << "Invalid `~` in pointer";
+              return std::nullopt;
+            }
+
+            char i = pointer[index + 1];
+            if (i == '0')
+            {
+              os << '~';
+            }
+            else if (i == '1')
+            {
+              os << '/';
+            }
+            else
+            {
+              logging::Error() << "Invalid escape value '" << i << "'";
+              return std::nullopt;
+            }
+
+            index += 2;
+            continue;
+          }
+
+          os << c;
+          index += 1;
+        }
+
+        return os.str();
+      }
+
+      Node m_error;
+      Location m_path;
+    };
 
     enum class Action
     {
@@ -175,20 +260,26 @@ namespace
       }
     }
 
-    class Pointer
+    class Operation
     {
     public:
-      Pointer(Location path, Action action, Node value)
-      : m_path(path), m_path_view(path.view()), m_action(action), m_value(value)
+      Operation(Location path, Action action, Node value)
+      : m_pointer(path), m_action(action), m_value(value)
       {}
 
-      Pointer(Location path, Action action) : Pointer(path, action, nullptr) {}
+      Operation(Location path, Action action) : Operation(path, action, nullptr)
+      {}
 
-      Node lookup(Node document) const
+      Node run(Node document) const
       {
+        if (!m_pointer.is_valid())
+        {
+          return m_pointer.error();
+        }
+
         WFContext ctx(json::wf);
 
-        if (m_path.len == 0)
+        if (m_pointer.empty())
         {
           switch (m_action)
           {
@@ -199,7 +290,8 @@ namespace
               return m_value;
 
             case Action::Remove:
-              return err(json::String ^ m_path, "Cannot remove the root node");
+              return err(
+                json::String ^ m_pointer.path(), "Cannot remove the root node");
 
             case Action::Compare:
               return compare(document, m_value);
@@ -209,26 +301,10 @@ namespace
           }
         }
 
-        size_t pos = 0;
-        std::vector<Location> keys;
-        while (pos < m_path.len)
-        {
-          auto maybe_key = next_key(pos);
-          if (!maybe_key.has_value())
-          {
-            return err(json::String ^ m_path, "Invalid pointer");
-          }
-
-          logging::Trace() << "Pointer[" << keys.size()
-                           << "] = " << maybe_key.value().view();
-
-          keys.push_back(maybe_key.value());
-        }
-
         Node current = document;
-        for (size_t i = 0; i < keys.size() - 1; ++i)
+        for (size_t i = 0; i < m_pointer.size() - 1; ++i)
         {
-          const Location& key = keys[i];
+          const Location& key = m_pointer[i];
 
           if (!current->in({json::Array, json::Object}))
           {
@@ -261,7 +337,7 @@ namespace
           return err(current, "Cannot index into value");
         }
 
-        const Location& key = keys.back();
+        const Location& key = m_pointer.back();
         if (current == json::Object)
         {
           return object_action(current, key);
@@ -407,47 +483,6 @@ namespace
         }
       }
 
-      std::optional<Location> next_key(size_t& pos) const
-      {
-        if (m_path_view[pos] != '/')
-        {
-          return std::nullopt;
-        }
-
-        bool needs_replacement = false;
-        size_t end = pos + 1;
-        while (end < m_path.len)
-        {
-          if (m_path_view[end] == '/')
-          {
-            break;
-          }
-
-          if (m_path_view[end] == '~')
-          {
-            needs_replacement = true;
-          }
-
-          end += 1;
-        }
-
-        pos += 1; // remove the prepending `/`
-        Location key(m_path.source, m_path.pos + pos, end - pos);
-        pos = end;
-        if (!needs_replacement)
-        {
-          return key;
-        }
-
-        auto maybe_unescaped = unescape_pointer(key.view());
-        if (!maybe_unescaped.has_value())
-        {
-          return std::nullopt;
-        }
-
-        return Location(maybe_unescaped.value());
-      }
-
       static Node array_lookup(Node current, Location key, size_t& index)
       {
         std::string_view index_view = key.view();
@@ -496,8 +531,7 @@ namespace
         return current->at(index);
       }
 
-      Location m_path;
-      std::string_view m_path_view;
+      Pointer m_pointer;
       Action m_action;
       Node m_value;
     };
@@ -660,8 +694,8 @@ namespace
       Node test(Node document) const
       {
         Node result =
-          pointer::Pointer(m_path, pointer::Action::Compare, m_value)
-            .lookup(document);
+          pointer::Operation(m_path, pointer::Action::Compare, m_value)
+            .run(document);
         return result == Error ? result : document;
       }
 
@@ -672,15 +706,16 @@ namespace
           return m_value->clone();
         }
 
-        Node result = pointer::Pointer(m_path, pointer::Action::Insert, m_value)
-                        .lookup(document);
+        Node result =
+          pointer::Operation(m_path, pointer::Action::Insert, m_value)
+            .run(document);
         return result == Error ? result : document;
       }
 
       Node remove(Node document) const
       {
         Node result =
-          pointer::Pointer(m_path, pointer::Action::Remove).lookup(document);
+          pointer::Operation(m_path, pointer::Action::Remove).run(document);
         return result == Error ? result : document;
       }
 
@@ -692,8 +727,8 @@ namespace
         }
 
         Node result =
-          pointer::Pointer(m_path, pointer::Action::Replace, m_value)
-            .lookup(document);
+          pointer::Operation(m_path, pointer::Action::Replace, m_value)
+            .run(document);
         return result == Error ? result : document;
       }
 
@@ -705,15 +740,15 @@ namespace
         }
 
         Node existing =
-          pointer::Pointer(m_from, pointer::Action::Remove).lookup(document);
+          pointer::Operation(m_from, pointer::Action::Remove).run(document);
         if (existing == Error)
         {
           return existing;
         }
 
         Node result =
-          pointer::Pointer(m_path, pointer::Action::Insert, existing)
-            .lookup(document);
+          pointer::Operation(m_path, pointer::Action::Insert, existing)
+            .run(document);
         return result == Error ? result : document;
       }
 
@@ -725,15 +760,15 @@ namespace
         }
 
         Node existing =
-          pointer::Pointer(m_from, pointer::Action::Read).lookup(document);
+          pointer::Operation(m_from, pointer::Action::Read).run(document);
         if (existing == Error)
         {
           return existing;
         }
 
         Node result =
-          pointer::Pointer(m_path, pointer::Action::Insert, existing)
-            .lookup(document);
+          pointer::Operation(m_path, pointer::Action::Insert, existing)
+            .run(document);
         return result == Error ? result : document;
       }
 
@@ -987,7 +1022,7 @@ namespace trieste
 
     Node select(const Node& document, const Location& path)
     {
-      return pointer::Pointer(path, pointer::Action::Read).lookup(document);
+      return pointer::Operation(path, pointer::Action::Read).run(document);
     }
 
     std::optional<double>
