@@ -28,17 +28,20 @@ namespace trieste
       ;
     // clang-format on
 
-    inline auto err(Node node, const std::string& msg)
+    template<typename T>
+    inline auto err(Node node, const T& msg)
     {
       return Error << (ErrorMsg ^ msg) << (ErrorAst << node->clone());
     }
 
-    inline Node err(const NodeRange& r, const std::string& msg)
+    template<typename T>
+    inline Node err(const NodeRange& r, const T& msg)
     {
       return Error << (ErrorMsg ^ msg) << (ErrorAst << r);
     }
 
-    inline auto err(const std::string& msg)
+    template<typename T>
+    inline auto err(const T& msg)
     {
       return Error << (ErrorMsg ^ msg);
     }

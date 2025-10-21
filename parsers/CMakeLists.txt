@@ -11,6 +11,12 @@ if(TRIESTE_BUILD_PARSER_TESTS)
                     OUTPUT_QUIET)
     endif()
 
+    if(NOT IS_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/json-patch-tests)
+    execute_process(COMMAND ${GIT_EXECUTABLE} clone --depth=1 https://github.com/json-patch/json-patch-tests
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+                    OUTPUT_QUIET)
+    endif()
+
     if(NOT IS_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/yaml-test-suite)
     execute_process(COMMAND ${GIT_EXECUTABLE} clone --depth=1 --branch data-2022-01-17 https://github.com/yaml/yaml-test-suite
                     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}

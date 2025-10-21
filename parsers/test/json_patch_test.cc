@@ -2,24 +2,19 @@
 #include "trieste/logging.h"
 #include "trieste/trieste.h"
 #include "trieste/utf8.h"
+#include "trieste/wf.h"
 
 #include <CLI/CLI.hpp>
+#include <cstddef>
 #include <filesystem>
-#include <fstream>
-#include <type_traits>
+#include <stdexcept>
 
 const std::string Green = "\x1b[32m";
+const std::string Cyan = "\x1b[36m";
 const std::string Yellow = "\x1b[33m";
 const std::string Reset = "\x1b[0m";
 const std::string Red = "\x1b[31m";
 // const std::string White = "\x1b[37m";
-
-enum class Outcome
-{
-  Accept,
-  Reject,
-  Maybe
-};
 
 using namespace trieste;
 
@@ -205,135 +200,185 @@ bool diff_json(const std::string& actual, const std::string& wanted)
   return a != actual.end() || w != wanted.end();
 }
 
+enum class Outcome
+{
+  Success,
+  Error,
+  IncorrectResult,
+  ErrorMismatch,
+  IncorrectSuccess,
+  Skipped
+};
+
 struct TestResult
 {
-  bool accepted;
+  Outcome outcome;
   std::string error;
-  bool diff;
 };
 
 struct TestCase
 {
-  std::string name;
-  std::string json;
-  std::filesystem::path filename;
-  Outcome outcome;
+  Node node;
+  std::string comment;
+  Node doc;
+  Node patch;
+  Node expected;
+  bool want_result;
+  std::string expected_error;
+  bool disabled;
 
-  TestResult run(const std::filesystem::path& debug_path, bool wf_checks)
+  TestResult run()
   {
-    auto dest = DestinationDef::synthetic();
-    auto result = json::reader()
-                    .synthetic(json)
-                    .debug_enabled(!debug_path.empty())
-                    .debug_path(debug_path)
-                    .wf_check_enabled(wf_checks) >>
-      json::writer("actual.json")
-        .destination(dest)
-        .debug_enabled(!debug_path.empty())
-        .debug_path(debug_path)
-        .wf_check_enabled(wf_checks);
-
-    if (!result.ok)
+    if (disabled)
     {
-      logging::String err;
-      result.print_errors(err);
-      return {false, err.str(), false};
+      return {Outcome::Skipped, ""};
     }
 
-    auto actual_json = dest->file(std::filesystem::path(".") / "actual.json");
+    Node actual = json::patch(doc, patch);
+
+    if (actual == Error)
+    {
+      WFContext ctx(json::wf);
+      std::string actual_error((actual / ErrorMsg)->location().view());
+      if (want_result)
+      {
+        logging::Debug() << actual;
+        return {Outcome::Error, actual_error};
+      }
+
+      if (actual_error != expected_error)
+      {
+        std::ostringstream os;
+        diff(actual_error, expected_error, "Error", os);
+        return {Outcome::ErrorMismatch, os.str()};
+      }
+
+      return {Outcome::Success, ""};
+    }
+
+    if (!want_result)
+    {
+      return {Outcome::IncorrectSuccess, "Expected error: " + expected_error};
+    }
+
+    auto actual_json = json::to_string(actual, false, true);
+    auto expected_json = json::to_string(expected, false, true);
 
     trieste::logging::Debug() << actual_json;
 
-    if (diff_json(actual_json, json))
+    if (diff_json(actual_json, expected_json))
     {
       std::ostringstream os;
-      diff(actual_json, json, "JSON", os);
-      return {true, os.str(), true};
+      diff(actual_json, expected_json, "JSON", os);
+      return {Outcome::IncorrectResult, os.str()};
     }
 
-    return {true, "", false};
+    return {Outcome::Success, ""};
   }
 
-  static void load(
-    std::vector<TestCase>& test_cases, const std::filesystem::path& file_or_dir)
+  static std::optional<TestCase> parse(Node node)
   {
-    if (std::filesystem::is_directory(file_or_dir))
+    std::string comment(
+      json::select_string(node, {"/comment"}).value_or(Location{}).view());
+
+    Node doc = json::select(node, {"/doc"});
+    if (doc == Error)
     {
-      const std::filesystem::path dir_path = file_or_dir;
-      auto dir_iter = std::filesystem::directory_iterator{dir_path};
-      for (auto it = std::filesystem::begin(dir_iter);
-           it != std::filesystem::end(dir_iter);
-           ++it)
+      logging::Error() << doc;
+      return std::nullopt;
+    }
+
+    Node patch = json::select(node, {"/patch"});
+    if (patch == Error)
+    {
+      logging::Error() << patch;
+      return std::nullopt;
+    }
+
+    bool disabled = json::select_boolean(node, {"/disabled"}).value_or(false);
+
+    if (disabled)
+    {
+      return TestCase{node, comment, doc, patch, nullptr, false, "", true};
+    }
+
+    Node expected = json::select(node, {"/expected"});
+
+    bool want_result = true;
+    std::string expected_error;
+    if (expected == Error)
+    {
+      expected = nullptr;
+      want_result = false;
+      auto maybe_error = json::select_string(node, {"/error"});
+      if (!maybe_error.has_value())
       {
-        load(test_cases, it->path());
+        logging::Error() << "missing error message (no expected node present)";
+        return std::nullopt;
+      }
+
+      expected_error = std::string(maybe_error.value().view());
+      if (comment.empty())
+      {
+        comment = expected_error;
       }
     }
-    else
+
+    return TestCase{
+      node,
+      comment,
+      doc,
+      patch,
+      expected,
+      want_result,
+      expected_error,
+      disabled};
+  }
+
+  static bool
+  load(std::vector<TestCase>& test_cases, const std::filesystem::path& path)
+  {
+    assert(path.extension() == ".json");
+
+    if (!std::filesystem::exists(path))
     {
-      const std::filesystem::path file = file_or_dir;
-      if (file.extension() == ".json")
+      logging::Error() << "Test file does not exist";
+      return true;
+    }
+
+    auto result = json::reader().file(path).read();
+    if (!result.ok)
+    {
+      logging::Error log;
+      log << "Unable to load test JSON: ";
+      result.print_errors(log);
+      return true;
+    }
+
+    Node test_cases_array = result.ast->front();
+    assert(test_cases_array == json::Array);
+    for (auto element : *test_cases_array)
+    {
+      auto maybe_test_case = TestCase::parse(element);
+      if (maybe_test_case.has_value())
       {
-        std::string json = utf8::read_to_end(file, true);
-        std::string name = file.stem().string();
-        Outcome outcome;
-        switch (name[0])
+        auto& test_case = maybe_test_case.value();
+        if (test_case.comment.empty())
         {
-          case 'y':
-            outcome = Outcome::Accept;
-            break;
-          case 'n':
-            outcome = Outcome::Reject;
-            break;
-          case 'i':
-            outcome = Outcome::Maybe;
-            break;
-          default:
-            throw std::runtime_error("Invalid test case name: " + name);
+          test_case.comment = "unnamed" + std::to_string(test_cases.size());
         }
-        test_cases.push_back({name, json, file, outcome});
+
+        test_cases.push_back(test_case);
+        continue;
       }
+
+      logging::Error() << "Unable to parse test case: " << element;
+      return true;
     }
+
+    return false;
   }
 };
-
-int manual_construction_test()
-{
-  using namespace trieste;
-  std::string name = "manual construction";
-  auto start = std::chrono::steady_clock::now();
-  Node object = json::object(
-    {json::member(json::value("key_a_str"), json::value("value")),
-     json::member(json::value("key_b_number"), json::value(42)),
-     json::member(json::value("key_c_bool"), json::boolean(true)),
-     json::member(json::value("key_d_null"), json::null()),
-     json::member(
-       json::value("key_e_array"),
-       json::array({json::value(1), json::value(2)})),
-     json::member(
-       json::value("key_f_object"),
-       json::object(
-         {json::member(json::value("key"), json::value("value"))}))});
-  auto end = std::chrono::steady_clock::now();
-  const std::chrono::duration<double> elapsed = end - start;
-  std::string expected =
-    R"({"key_a_str":"value","key_b_number":42,"key_c_bool":true,"key_d_null":null,"key_e_array":[1,2],"key_f_object":{"key":"value"}})";
-  std::string actual = json::to_string(object);
-  if (expected != actual)
-  {
-    logging::Error() << Red << "  FAIL: " << Reset << name << std::fixed
-                     << std::setw(62 - name.length()) << std::internal
-                     << std::setprecision(3) << elapsed.count() << " sec"
-                     << std::endl
-                     << "  Expected: " << expected << std::endl
-                     << "  Actual:   " << actual;
-    return 1;
-  }
-
-  logging::Output() << Green << "  PASS: " << Reset << name << std::fixed
-                    << std::setw(62 - name.length()) << std::internal
-                    << std::setprecision(3) << elapsed.count() << " sec";
-  return 0;
-}
 
 int main(int argc, char* argv[])
 {
@@ -341,25 +386,22 @@ int main(int argc, char* argv[])
 
   app.set_help_all_flag("--help-all", "Expand all help");
 
-  std::vector<std::filesystem::path> case_paths;
-  app.add_option("case,-c,--case", case_paths, "Test case JSON directory");
-
-  std::filesystem::path debug_path;
+  std::filesystem::path cases_path;
   app.add_option(
-    "-a,--ast", debug_path, "Output the AST (debugging for test case parser)");
-
-  bool wf_checks{false};
-  app.add_flag("-w,--wf", wf_checks, "Enable well-formedness checks (slow)");
+    "cases,-c,--cases", cases_path, "Path to the test case JSON file");
 
   bool verbose{false};
   app.add_flag("-v,--verbose", verbose, "Verbose output (for debugging)");
 
-  bool strict{false};
-  app.add_flag("-s,--strict", strict, "Strict mode (must pass all tests)");
-
   bool fail_first{false};
   app.add_flag(
     "-f,--fail-first", fail_first, "Stop after first test case failure");
+
+  bool strict_messages{false};
+  app.add_flag(
+    "-s,--strict-messages",
+    strict_messages,
+    "Emit warnings when error messages do not match");
 
   std::string name_match;
   app.add_option(
@@ -378,17 +420,10 @@ int main(int argc, char* argv[])
 
   trieste::logging::Output() << "Loading test cases:";
   std::vector<TestCase> test_cases;
-  for (auto path : case_paths)
+  if (TestCase::load(test_cases, cases_path))
   {
-    TestCase::load(test_cases, path);
+    return 1;
   }
-
-  std::sort(
-    test_cases.begin(),
-    test_cases.end(),
-    [](const TestCase& lhs, const TestCase& rhs) {
-      return lhs.name < rhs.name;
-    });
 
   trieste::logging::Output() << test_cases.size() << " loaded";
 
@@ -406,85 +441,86 @@ int main(int argc, char* argv[])
   int failures = 0;
   int warnings = 0;
 
-  total++;
-  if (manual_construction_test() != 0)
-  {
-    failures++;
-  }
-
   for (auto& testcase : test_cases)
   {
     if (
       !name_match.empty() &&
-      testcase.name.find(name_match) == std::string::npos)
+      testcase.comment.find(name_match) == std::string::npos)
     {
       continue;
     }
 
     total++;
-    std::string name = testcase.name;
+    std::string name = testcase.comment;
 
     try
     {
       auto start = std::chrono::steady_clock::now();
-      auto result = testcase.run(debug_path, wf_checks);
+      auto result = testcase.run();
       auto end = std::chrono::steady_clock::now();
       const std::chrono::duration<double> elapsed = end - start;
 
-      if (result.accepted)
+      switch (result.outcome)
       {
-        if (testcase.outcome == Outcome::Reject || result.diff)
-        {
-          trieste::logging::Error()
-            << Red << "  FAIL: " << Reset << name << std::fixed
+        case Outcome::Skipped:
+          trieste::logging::Output()
+            << Cyan << "  SKIP: " << Reset << name << std::fixed
             << std::setw(62 - name.length()) << std::internal
-            << std::setprecision(3) << elapsed.count() << " sec" << std::endl
-            << "  Expected rejection" << std::endl
-            << "(from " << testcase.filename << ")";
-          failures++;
-        }
-        else
-        {
+            << std::setprecision(3) << elapsed.count() << " sec";
+          break;
+
+        case Outcome::Success:
           trieste::logging::Output()
             << Green << "  PASS: " << Reset << name << std::fixed
             << std::setw(62 - name.length()) << std::internal
             << std::setprecision(3) << elapsed.count() << " sec";
-        }
-      }
-      else
-      {
-        if (
-          testcase.outcome == Outcome::Accept ||
-          (strict && testcase.outcome == Outcome::Maybe))
-        {
+          break;
+
+        case Outcome::IncorrectSuccess:
+          trieste::logging::Error()
+            << Red << "  FAIL: " << Reset << name << std::fixed
+            << std::setw(62 - name.length()) << std::internal
+            << std::setprecision(3) << elapsed.count() << " sec" << std::endl
+            << "  Expected error: " << testcase.expected_error << std::endl;
+          failures++;
+          break;
+
+        case Outcome::ErrorMismatch:
+          if (strict_messages)
+          {
+            warnings++;
+            trieste::logging::Error()
+              << Yellow << "  WARN: " << Reset << name << std::fixed
+              << std::setw(62 - name.length()) << std::internal
+              << std::setprecision(3) << elapsed.count() << " sec" << std::endl
+              << result.error << std::endl;
+          }
+          else
+          {
+            trieste::logging::Output()
+              << Green << "  PASS: " << Reset << name << std::fixed
+              << std::setw(62 - name.length()) << std::internal
+              << std::setprecision(3) << elapsed.count() << " sec";
+          }
+          break;
+
+        case Outcome::Error:
+        case Outcome::IncorrectResult:
           failures++;
           trieste::logging::Error()
             << Red << "  FAIL: " << Reset << name << std::fixed
             << std::setw(62 - name.length()) << std::internal
             << std::setprecision(3) << elapsed.count() << " sec" << std::endl
-            << result.error << std::endl
-            << "(from " << testcase.filename << ")";
-        }
-        else
-        {
-          auto color = Green;
-          if (testcase.outcome == Outcome::Maybe)
+            << result.error << std::endl;
+
+          if (verbose)
           {
-            color = Yellow;
-            if (strict)
-            {
-              failures++;
-            }
-            else
-            {
-              warnings++;
-            }
+            trieste::logging::Error() << json::to_string(testcase.node);
           }
-          trieste::logging::Output()
-            << color << "  PASS: " << Reset << name << std::fixed
-            << std::setw(62 - name.length()) << std::internal
-            << std::setprecision(3) << elapsed.count() << " sec";
-        }
+          break;
+
+        default:
+          throw std::runtime_error("Unexpected outcome");
       }
     }
     catch (const std::exception& e)
@@ -492,9 +528,9 @@ int main(int argc, char* argv[])
       failures++;
       trieste::logging::Error()
         << Red << "  EXCEPTION: " << Reset << name << std::endl
-        << "  " << e.what() << std::endl
-        << "(from " << testcase.filename << ")" << std::endl;
+        << "  " << e.what() << std::endl;
     }
+
     if (fail_first && failures > 0)
     {
       break;
