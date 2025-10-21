@@ -4,6 +4,7 @@
 #include "trieste/utf8.h"
 
 #include <optional>
+#include <stdexcept>
 
 // clang format on
 namespace
@@ -187,6 +188,7 @@ namespace
         while (index < pointer.size())
         {
           char c = pointer[index];
+          assert(c != '/');
           if (c == '~')
           {
             if (index + 1 == pointer.size())
@@ -258,6 +260,8 @@ namespace
         case Action::Compare:
           return os << "compare";
       }
+
+      throw std::runtime_error("Unrecognized Action value");
     }
 
     class Operation
@@ -438,6 +442,8 @@ namespace
             member / json::Value = m_value->clone();
             return existing;
         }
+
+        throw std::runtime_error("Unsupported Action value");
       }
 
       Node array_action(Node array, const Location& key) const
@@ -481,6 +487,8 @@ namespace
             array->replace_at(index, m_value->clone());
             return element;
         }
+
+        throw std::runtime_error("Unsupported Action value");
       }
 
       static Node array_lookup(Node current, Location key, size_t& index)
