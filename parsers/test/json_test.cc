@@ -302,22 +302,28 @@ int manual_construction_test()
   std::string name = "manual construction";
   auto start = std::chrono::steady_clock::now();
   Node object = json::object(
-    {json::member(json::value("key_a_str"), json::value("value")),
-     json::member(json::value("key_b_number"), json::value(42)),
-     json::member(json::value("key_c_bool"), json::boolean(true)),
-     json::member(json::value("key_d_null"), json::null()),
+    {json::member("key_a_str", "value"),
+     json::member("key_b_number", 42),
+     json::member("key_c_bool", json::boolean(true)),
+     json::member("key_d_null", json::null()),
+     json::member("key_e_array", json::array({json::value(1), json::value(2)})),
      json::member(
-       json::value("key_e_array"),
-       json::array({json::value(1), json::value(2)})),
-     json::member(
-       json::value("key_f_object"),
-       json::object(
-         {json::member(json::value("key"), json::value("value"))}))});
+       "key_f_object",
+       json::object({json::member("key", json::value("value"))}))});
+  Nodes elements;
+  elements.push_back(json::value(1));
+  elements.push_back(json::value("two"));
+  elements.push_back(json::boolean(false));
+  elements.push_back(json::null());
+  Node array = json::array(elements.begin(), elements.end());
   auto end = std::chrono::steady_clock::now();
   const std::chrono::duration<double> elapsed = end - start;
   std::string expected =
     R"({"key_a_str":"value","key_b_number":42,"key_c_bool":true,"key_d_null":null,"key_e_array":[1,2],"key_f_object":{"key":"value"}})";
   std::string actual = json::to_string(object);
+
+  logging::Debug() << "to_string: " << actual;
+
   if (expected != actual)
   {
     logging::Error() << Red << "  FAIL: " << Reset << name << std::fixed
@@ -328,6 +334,111 @@ int manual_construction_test()
                      << "  Actual:   " << actual;
     return 1;
   }
+
+  auto actual_c = json::select(object, {"/key_c_bool"});
+  if (actual_c != json::True)
+  {
+    logging::Error() << Red << "  FAIL: " << Reset << name << std::fixed
+                     << std::setw(62 - name.length()) << std::internal
+                     << std::setprecision(3) << elapsed.count() << " sec"
+                     << std::endl
+                     << "  Expected: " << (json::True ^ "true") << std::endl
+                     << "  Actual:   " << actual_c;
+    return 1;
+  }
+
+  logging::Debug() << "c: " << actual_c;
+
+  auto actual_a = json::select_string(object, {"/key_a_str"});
+  if (!actual_a.has_value() || actual_a->view() != "value")
+  {
+    logging::Error() << Red << "  FAIL: " << Reset << name << std::fixed
+                     << std::setw(62 - name.length()) << std::internal
+                     << std::setprecision(3) << elapsed.count() << " sec"
+                     << std::endl
+                     << "  Expected: " << "value" << std::endl
+                     << "  Actual:   "
+                     << actual_a.value_or(Location{"<missing>"}).view();
+    return 1;
+  }
+
+  logging::Debug() << "a: " << actual_a.value().view();
+
+  auto actual_e1 = json::select_number(object, {"/key_e_array/1"});
+  if (!actual_e1.has_value() || actual_e1.value() != 2)
+  {
+    logging::Error() << Red << "  FAIL: " << Reset << name << std::fixed
+                     << std::setw(62 - name.length()) << std::internal
+                     << std::setprecision(3) << elapsed.count() << " sec"
+                     << std::endl
+                     << "  Expected: " << 2;
+    if (actual_e1.has_value())
+    {
+      logging::Error() << "  Actual:   " << actual_e1.value();
+    }
+
+    return 1;
+  }
+
+  logging::Debug() << "e[1]: " << actual_e1.value();
+
+  auto actual_missing = json::select(object, {"/missingkey"});
+  if (actual_missing != Error)
+  {
+    logging::Error() << Red << "  FAIL: " << Reset << name << std::fixed
+                     << std::setw(62 - name.length()) << std::internal
+                     << std::setprecision(3) << elapsed.count() << " sec"
+                     << std::endl
+                     << "Returned value for missing key";
+  }
+
+  logging::Debug() << "missing key: " << actual_missing;
+
+  // JSON Patch test
+
+  Node patched;
+  {
+    logging::LocalLogLevel level = logging::local_log_level<logging::Output>();
+    auto reader = json::reader();
+    auto doc =
+      reader.synthetic(R"json({"foo": {"bar": {"baz": [{"boo": "net"}]}}})json")
+        .read()
+        .ast->front();
+    auto patch = reader
+                   .synthetic(R"json([
+        {"op": "copy", "from": "/foo", "path": "/bak"},
+        {"op": "replace", "path": "/foo/bar/baz/0/boo", "value": "qux"}
+      ])json")
+                   .read()
+                   .ast->front();
+    patched = json::patch(doc, patch);
+  }
+
+  if (patched == Error)
+  {
+    logging::Error() << Red << "  FAIL: " << Reset << name << std::fixed
+                     << std::setw(62 - name.length()) << std::internal
+                     << std::setprecision(3) << elapsed.count() << " sec"
+                     << std::endl
+                     << patched;
+  }
+
+  std::string actual_patched = json::to_string(patched);
+  std::string expected_patched =
+    R"json({"foo":{"bar":{"baz":[{"boo":"qux"}]}},"bak":{"bar":{"baz":[{"boo":"net"}]}}})json";
+  if (actual_patched != expected_patched)
+  {
+    std::ostringstream error;
+    diff(actual_patched, expected_patched, "JSON", error);
+    logging::Error() << Red << "  FAIL: " << Reset << name << std::fixed
+                     << std::setw(62 - name.length()) << std::internal
+                     << std::setprecision(3) << elapsed.count() << " sec"
+                     << std::endl
+                     << error.str();
+    return 1;
+  }
+
+  logging::Debug() << "patched: " << json::to_string(patched);
 
   logging::Output() << Green << "  PASS: " << Reset << name << std::fixed
                     << std::setw(62 - name.length()) << std::internal
@@ -392,14 +503,12 @@ int main(int argc, char* argv[])
 
   trieste::logging::Output() << test_cases.size() << " loaded";
 
+  trieste::logging::LocalLogLevel loglevel =
+    trieste::logging::local_log_level_from_string(verbose ? "debug" : "output");
+
   if (verbose)
   {
-    trieste::logging::set_level<trieste::logging::Debug>();
     trieste::logging::Output() << "Verbose output enabled";
-  }
-  else
-  {
-    trieste::logging::set_level<trieste::logging::Output>();
   }
 
   int total = 0;
