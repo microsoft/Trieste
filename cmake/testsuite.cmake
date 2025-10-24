@@ -78,7 +78,6 @@ function(testsuite name)
 
       # Make json for debugging.
       toolinvoke(launch_json_args ${test_file} ${output_dir})
-      list(POP_FRONT launch_json_args launch_json_prog)
       # Convert to a json format list.
       string(REPLACE "\"" "\\\"" launch_json_args "${launch_json_args}")
       string(REPLACE ";" "\", \"" launch_json_args "${launch_json_args}")
@@ -87,7 +86,7 @@ function(testsuite name)
         \"name\": \"${output_dir_relative}\",
         \"type\": \"cppdbg\",
         \"request\": \"launch\",
-        \"program\": \"${launch_json_prog}\",
+        \"program\": \"${TESTSUITE_EXE}\",
         \"args\": [\"${launch_json_args}\"],
         \"stopAtEntry\": false,
         \"cwd\": \"${CMAKE_CURRENT_SOURCE_DIR}/${test_dir}\",
@@ -158,7 +157,8 @@ function(testsuite name)
   string(REPLACE ";" "\n" LAUNCH_JSON2 "${LAUNCH_JSON}")
 
   if (TRIESTE_GENERATE_LAUNCH_JSON)
-    file(WRITE ${CMAKE_SOURCE_DIR}/.vscode/launch.json
+    file(GENERATE OUTPUT ${CMAKE_SOURCE_DIR}/.vscode/launch.json
+      CONTENT
   "{
     \"version\": \"0.2.0\",
     \"configurations\": [
