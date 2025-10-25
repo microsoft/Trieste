@@ -27,6 +27,7 @@ set(JSON_PATCH_TEST_SUITE_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../json-patch-tests/)
 add_test(NAME json_fuzz_reader COMMAND json_fuzzer reader -f WORKING_DIRECTORY $<TARGET_FILE_DIR:json_fuzzer>)
 add_test(NAME json_fuzz_writer COMMAND json_fuzzer writer -f WORKING_DIRECTORY $<TARGET_FILE_DIR:json_fuzzer>)
 add_test(NAME json_test COMMAND json_test -wf ${JSON_TEST_SUITE_ROOT} WORKING_DIRECTORY $<TARGET_FILE_DIR:json_test>)
+add_test(NAME json_test_manual COMMAND json_test -wf -n manual WORKING_DIRECTORY $<TARGET_FILE_DIR:json_test>)
 add_test(NAME json_patch_tests COMMAND json_patch_test -f ${JSON_PATCH_TEST_SUITE_ROOT}/tests.json WORKING_DIRECTORY $<TARGET_FILE_DIR:json_patch_test>)
 add_test(NAME json_patch_spec_tests COMMAND json_patch_test -f ${JSON_PATCH_TEST_SUITE_ROOT}/spec_tests.json WORKING_DIRECTORY $<TARGET_FILE_DIR:json_patch_test>)
 

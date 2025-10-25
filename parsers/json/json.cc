@@ -939,9 +939,11 @@ namespace trieste
       return result;
     }
 
-    Node object(const Nodes& members)
+    Node object(const std::initializer_list<Node>& members)
     {
-      return Object << members;
+      Node object = Object << members;
+      wf.build_st(object);
+      return object;
     }
 
     Node member(Node key, Node value)
@@ -949,7 +951,7 @@ namespace trieste
       return Member << key << value;
     }
 
-    Node array(const Nodes& elements)
+    Node array(const std::initializer_list<Node>& elements)
     {
       return Array << elements;
     }

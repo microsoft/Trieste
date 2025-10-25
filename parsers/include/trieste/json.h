@@ -110,18 +110,36 @@ namespace trieste
     /// @brief Builds a JSON `Object` node from a list of `Member` nodes.
     /// @param members `Member` nodes used to construct the `Object`
     /// @return an `Object` node
-    Node object(const Nodes& members);
+    Node object(const std::initializer_list<Node>& members);
 
-    /// @brief Builds a JSON `Member` node from a key and a value.
-    /// @param key the key of the member
-    /// @param value the value of the member
-    /// @return a `Member` node
-    Node member(Node key, Node value);
+    /// @brief Builds a JSON `Object` node from a list of `Member` nodes.
+    /// @param begin An iterator pointing at the beginning of a range of Node
+    /// objects
+    /// @param end An iterator pointing at the end of a range of Node objects
+    /// @return an `Object` node
+    template<typename T>
+    Node object(T begin, T end)
+    {
+      Node object = json::Object << NodeRange{begin, end};
+      wf.build_st(object);
+      return object;
+    }
+
+    /// @brief Builds a JSON `Array` node from a list of elements.
+    /// @param begin An iterator pointing at the beginning of a range of Node
+    /// objects
+    /// @param end An iterator pointing at the end of a range of Node objects
+    /// @return an `Object` node
+    template<typename T>
+    Node array(T begin, T end)
+    {
+      return json::Array << NodeRange{begin, end};
+    }
 
     /// @brief Builds a JSON `Array` node from a list of elements.
     /// @param elements the elements of the array
     /// @return an `Array` node
-    Node array(const Nodes& elements);
+    Node array(const std::initializer_list<Node>& elements);
 
     /// @brief Builds a JSON `String` node from a string value.
     /// @param value the string value
@@ -141,6 +159,26 @@ namespace trieste
     /// @brief Builds a JSON `Null` node.
     /// @return a `Null` node
     Node null();
+
+    /// @brief Builds a JSON `Member` node from a key and a value.
+    /// @param key the key of the member
+    /// @param value the value of the member
+    /// @return a `Member` node
+    template<typename K, typename V>
+    Node member(const K& key, const V& value)
+    {
+      return Member << (json::Key ^ key) << json::value(value);
+    }
+
+    /// @brief Builds a JSON `Member` node from a key and a value.
+    /// @param key the key of the member
+    /// @param value the value of the member
+    /// @return a `Member` node
+    template<typename K>
+    Node member(const K& key, const Node& value)
+    {
+      return json::Member << (json::Key ^ key) << value;
+    }
 
     /// @brief Retrieves the value of a JSON `Number` node.
     /// @param value the `Number` node
