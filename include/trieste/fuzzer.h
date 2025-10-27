@@ -370,7 +370,8 @@ namespace trieste
       { 
         WFContext context;
         int ret = 0;
-        size_t trivial_count = 0;
+        size_t passed_trivial_count = 0;
+        size_t errored_trivial_count = 0;
         size_t wf_errors = 0;
         std::map<std::string, ErrCount> error_passes; // pass name -> (error message -> count)
         std::vector<size_t> failed_ast_sizes; // tree sizes of failed runs
@@ -513,13 +514,16 @@ namespace trieste
             
             passed_ast_sizes.push_back(ast->tree_size());
             passed_ast_heights.push_back(ast->tree_height());
-            
-          } 
-          // TODO: Arbitrary definition of trivial
-          if (seq_ok && avg(sequence_rewrites) < 1) 
-          {
-            trivial_count++;
+
+            if (avg(sequence_rewrites) < 1) 
+            {
+            passed_trivial_count++;
+            }
           }
+          else if (!seq_ok && avg(sequence_rewrites) < 1)
+          {
+            errored_trivial_count++;
+          } 
           
         } //End generation loop 
 
@@ -529,17 +533,19 @@ namespace trieste
         logging::Info info;
         if (wf_errors > 0) info << " not WF " << wf_errors << " times." << std::endl;
 
+
         if (!error_passes.empty())
         {
           for (size_t i = 0; i < start_index_-1; i++){ 
             info << " pass " << passes_.at(i)->name() << " not run." << std::endl;
           }
+          info << "Error count per pass: " << std::endl; 
           for (size_t i = start_index_; i <= end_index_; i++){
             auto pass = passes_.at(i-1);
             auto pass_errors = error_passes.find(pass->name());
             if(pass_errors == error_passes.end())
             { 
-              info << " pass " << pass->name() << " : no failures." << std::endl;
+              info << " pass " << pass->name() << " : 0" << std::endl;
             }
             else
             {
@@ -550,7 +556,7 @@ namespace trieste
               0,
               [](const std::size_t acc, const std::pair<const std::string, std::size_t>& c)
               { return acc + c.second; });
-              info << " pass " << pass->name() << " resulted in error : " << sum << " times." << std::endl; 
+              info << " pass " << pass->name() << " : " << sum << std::endl; 
               for (auto [msg,count] : err_msgs)
               {
                 info << "    " << msg << ": " << count << std::endl;
@@ -558,12 +564,15 @@ namespace trieste
             }
           }
         }
-        if ((!error_passes.empty() && passed_count > 0) || trivial_count > 0)
+        if ((!error_passes.empty() && passed_count > 0) 
+            || passed_trivial_count > 0
+            || errored_trivial_count > 0)
         {
           info << std::endl;
           info << " failed to run full sequence: " << failed_count << " times." << std::endl;
           info << " passed full sequence: " << passed_count << " times." << std::endl;
-          if (trivial_count > 0) info << " trees with < 1 change per pass on average: " << trivial_count << std::endl;
+          if (passed_trivial_count > 0) info << " trees that passed sequence with < 1 change per pass on average: " << passed_trivial_count << std::endl;
+          if (errored_trivial_count > 0) info << " trees that failed sequence with < 1 change per pass on average: " << errored_trivial_count << std::endl;
           info << " average rewrites per pass: " << avg(rewrites) << std::endl;
         }
         size_t hash_unique = ast_hashes.size();
