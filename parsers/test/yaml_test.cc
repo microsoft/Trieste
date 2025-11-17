@@ -596,14 +596,12 @@ int main(int argc, char* argv[])
     });
   trieste::logging::Output() << test_cases.size() << " loaded";
 
+  trieste::logging::LocalLogLevel loglevel =
+    trieste::logging::local_log_level_from_string(verbose ? "debug" : "output");
+
   if (verbose)
   {
-    trieste::logging::set_level<trieste::logging::Debug>();
     trieste::logging::Output() << "Verbose output enabled";
-  }
-  else
-  {
-    trieste::logging::set_level<trieste::logging::Output>();
   }
 
   int total = 0;
