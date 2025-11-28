@@ -574,7 +574,7 @@ namespace trieste
             auto token = detail::find_token(loc.view());
 
             if (
-              ignored_tokens.contains(token) ||
+              ignored_tokens.find(token) != ignored_tokens.end() ||
               token_appears_in_wf(prev_wf, token) ||
               token_appears_in_wf(result_wf, token))
               return NoChange;
