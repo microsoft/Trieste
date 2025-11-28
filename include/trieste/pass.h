@@ -198,6 +198,16 @@ namespace trieste
       return {node, count, changes_sum};
     }
 
+  std::vector<Node> reify_patterns()
+  {
+    std::vector<Node> patterns;
+    for (auto& [pat, _] : rules_)
+    {
+      patterns.push_back(pat.value.reify());
+    }
+    return patterns;
+  }
+
   private:
     void compile_rules()
     {

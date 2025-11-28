@@ -1,0 +1,763 @@
+// Copyright Microsoft and Project Verona Contributors.
+// SPDX-License-Identifier: MIT
+#pragma once
+
+#include "token.h"
+#include "trieste.h"
+#include "wf.h"
+
+namespace trieste
+{
+  using namespace detail;
+
+  void add_tokens_to_stream(Node pattern, std::stringstream& ss)
+  {
+    bool first = true;
+    for (auto& token_node : *pattern)
+    {
+      if (!first)
+        ss << ", ";
+      Location loc = token_node->location();
+      ss << loc.view();
+      first = false;
+    }
+  }
+
+  std::string pattern_to_string(Node pattern)
+  {
+    if (pattern == Top)
+      pattern = pattern / Group;
+
+    std::stringstream ss;
+    if (pattern == reified::First)
+    {
+      ss << "Start";
+    }
+    else if (pattern == reified::Last)
+    {
+      ss << "End";
+    }
+    else if (pattern == reified::Any)
+    {
+      ss << "Any";
+    }
+    else if (pattern == reified::TokenMatch)
+    {
+      ss << "T(";
+      add_tokens_to_stream(pattern, ss);
+      ss << ")";
+    }
+    else if (pattern == reified::RegexMatch)
+    {
+      auto token_node = pattern / reified::Token;
+      Location loc = token_node->location();
+      std::string regex =
+        std::string((pattern / reified::Regex)->location().view());
+      ss << "T(" << loc.view() << ", \"" << regex << "\")";
+    }
+    else if (pattern == reified::Cap)
+    {
+      std::string name =
+        std::string((pattern / reified::Token)->location().view());
+      ss << "(" << pattern_to_string(pattern / Group) << ")[" << name << "]";
+    }
+    else if (pattern == reified::Opt)
+    {
+      ss << "~(" << pattern_to_string(pattern / Group) << ")";
+    }
+    else if (pattern == reified::Rep)
+    {
+      ss << "(" << pattern_to_string(pattern / Group) << ")++";
+    }
+    else if (pattern == reified::Not)
+    {
+      ss << "!(" << pattern_to_string(pattern / Group) << ")";
+    }
+    else if (pattern == reified::Choice)
+    {
+      ss << "(" << pattern_to_string(pattern / reified::First) << ") / ("
+         << pattern_to_string(pattern / reified::Last) << ")";
+    }
+    else if (pattern == reified::InsideStar)
+    {
+      ss << "In(";
+      add_tokens_to_stream(pattern, ss);
+      ss << ")++";
+    }
+    else if (pattern == reified::Inside)
+    {
+      ss << "In(";
+      add_tokens_to_stream(pattern, ss);
+      ss << ")";
+    }
+    else if (pattern == reified::Children)
+    {
+      ss << "(" << pattern_to_string(pattern / Group) << ") << ("
+         << pattern_to_string(pattern / reified::Children) << ")";
+    }
+    else if (pattern == reified::Pred)
+    {
+      ss << "++(" << pattern_to_string(pattern / Group) << ")";
+    }
+    else if (pattern == reified::NegPred)
+    {
+      ss << "--(" << pattern_to_string(pattern / Group) << ")";
+    }
+    else if (pattern == reified::Action)
+    {
+      ss << "((" << pattern_to_string(pattern / Group) << ")(<unknown lambda>))";
+    }
+    else // Group
+    {
+      bool first = true;
+      for (auto& child : *pattern)
+      {
+        if (!first)
+          ss << " * ";
+        ss << pattern_to_string(child);
+        first = false;
+      }
+    }
+    return ss.str();
+  }
+
+  // Return the multiplicity of the pattern, i.e. the expected number of nodes
+  // it matches. 0 or 1 means that many nodes, more than than means we don't
+  // know.
+  size_t multiplicity(Node pattern)
+  {
+    if (pattern->type().in(
+          {reified::First,
+           reified::Last,
+           reified::Inside,
+           reified::InsideStar,
+           reified::Pred,
+           reified::NegPred}))
+      return 0;
+
+    if (pattern->type().in(
+          {reified::Any,
+           reified::RegexMatch,
+           reified::TokenMatch,
+           reified::Not,
+           reified::Children}))
+      return 1;
+
+    if (pattern->type().in({reified::Opt, reified::Rep}))
+      return 2;
+
+    if (pattern->type().in({reified::Cap, reified::Action}))
+      return multiplicity(pattern / Group);
+
+    if (pattern == reified::Choice)
+    {
+      size_t left = multiplicity(pattern / reified::First);
+      size_t right = multiplicity(pattern / reified::Last);
+      return (left == right) ? left : 2;
+    }
+
+    if (pattern == Group)
+    {
+      size_t sum = 0;
+      for (auto& child : *pattern)
+      {
+        sum += multiplicity(child);
+      }
+      return sum;
+    }
+
+    return 2;
+  }
+
+  // Return the list of tokens matched by a pattern of multiplicity 1. If it
+  // matches multiple nodes, return an empty vector.
+  std::vector<Token> only_tokens(Node pattern)
+  {
+    if (pattern == reified::Cap || pattern == reified::Children)
+    {
+      pattern = pattern / Group;
+    }
+
+    if (pattern == reified::TokenMatch)
+    {
+      std::vector<Token> tokens;
+      std::transform(
+        pattern->begin(),
+        pattern->end(),
+        std::back_inserter(tokens),
+        [](auto& token_node) {
+          Location loc = token_node->location();
+          return detail::find_token(loc.view());
+        });
+      return tokens;
+    }
+    else if (pattern == reified::RegexMatch)
+    {
+      auto token_node = pattern / reified::Token;
+      Location loc = token_node->location();
+      auto token = detail::find_token(loc.view());
+      return {token};
+    }
+    else if (pattern == Group)
+    {
+      std::vector<Token> tokens;
+      for (auto& child : *pattern)
+      {
+        if (multiplicity(child) == 0)
+        {
+          // Skip 0-multiplicity patterns
+        }
+        else if (multiplicity(child) == 1 && tokens.empty())
+        {
+          tokens = only_tokens(child);
+        }
+        else
+        {
+          // Either multiple 1-multiplicity patterns, or a pattern with
+          // multiplicity > 1
+          tokens.clear();
+          break;
+        }
+      }
+      return tokens;
+    }
+    return {};
+  }
+
+  // A pattern is empty if it is used to match an empty sequence of nodes.
+  bool empty_pattern(Node pattern)
+  {
+    if (pattern->type().in(
+          {reified::First,
+           reified::Last,
+           reified::Inside,
+           reified::InsideStar}))
+    {
+      return true;
+    }
+    else if (pattern->type().in(
+               {reified::Cap, reified::Action, reified::Rep, reified::Pred}))
+    {
+      return empty_pattern(pattern / Group);
+    }
+    else if (pattern == reified::NegPred)
+    {
+      return !empty_pattern(pattern / Group);
+    }
+    else if (pattern == Group)
+    {
+      for (auto& child : *pattern)
+      {
+        if (!empty_pattern(child))
+          return false;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  bool tokens_are_subset(std::vector<Token> subset, std::vector<Token> superset)
+  {
+    for (auto& token : subset)
+    {
+      bool found = false;
+      for (auto& token2 : superset)
+      {
+        if (token == token2)
+        {
+          found = true;
+          break;
+        }
+      }
+      if (!found)
+        return false;
+    }
+    return true;
+  }
+
+  bool tokens_are_subset(std::vector<Token> subset, Node superset)
+  {
+    if (!superset->type().in(
+          {reified::Inside, reified::InsideStar, reified::TokenMatch}))
+    {
+      throw std::runtime_error(
+        "tokens_are_subset called with non-token-matching patterns");
+    }
+
+    std::vector<Token> superset_tokens;
+    std::transform(
+      superset->begin(),
+      superset->end(),
+      std::back_inserter(superset_tokens),
+      [](auto& token_node) {
+        return detail::find_token(token_node->location().view());
+      });
+
+    return tokens_are_subset(subset, superset_tokens);
+  }
+
+  bool tokens_are_subset(Node subset, Node superset)
+  {
+    if (
+      !subset->type().in(
+        {reified::Inside, reified::InsideStar, reified::TokenMatch}) ||
+      !superset->type().in(
+        {reified::Inside, reified::InsideStar, reified::TokenMatch}))
+    {
+      throw std::runtime_error(
+        "tokens_are_subset called with non-token-matching patterns");
+    }
+
+    std::vector<Token> subset_tokens;
+    std::transform(
+      subset->begin(),
+      subset->end(),
+      std::back_inserter(subset_tokens),
+      [](auto& token_node) {
+        return detail::find_token(token_node->location().view());
+      });
+
+    std::vector<Token> superset_tokens;
+    std::transform(
+      superset->begin(),
+      superset->end(),
+      std::back_inserter(superset_tokens),
+      [](auto& token_node) {
+        return detail::find_token(token_node->location().view());
+      });
+    return tokens_are_subset(subset_tokens, superset_tokens);
+  }
+
+  // Check if a pattern is prefix of another, i.e. if it will match if the
+  // longer pattern matches. This function does not aim to be complete but
+  // should catch many cases.
+  bool includes_prefix(Node prefix, Node pattern)
+  {
+    // Assume patterns are Groups
+    if (prefix != Group || pattern != Group)
+      return false;
+
+    auto prefix_it = prefix->begin();
+    auto pattern_it = pattern->begin();
+    while (prefix_it != prefix->end() && pattern_it != pattern->end())
+    {
+      auto prefix_node = *prefix_it;
+      auto pattern_node = *pattern_it;
+
+      // We only support capturing a single node inside a Cap for now.
+      if (prefix_node == reified::Cap && (prefix_node / Group)->size() == 1)
+      {
+        prefix_node = (prefix_node / Group)->at(0);
+      }
+
+      if (prefix_node == reified::Inside || prefix_node == reified::InsideStar)
+      {
+        // Assume In appears in the same position in both patterns
+        if (pattern_node->type() != prefix_node->type())
+          return false;
+
+        if (!tokens_are_subset(pattern_node, prefix_node))
+          return false;
+      }
+      else if (prefix_node == reified::First || prefix_node == reified::Last)
+      {
+        // If the prefix is First or Last, the pattern must be the same
+        if (pattern_node != prefix_node)
+          return false;
+      }
+      else if (pattern_node->type().in(
+                 {reified::Inside,
+                  reified::InsideStar,
+                  reified::First,
+                  reified::Last}))
+      {
+        // If pattern is In, First or Last, the Prefix could be more general
+        ++pattern_it;
+        continue;
+      }
+      else if (prefix_node == reified::TokenMatch)
+      {
+        auto tokens = only_tokens(pattern_node);
+        if (tokens.empty() || !tokens_are_subset(tokens, prefix_node))
+          return false;
+      }
+      else if (prefix_node == reified::Children)
+      {
+        if (pattern_node->type() != reified::Children)
+          return false;
+
+        if (!includes_prefix(prefix_node / Group, pattern_node / Group))
+          return false;
+
+        if (!includes_prefix(
+              prefix_node / reified::Children,
+              pattern_node / reified::Children))
+          return false;
+      }
+      else if (prefix_node == reified::Any)
+      {
+        // Any matches any one thing
+        if (multiplicity(pattern_node) != 1)
+          return false;
+      }
+      // TODO: repetition should be able to match repetition and single nodes
+      else
+      {
+        // Unhandled pattern type in prefix. Assume no match.
+        return false;
+      }
+
+      ++prefix_it;
+      ++pattern_it;
+    }
+    return prefix_it == prefix->end();
+  }
+
+  // TODO: Should the functions above be private methods in the class? Probably!
+  class Checker
+  {
+  private:
+    std::vector<Pass> passes_;
+    const wf::Wellformed* input_wf_;
+    size_t start_index_;
+    size_t end_index_;
+
+    bool check_wf_ = false;
+    std::set<Token> ignored_tokens_;
+
+    PassDef check_pattern()
+    {
+      return {
+        "check_pattern",
+        reified::pattern_wf,
+        dir::topdown | dir::once,
+        {
+          In(reified::Pred, reified::NegPred)++ *
+              T(reified::Cap)[reified::Cap] >>
+            [](auto& _) -> Node {
+            return Error << (ErrorAst << _(reified::Cap))
+                         << (ErrorMsg ^
+                             "Cannot have capture patterns inside predicates");
+          },
+
+          In(reified::Not)++* T(reified::Cap)[reified::Cap] >>
+            [](auto& _) -> Node {
+            return Error << (ErrorAst << _(reified::Cap))
+                         << (ErrorMsg ^
+                             "Cannot have capture patterns inside a negation");
+          },
+
+          In(reified::Rep)++* T(reified::Cap)[reified::Cap] >>
+            [](auto& _) -> Node {
+            return Error
+              << (ErrorAst << _(reified::Cap))
+              << (ErrorMsg ^
+                  "Cannot have capture patterns inside a repetition");
+          },
+
+          T(reified::Rep) << T(Group)[Group] >> [](auto& _) -> Node {
+            if (multiplicity(_(Group)) == 0)
+            {
+              return Error << (ErrorAst << _(Group))
+                           << (ErrorMsg ^
+                               "Pattern '" + pattern_to_string(_(Group)) +
+                                 "' would be infinitely repeated");
+            }
+            return NoChange;
+          },
+
+          T(reified::Last) * Any >> [](auto& _) -> Node {
+            return Error << (ErrorAst << _(reified::Last))
+                         << (ErrorMsg ^ "Cannot have pattern after 'End'");
+          },
+
+          T(reified::Cap) << T(Group)[Group] >> [](auto& _) -> Node {
+            auto captured_pattern = _(Group);
+            if (multiplicity(captured_pattern) == 0)
+            {
+              return Error << (ErrorAst << captured_pattern)
+                           << (ErrorMsg ^
+                               "Capture group '" + pattern_to_string(captured_pattern) +
+                                 "' is always empty");
+            }
+            return NoChange;
+          },
+
+          T(reified::Children)
+              << (T(Group)[Group] * T(Group)[reified::Children]) >>
+            [](auto& _) -> Node {
+            auto parent_pattern = _(Group);
+            auto child_pattern = _(reified::Children);
+            auto mult = multiplicity(parent_pattern);
+            if (mult != 1)
+            {
+              return Error << (ErrorAst << parent_pattern)
+                           << (ErrorMsg ^
+                               "Parent pattern '" + pattern_to_string(parent_pattern) +
+                                 "' should match exactly one node");
+            }
+            return NoChange;
+          },
+
+          T(reified::Not) << T(Group)[Group] >> [](auto& _) -> Node {
+            if (multiplicity(_(Group)) != 1)
+            {
+              return Error << (ErrorAst << _(Group))
+                           << (ErrorMsg ^
+                               "Negated pattern '" + pattern_to_string(_(Group)) +
+                                 "' should match exactly one node. "
+                                 "Consider using negative lookahead instead.");
+            }
+            return NoChange;
+          },
+
+          // Matching on internal tokens is not allowed.
+          In(reified::TokenMatch, reified::Regex) *
+              T(reified::Token)[reified::Token] >>
+            [](auto& _) -> Node {
+            Location loc = _(reified::Token)->location();
+            auto token = detail::find_token(loc.view());
+            if (token.def->has(flag::internal))
+            {
+              return Error << (ErrorAst << _(reified::Token))
+                           << (ErrorMsg ^ "Cannot match on internal tokens");
+            }
+            return NoChange;
+          },
+        }};
+    }
+
+    static bool token_appears_in_wf(wf::Wellformed& wf, Token token)
+    {
+      for (auto& [parent, shape] : wf.shapes)
+      {
+        if (parent == token)
+          return true;
+
+        if (std::holds_alternative<wf::Fields>(shape))
+        {
+          auto& fields = std::get<wf::Fields>(shape);
+          for (auto& field : fields.fields)
+          {
+            for (auto& t : field.choice.types)
+            {
+              if (t == token)
+                return true;
+            }
+          }
+        }
+        else
+        {
+          auto& sequence = std::get<wf::Sequence>(shape);
+          for (auto& t : sequence.choice.types)
+          {
+            if (t == token)
+              return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    PassDef check_that_tokens_exist(
+      wf::Wellformed& prev_wf,
+      wf::Wellformed& result_wf,
+      const std::set<Token>& ignored_tokens)
+    {
+      PassDef wf_check = {
+        "check_well_formedness",
+        reified::pattern_wf,
+        dir::topdown | dir::once,
+        {
+          In(
+            reified::TokenMatch,
+            reified::RegexMatch,
+            reified::Inside,
+            reified::InsideStar) *
+              T(reified::Token)[reified::Token] >>
+            [&prev_wf, &result_wf, &ignored_tokens](auto& _) -> Node {
+            Location loc = _(reified::Token)->location();
+            auto token = detail::find_token(loc.view());
+
+            if (
+              ignored_tokens.contains(token) ||
+              token_appears_in_wf(prev_wf, token) ||
+              token_appears_in_wf(result_wf, token))
+              return NoChange;
+
+            return Error
+              << (ErrorMsg ^
+                  "Token '" + std::string(token.str()) +
+                    "' is not defined in well-formedness rules");
+          },
+        }};
+      bool check_wf = this->check_wf_;
+      wf_check.cond([check_wf](Node) { return check_wf; });
+
+      return wf_check;
+    }
+
+  public:
+    Checker() {}
+
+    Checker(const std::vector<Pass>& passes, const wf::Wellformed& input_wf)
+    : passes_(passes),
+      input_wf_(&input_wf),
+      start_index_(1),
+      end_index_(passes.size()),
+      check_wf_(false)
+    {}
+
+    Checker(const Reader& reader)
+    : Checker(reader.passes(), reader.parser().wf())
+    {}
+
+    Checker(const Writer& writer) : Checker(writer.passes(), writer.input_wf())
+    {}
+
+    Checker(const Rewriter& rewriter)
+    : Checker(rewriter.passes(), rewriter.input_wf())
+    {}
+
+    size_t start_index() const
+    {
+      return start_index_;
+    }
+
+    Checker& start_index(size_t index)
+    {
+      start_index_ = index;
+      return *this;
+    }
+
+    size_t end_index() const
+    {
+      return end_index_;
+    }
+
+    Checker& end_index(size_t index)
+    {
+      end_index_ = index;
+      return *this;
+    }
+
+    bool check_against_wf() const
+    {
+      return check_wf_;
+    }
+
+    Checker& check_against_wf(bool value)
+    {
+      check_wf_ = value;
+      return *this;
+    }
+
+    Checker& ignored_tokens(const std::vector<std::string>& tokens)
+    {
+      for (auto& token_str : tokens)
+      {
+        auto token = detail::find_token(token_str);
+        if (token == Invalid)
+        {
+          logging::Error() << "Unknown token '" << token_str << "'";
+          continue;
+        }
+        ignored_tokens_.insert(token);
+      }
+      return *this;
+    }
+
+    std::set<Token> ignored_tokens() const
+    {
+      return ignored_tokens_;
+    }
+
+    int check()
+    {
+      WFContext context;
+      context.push_back(reified::pattern_wf);
+      logging::Output() << "Checking patterns" << std::endl;
+
+      int ret = 0;
+
+      for (size_t index = start_index_; index <= end_index_; index++)
+      {
+        auto& pass = passes_.at(index - 1);
+        logging::Info() << "Checking pass: " << pass->name() << std::endl;
+
+        auto prev_wf = index == 1 ? *input_wf_ : passes_.at(index - 2)->wf();
+        auto result_wf = passes_.at(index - 1)->wf();
+        auto checker = Rewriter(
+          "pattern checker",
+          {check_pattern(),
+           check_that_tokens_exist(prev_wf, result_wf, ignored_tokens_)},
+          reified::pattern_wf);
+
+        auto patterns = pass->reify_patterns();
+
+        // Check for malformed patterns
+        for (auto& pattern : patterns)
+        {
+          std::vector<std::string> error_messages;
+          auto ok = reified::pattern_wf.check(pattern);
+          if (!ok)
+          {
+            logging::Error err;
+            err << "============" << std::endl
+                << "Pass: " << pass->name() << std::endl
+                << "------------" << std::endl
+                << "Pattern does not conform to well-formedness rules:"
+                << std::endl
+                << pattern->str() << "------------" << std::endl
+                << "This is most likely a bug in Trieste. Please report it."
+                << std::endl;
+            ret = 1;
+            continue;
+          }
+
+          auto orig = pattern->clone();
+          auto result = checker.rewrite(pattern);
+          if (!result.ok)
+          {
+            logging::Error err;
+            err << "------------" << std::endl
+                << "Pass: " << pass->name() << std::endl
+                << "------------" << std::endl
+                << "Found bad pattern: " << std::endl
+                << pattern_to_string(orig) << std::endl
+                << "------------" << std::endl;
+            result.print_errors(err);
+            ret = 1;
+          }
+        }
+
+        // Check for unreachable patterns
+        auto prefix_it = patterns.begin();
+        while (prefix_it != patterns.end())
+        {
+          auto pattern_it = prefix_it + 1;
+          while (pattern_it != patterns.end())
+          {
+            if (includes_prefix(*prefix_it / Group, *pattern_it / Group))
+            {
+              logging::Error err;
+              err << "------------" << std::endl
+                  << "Pass: " << pass->name() << std::endl
+                  << "------------" << std::endl
+                  << "Unreachable pattern:" << std::endl
+                  << pattern_to_string(*pattern_it) << std::endl
+                  << std::endl
+                  << "Pattern is shadowed by earlier pattern:" << std::endl
+                  << pattern_to_string(*prefix_it) << std::endl
+                  << "------------" << std::endl;
+            }
+            ++pattern_it;
+          }
+          ++prefix_it;
+        }
+      }
+      context.pop_front();
+      return ret;
+    }
+  };
+}

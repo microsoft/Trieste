@@ -6,6 +6,7 @@
 #include "debug.h"
 #include "regex.h"
 #include "token.h"
+#include "wf.h"
 #include "trieste/intrusive_ptr.h"
 
 #include <array>
@@ -368,6 +369,14 @@ namespace trieste
       {
         return {};
       }
+
+      virtual void reify(Node parent) const = 0;
+
+      void reify_continuation(Node parent) const
+      {
+        if (continuation)
+          continuation->reify(parent);
+      }
     };
 
     class Cap : public PatternDef
@@ -401,6 +410,20 @@ namespace trieste
         match.set(name, {begin, it});
         return match_continuation(it, parent, match);
       }
+
+      void reify(Node parent) const override
+      {
+        Node cap = reified::Cap;
+
+        Node group = Group;
+        pattern->reify(group);
+        cap->push_back(group);
+
+        cap->push_back(NodeDef::create(reified::Token, Location(name.str())));
+
+        parent->push_back(cap);
+        reify_continuation(parent);
+      }
     };
 
     class Anything : public PatternDef
@@ -421,6 +444,13 @@ namespace trieste
         ++it;
 
         return match_continuation(it, parent, match);
+      }
+
+      void reify(Node parent) const override
+      {
+        Node any = reified::Any;
+        parent->push_back(any);
+        reify_continuation(parent);
       }
     };
 
@@ -461,6 +491,17 @@ namespace trieste
         }
         return {};
       }
+
+      void reify(Node parent) const override
+      {
+        Node match = reified::TokenMatch;
+        for (const auto& t : types)
+        {
+          match->push_back(NodeDef::create(reified::Token, Location(t.str())));
+        }
+        parent->push_back(match);
+        reify_continuation(parent);
+      }
     };
 
     class RegexMatch : public PatternDef
@@ -489,6 +530,15 @@ namespace trieste
 
         ++it;
         return match_continuation(it, parent, match);
+      }
+
+      void reify(Node parent) const override
+      {
+        Node match = reified::RegexMatch;
+        match->push_back(NodeDef::create(reified::Token, Location(type.str())));
+        match->push_back(NodeDef::create(reified::Regex, Location(regex->pattern())));
+        parent->push_back(match);
+        reify_continuation(parent);
       }
     };
 
@@ -520,6 +570,18 @@ namespace trieste
           match.return_to_frame(backtrack_frame);
         }
         return match_continuation(it, parent, match);
+      }
+
+      void reify(Node parent) const override
+      {
+        Node opt = reified::Opt;
+
+        Node group = Group;
+        pattern->reify(group);
+        opt->push_back(group);
+
+        parent->push_back(opt);
+        reify_continuation(parent);
       }
     };
 
@@ -561,6 +623,18 @@ namespace trieste
         it = curr;
         return match_continuation(it, parent, match);
       }
+
+      void reify(Node parent) const override
+      {
+        Node rep = reified::Rep;
+
+        Node group = Group;
+        pattern->reify(group);
+        rep->push_back(group);
+
+        parent->push_back(rep);
+        reify_continuation(parent);
+      }
     };
 
     class Not : public PatternDef
@@ -573,7 +647,7 @@ namespace trieste
       {
         if (pattern->has_captures())
           throw std::runtime_error(
-            "Captures not allowed inside Not (~Pattern)!");
+            "Captures not allowed inside Not (!Pattern)!");
       }
 
       PatternPtr clone() const& override
@@ -591,6 +665,18 @@ namespace trieste
 
         return !pattern->match(begin, parent, match) &&
           match_continuation(it, parent, match);
+      }
+
+      void reify(Node parent) const override
+      {
+        Node not_node = reified::Not;
+
+        Node group = Group;
+        pattern->reify(group);
+        not_node->push_back(group);
+
+        parent->push_back(not_node);
+        reify_continuation(parent);
       }
     };
 
@@ -643,6 +729,21 @@ namespace trieste
         return second->match(it, parent, match) &&
           match_continuation(it, parent, match);
       }
+
+      void reify(Node parent) const override
+      {
+        Node choice = reified::Choice;
+
+        Node group1 = Group;
+        Node group2 = Group;
+        first->reify(group1);
+        second->reify(group2);
+        choice->push_back(group1);
+        choice->push_back(group2);
+
+        parent->push_back(choice);
+        reify_continuation(parent);
+      }
     };
 
     template<size_t N>
@@ -680,6 +781,15 @@ namespace trieste
 
         return false;
       }
+
+      void reify(Node parent) const override
+      {
+        Node inside_star = reified::InsideStar;
+        for (const auto& type : types)
+          inside_star->push_back(NodeDef::create(reified::Token, Location(type.str())));
+        parent->push_back(inside_star);
+        reify_continuation(parent);
+      }
     };
 
     template<size_t N>
@@ -714,6 +824,15 @@ namespace trieste
 
         return false;
       }
+
+    void reify(Node parent) const override
+      {
+        Node inside = reified::Inside;
+        for (const auto& type : types)
+          inside->push_back(NodeDef::create(reified::Token, Location(type.str())));
+        parent->push_back(inside);
+        reify_continuation(parent);
+      }
     };
 
     class First : public PatternDef
@@ -734,6 +853,12 @@ namespace trieste
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
         return (it == parent->begin()) && match_continuation(it, parent, match);
+      }
+
+      void reify(Node parent) const override
+      {
+        parent->push_back(reified::First);
+        reify_continuation(parent);
       }
     };
 
@@ -760,6 +885,12 @@ namespace trieste
       bool match(NodeIt& it, const Node& parent, Match&) const& override
       {
         return it == parent->end();
+      }
+
+      void reify(Node parent) const override
+      {
+        parent->push_back(reified::Last);
+        reify_continuation(parent);
       }
     };
 
@@ -798,6 +929,22 @@ namespace trieste
 
         return match_continuation(it, parent, match);
       }
+
+      void reify(Node parent) const override
+      {
+        Node children_node = reified::Children;
+
+        Node parent_group = Group;
+        pattern->reify(parent_group);
+        children_node->push_back(parent_group);
+
+        Node children_group = Group;
+        children->reify(children_group);
+        children_node->push_back(children_group);
+
+        parent->push_back(children_node);
+        reify_continuation(parent);
+      }
     };
 
     class Pred : public PatternDef
@@ -828,6 +975,16 @@ namespace trieste
         auto begin = it;
         return pattern->match(begin, parent, match) &&
           match_continuation(it, parent, match);
+      }
+
+      void reify(Node parent) const override
+      {
+        Node pred = reified::Pred;
+        Node group = Group;
+        pattern->reify(group);
+        pred->push_back(group);
+        parent->push_back(pred);
+        reify_continuation(parent);
       }
     };
 
@@ -860,6 +1017,16 @@ namespace trieste
         return !pattern->match(begin, parent, match) &&
           match_continuation(it, parent, match);
       }
+
+      void reify(Node parent) const override
+      {
+        Node neg_pred = reified::NegPred;
+        Node group = Group;
+        pattern->reify(group);
+        neg_pred->push_back(group);
+        parent->push_back(neg_pred);
+        reify_continuation(parent);
+      }
     };
 
     template<typename F>
@@ -890,6 +1057,16 @@ namespace trieste
         bool result = action(range);
         return result && match_continuation(it, parent, match);
       }
+
+      void reify(Node parent) const override
+      {
+        Node action_node = reified::Action;
+        Node group = Group;
+        pattern->reify(group);
+        action_node->push_back(group);
+        parent->push_back(action_node);
+        reify_continuation(parent);
+      }
     };
 
     template<typename T>
@@ -914,6 +1091,15 @@ namespace trieste
       bool match(NodeIt& it, const Node& parent, Match& match) const
       {
         return pattern->match(it, parent, match);
+      }
+
+      Node reify() const
+      {
+        Node top = NodeDef::create(Top);
+        Node group = NodeDef::create(Group);
+        top->push_back(group);
+        pattern->reify(group);
+        return top;
       }
 
       template<typename F>

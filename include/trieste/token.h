@@ -188,6 +188,29 @@ namespace trieste
   inline const auto ErrorMsg = TokenDef("errormsg", flag::print | flag::internal);
   inline const auto ErrorAst = TokenDef("errorast", flag::internal);
 
+  // Special tokens for reified patterns
+  namespace reified
+  {
+    inline const auto Token = TokenDef("pattern::token", flag::print);
+    inline const auto Regex = TokenDef("pattern::regex", flag::print);
+    inline const auto Any = TokenDef("pattern::anything");
+    inline const auto TokenMatch = TokenDef("pattern::tokenmatch");
+    inline const auto RegexMatch = TokenDef("pattern::regexmatch");
+    inline const auto Cap = TokenDef("pattern::cap");
+    inline const auto Opt = TokenDef("pattern::opt");
+    inline const auto Rep = TokenDef("pattern::rep");
+    inline const auto Not = TokenDef("pattern::not");
+    inline const auto Choice = TokenDef("pattern::choice");
+    inline const auto Children = TokenDef("pattern::children");
+    inline const auto First = TokenDef("pattern::first");
+    inline const auto Last = TokenDef("pattern::last");
+    inline const auto Inside = TokenDef("pattern::inside");
+    inline const auto InsideStar = TokenDef("pattern::insidestar");
+    inline const auto Pred = TokenDef("pattern::pred");
+    inline const auto NegPred = TokenDef("pattern::negpred");
+    inline const auto Action = TokenDef("pattern::action");
+  }
+
   namespace detail
   {
     inline std::map<std::string_view, Token>& token_map()

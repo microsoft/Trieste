@@ -1345,6 +1345,33 @@ namespace trieste
     }
   }
 
+  namespace reified
+  {
+    using namespace wf;
+    using namespace ops;
+
+    inline auto pattern = Cap | Any | TokenMatch | RegexMatch | Opt | Rep | Not | Choice | InsideStar |
+      Inside | First | Last | Children | Pred | NegPred | Action;
+
+    inline auto pattern_wf =
+      (Top <<= Group)
+      | (Cap <<= Group * Token)
+      | (TokenMatch <<= Token++[1])
+      | (RegexMatch <<= Token * Regex)
+      | (Opt <<= Group)
+      | (Rep <<= Group)
+      | (Not <<= Group)
+      | (Choice <<= (First >>= Group) * (Last >>= Group))
+      | (InsideStar <<= Token++[1])
+      | (Inside <<= Token++[1])
+      | (Children <<= Group * (Children >>= Group))
+      | (Pred <<= Group)
+      | (NegPred <<= Group)
+      | (Action <<= Group)
+      | (Group <<= pattern++[1])
+      ;
+  }
+
   struct WFContext
   {
     WFContext()

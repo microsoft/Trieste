@@ -3,6 +3,7 @@
 #pragma once
 
 #include "fuzzer.h"
+#include "checker.h"
 #include "trieste.h"
 
 #include <CLI/CLI.hpp>
@@ -123,8 +124,40 @@ namespace trieste
       test->add_option("--gen_bound", bound_vars,
                        "Generate bound variable names if possible");
 
+      // Subcommand to test entropy of random number generation.
       auto entropy = test->add_subcommand("debug_entropy",
                                           "Test entropy of random number generation, using seed_count seeds and max_depth warm-up");
+
+      // Checker command line options.
+      auto check = app.add_subcommand("check",
+                                      "Check patterns for bugs");
+
+      std::string check_start_pass;
+      check->add_option("start", check_start_pass, "Start at this pass.")
+        ->transform(CLI::IsMember(pass_names_no_parse));
+
+      std::string check_end_pass;
+      check->add_option("end", check_end_pass, "End at this pass.")
+        ->transform(CLI::IsMember(pass_names_no_parse));
+
+      check
+        ->add_option(
+          "-l,--log_level",
+          log_level,
+          "Set Log Level to one of "
+          "Trace, Debug, Info, "
+          "Warning, Output, Error, "
+          "None")
+        ->check(logging::set_log_level_from_string);
+
+      bool check_wf = false;
+      check->add_flag("-w", check_wf, "Check patterns for tokens that are not mentioned in well-formedness rules.");
+
+      std::vector<std::string> ignored_tokens;
+      check->add_option(
+        "-i,--ignore_token",
+        ignored_tokens,
+        "Ignore this token when checking patterns against well-formedness rules.");
 
       try
       {
@@ -223,6 +256,32 @@ namespace trieste
           .bound_vars(bound_vars);
 
         return *entropy ? fuzzer.debug_entropy() : fuzzer.test();
+      }
+      else if (*check)
+      {
+        if (pass_names_no_parse.empty())
+        {
+          logging::Error() << "No passes available for checking." << std::endl;
+          return 1;
+        }
+
+        if (check_start_pass.empty())
+        {
+          check_start_pass = pass_names_no_parse.at(0);
+          check_end_pass = pass_names_no_parse.back();
+        }
+        else if (check_end_pass.empty())
+        {
+          check_end_pass = check_start_pass;
+        }
+
+        auto checker = Checker(reader)
+          .start_index(reader.pass_index(check_start_pass))
+          .end_index(reader.pass_index(check_end_pass))
+          .check_against_wf(check_wf)
+          .ignored_tokens(ignored_tokens);
+
+        return checker.check();
       }
 
       return ret;
