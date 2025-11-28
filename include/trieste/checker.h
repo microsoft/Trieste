@@ -10,410 +10,6 @@ namespace trieste
 {
   using namespace detail;
 
-  void add_tokens_to_stream(Node pattern, std::stringstream& ss)
-  {
-    bool first = true;
-    for (auto& token_node : *pattern)
-    {
-      if (!first)
-        ss << ", ";
-      Location loc = token_node->location();
-      ss << loc.view();
-      first = false;
-    }
-  }
-
-  std::string pattern_to_string(Node pattern)
-  {
-    if (pattern == Top)
-      pattern = pattern / Group;
-
-    std::stringstream ss;
-    if (pattern == reified::First)
-    {
-      ss << "Start";
-    }
-    else if (pattern == reified::Last)
-    {
-      ss << "End";
-    }
-    else if (pattern == reified::Any)
-    {
-      ss << "Any";
-    }
-    else if (pattern == reified::TokenMatch)
-    {
-      ss << "T(";
-      add_tokens_to_stream(pattern, ss);
-      ss << ")";
-    }
-    else if (pattern == reified::RegexMatch)
-    {
-      auto token_node = pattern / reified::Token;
-      Location loc = token_node->location();
-      std::string regex =
-        std::string((pattern / reified::Regex)->location().view());
-      ss << "T(" << loc.view() << ", \"" << regex << "\")";
-    }
-    else if (pattern == reified::Cap)
-    {
-      std::string name =
-        std::string((pattern / reified::Token)->location().view());
-      ss << "(" << pattern_to_string(pattern / Group) << ")[" << name << "]";
-    }
-    else if (pattern == reified::Opt)
-    {
-      ss << "~(" << pattern_to_string(pattern / Group) << ")";
-    }
-    else if (pattern == reified::Rep)
-    {
-      ss << "(" << pattern_to_string(pattern / Group) << ")++";
-    }
-    else if (pattern == reified::Not)
-    {
-      ss << "!(" << pattern_to_string(pattern / Group) << ")";
-    }
-    else if (pattern == reified::Choice)
-    {
-      ss << "(" << pattern_to_string(pattern / reified::First) << ") / ("
-         << pattern_to_string(pattern / reified::Last) << ")";
-    }
-    else if (pattern == reified::InsideStar)
-    {
-      ss << "In(";
-      add_tokens_to_stream(pattern, ss);
-      ss << ")++";
-    }
-    else if (pattern == reified::Inside)
-    {
-      ss << "In(";
-      add_tokens_to_stream(pattern, ss);
-      ss << ")";
-    }
-    else if (pattern == reified::Children)
-    {
-      ss << "(" << pattern_to_string(pattern / Group) << ") << ("
-         << pattern_to_string(pattern / reified::Children) << ")";
-    }
-    else if (pattern == reified::Pred)
-    {
-      ss << "++(" << pattern_to_string(pattern / Group) << ")";
-    }
-    else if (pattern == reified::NegPred)
-    {
-      ss << "--(" << pattern_to_string(pattern / Group) << ")";
-    }
-    else if (pattern == reified::Action)
-    {
-      ss << "((" << pattern_to_string(pattern / Group) << ")(<unknown lambda>))";
-    }
-    else // Group
-    {
-      bool first = true;
-      for (auto& child : *pattern)
-      {
-        if (!first)
-          ss << " * ";
-        ss << pattern_to_string(child);
-        first = false;
-      }
-    }
-    return ss.str();
-  }
-
-  // Return the multiplicity of the pattern, i.e. the expected number of nodes
-  // it matches. 0 or 1 means that many nodes, more than than means we don't
-  // know.
-  size_t multiplicity(Node pattern)
-  {
-    if (pattern->type().in(
-          {reified::First,
-           reified::Last,
-           reified::Inside,
-           reified::InsideStar,
-           reified::Pred,
-           reified::NegPred}))
-      return 0;
-
-    if (pattern->type().in(
-          {reified::Any,
-           reified::RegexMatch,
-           reified::TokenMatch,
-           reified::Not,
-           reified::Children}))
-      return 1;
-
-    if (pattern->type().in({reified::Opt, reified::Rep}))
-      return 2;
-
-    if (pattern->type().in({reified::Cap, reified::Action}))
-      return multiplicity(pattern / Group);
-
-    if (pattern == reified::Choice)
-    {
-      size_t left = multiplicity(pattern / reified::First);
-      size_t right = multiplicity(pattern / reified::Last);
-      return (left == right) ? left : 2;
-    }
-
-    if (pattern == Group)
-    {
-      size_t sum = 0;
-      for (auto& child : *pattern)
-      {
-        sum += multiplicity(child);
-      }
-      return sum;
-    }
-
-    return 2;
-  }
-
-  // Return the list of tokens matched by a pattern of multiplicity 1. If it
-  // matches multiple nodes, return an empty vector.
-  std::vector<Token> only_tokens(Node pattern)
-  {
-    if (pattern == reified::Cap || pattern == reified::Children)
-    {
-      pattern = pattern / Group;
-    }
-
-    if (pattern == reified::TokenMatch)
-    {
-      std::vector<Token> tokens;
-      std::transform(
-        pattern->begin(),
-        pattern->end(),
-        std::back_inserter(tokens),
-        [](auto& token_node) {
-          Location loc = token_node->location();
-          return detail::find_token(loc.view());
-        });
-      return tokens;
-    }
-    else if (pattern == reified::RegexMatch)
-    {
-      auto token_node = pattern / reified::Token;
-      Location loc = token_node->location();
-      auto token = detail::find_token(loc.view());
-      return {token};
-    }
-    else if (pattern == Group)
-    {
-      std::vector<Token> tokens;
-      for (auto& child : *pattern)
-      {
-        if (multiplicity(child) == 0)
-        {
-          // Skip 0-multiplicity patterns
-        }
-        else if (multiplicity(child) == 1 && tokens.empty())
-        {
-          tokens = only_tokens(child);
-        }
-        else
-        {
-          // Either multiple 1-multiplicity patterns, or a pattern with
-          // multiplicity > 1
-          tokens.clear();
-          break;
-        }
-      }
-      return tokens;
-    }
-    return {};
-  }
-
-  // A pattern is empty if it is used to match an empty sequence of nodes.
-  bool empty_pattern(Node pattern)
-  {
-    if (pattern->type().in(
-          {reified::First,
-           reified::Last,
-           reified::Inside,
-           reified::InsideStar}))
-    {
-      return true;
-    }
-    else if (pattern->type().in(
-               {reified::Cap, reified::Action, reified::Rep, reified::Pred}))
-    {
-      return empty_pattern(pattern / Group);
-    }
-    else if (pattern == reified::NegPred)
-    {
-      return !empty_pattern(pattern / Group);
-    }
-    else if (pattern == Group)
-    {
-      for (auto& child : *pattern)
-      {
-        if (!empty_pattern(child))
-          return false;
-      }
-      return true;
-    }
-    return false;
-  }
-
-  bool tokens_are_subset(std::vector<Token> subset, std::vector<Token> superset)
-  {
-    for (auto& token : subset)
-    {
-      bool found = false;
-      for (auto& token2 : superset)
-      {
-        if (token == token2)
-        {
-          found = true;
-          break;
-        }
-      }
-      if (!found)
-        return false;
-    }
-    return true;
-  }
-
-  bool tokens_are_subset(std::vector<Token> subset, Node superset)
-  {
-    if (!superset->type().in(
-          {reified::Inside, reified::InsideStar, reified::TokenMatch}))
-    {
-      throw std::runtime_error(
-        "tokens_are_subset called with non-token-matching patterns");
-    }
-
-    std::vector<Token> superset_tokens;
-    std::transform(
-      superset->begin(),
-      superset->end(),
-      std::back_inserter(superset_tokens),
-      [](auto& token_node) {
-        return detail::find_token(token_node->location().view());
-      });
-
-    return tokens_are_subset(subset, superset_tokens);
-  }
-
-  bool tokens_are_subset(Node subset, Node superset)
-  {
-    if (
-      !subset->type().in(
-        {reified::Inside, reified::InsideStar, reified::TokenMatch}) ||
-      !superset->type().in(
-        {reified::Inside, reified::InsideStar, reified::TokenMatch}))
-    {
-      throw std::runtime_error(
-        "tokens_are_subset called with non-token-matching patterns");
-    }
-
-    std::vector<Token> subset_tokens;
-    std::transform(
-      subset->begin(),
-      subset->end(),
-      std::back_inserter(subset_tokens),
-      [](auto& token_node) {
-        return detail::find_token(token_node->location().view());
-      });
-
-    std::vector<Token> superset_tokens;
-    std::transform(
-      superset->begin(),
-      superset->end(),
-      std::back_inserter(superset_tokens),
-      [](auto& token_node) {
-        return detail::find_token(token_node->location().view());
-      });
-    return tokens_are_subset(subset_tokens, superset_tokens);
-  }
-
-  // Check if a pattern is prefix of another, i.e. if it will match if the
-  // longer pattern matches. This function does not aim to be complete but
-  // should catch many cases.
-  bool includes_prefix(Node prefix, Node pattern)
-  {
-    // Assume patterns are Groups
-    if (prefix != Group || pattern != Group)
-      return false;
-
-    auto prefix_it = prefix->begin();
-    auto pattern_it = pattern->begin();
-    while (prefix_it != prefix->end() && pattern_it != pattern->end())
-    {
-      auto prefix_node = *prefix_it;
-      auto pattern_node = *pattern_it;
-
-      // We only support capturing a single node inside a Cap for now.
-      if (prefix_node == reified::Cap && (prefix_node / Group)->size() == 1)
-      {
-        prefix_node = (prefix_node / Group)->at(0);
-      }
-
-      if (prefix_node == reified::Inside || prefix_node == reified::InsideStar)
-      {
-        // Assume In appears in the same position in both patterns
-        if (pattern_node->type() != prefix_node->type())
-          return false;
-
-        if (!tokens_are_subset(pattern_node, prefix_node))
-          return false;
-      }
-      else if (prefix_node == reified::First || prefix_node == reified::Last)
-      {
-        // If the prefix is First or Last, the pattern must be the same
-        if (pattern_node != prefix_node)
-          return false;
-      }
-      else if (pattern_node->type().in(
-                 {reified::Inside,
-                  reified::InsideStar,
-                  reified::First,
-                  reified::Last}))
-      {
-        // If pattern is In, First or Last, the Prefix could be more general
-        ++pattern_it;
-        continue;
-      }
-      else if (prefix_node == reified::TokenMatch)
-      {
-        auto tokens = only_tokens(pattern_node);
-        if (tokens.empty() || !tokens_are_subset(tokens, prefix_node))
-          return false;
-      }
-      else if (prefix_node == reified::Children)
-      {
-        if (pattern_node->type() != reified::Children)
-          return false;
-
-        if (!includes_prefix(prefix_node / Group, pattern_node / Group))
-          return false;
-
-        if (!includes_prefix(
-              prefix_node / reified::Children,
-              pattern_node / reified::Children))
-          return false;
-      }
-      else if (prefix_node == reified::Any)
-      {
-        // Any matches any one thing
-        if (multiplicity(pattern_node) != 1)
-          return false;
-      }
-      // TODO: repetition should be able to match repetition and single nodes
-      else
-      {
-        // Unhandled pattern type in prefix. Assume no match.
-        return false;
-      }
-
-      ++prefix_it;
-      ++pattern_it;
-    }
-    return prefix_it == prefix->end();
-  }
-
-  // TODO: Should the functions above be private methods in the class? Probably!
   class Checker
   {
   private:
@@ -425,7 +21,403 @@ namespace trieste
     bool check_wf_ = false;
     std::set<Token> ignored_tokens_;
 
-    PassDef check_pattern()
+    static void comma_separate_tokens(Node pattern, std::stringstream& ss)
+    {
+      bool first = true;
+      for (auto& token_node : *pattern)
+      {
+        if (!first)
+          ss << ", ";
+        Location loc = token_node->location();
+        ss << loc.view();
+        first = false;
+      }
+    }
+
+    // Convert a pattern to a string for error messages.
+    static std::string pattern_to_string(Node pattern)
+    {
+      if (pattern == Top)
+        pattern = pattern / Group;
+
+      std::stringstream ss;
+      if (pattern == reified::First)
+      {
+        ss << "Start";
+      }
+      else if (pattern == reified::Last)
+      {
+        ss << "End";
+      }
+      else if (pattern == reified::Any)
+      {
+        ss << "Any";
+      }
+      else if (pattern == reified::TokenMatch)
+      {
+        ss << "T(";
+        comma_separate_tokens(pattern, ss);
+        ss << ")";
+      }
+      else if (pattern == reified::RegexMatch)
+      {
+        auto token_node = pattern / reified::Token;
+        Location loc = token_node->location();
+        std::string regex =
+          std::string((pattern / reified::Regex)->location().view());
+        ss << "T(" << loc.view() << ", \"" << regex << "\")";
+      }
+      else if (pattern == reified::Cap)
+      {
+        std::string name =
+          std::string((pattern / reified::Token)->location().view());
+        ss << "(" << pattern_to_string(pattern / Group) << ")[" << name << "]";
+      }
+      else if (pattern == reified::Opt)
+      {
+        ss << "~(" << pattern_to_string(pattern / Group) << ")";
+      }
+      else if (pattern == reified::Rep)
+      {
+        ss << "(" << pattern_to_string(pattern / Group) << ")++";
+      }
+      else if (pattern == reified::Not)
+      {
+        ss << "!(" << pattern_to_string(pattern / Group) << ")";
+      }
+      else if (pattern == reified::Choice)
+      {
+        ss << "(" << pattern_to_string(pattern / reified::First) << ") / ("
+           << pattern_to_string(pattern / reified::Last) << ")";
+      }
+      else if (pattern == reified::InsideStar)
+      {
+        ss << "In(";
+        comma_separate_tokens(pattern, ss);
+        ss << ")++";
+      }
+      else if (pattern == reified::Inside)
+      {
+        ss << "In(";
+        comma_separate_tokens(pattern, ss);
+        ss << ")";
+      }
+      else if (pattern == reified::Children)
+      {
+        ss << "(" << pattern_to_string(pattern / Group) << ") << ("
+           << pattern_to_string(pattern / reified::Children) << ")";
+      }
+      else if (pattern == reified::Pred)
+      {
+        ss << "++(" << pattern_to_string(pattern / Group) << ")";
+      }
+      else if (pattern == reified::NegPred)
+      {
+        ss << "--(" << pattern_to_string(pattern / Group) << ")";
+      }
+      else if (pattern == reified::Action)
+      {
+        ss << "((" << pattern_to_string(pattern / Group)
+           << ")(<unknown lambda>))";
+      }
+      else // Group
+      {
+        bool first = true;
+        for (auto& child : *pattern)
+        {
+          if (!first)
+            ss << " * ";
+          ss << pattern_to_string(child);
+          first = false;
+        }
+      }
+      return ss.str();
+    }
+
+    // The multiplicity of a pattern is the expected number of nodes it matches.
+    // 0 or 1 means that many nodes, more than than means we don't know.
+    static size_t multiplicity(Node pattern)
+    {
+      if (pattern->type().in(
+            {reified::First,
+             reified::Last,
+             reified::Inside,
+             reified::InsideStar,
+             reified::Pred,
+             reified::NegPred}))
+        return 0;
+
+      if (pattern->type().in(
+            {reified::Any,
+             reified::RegexMatch,
+             reified::TokenMatch,
+             reified::Not,
+             reified::Children}))
+        return 1;
+
+      if (pattern->type().in({reified::Opt, reified::Rep}))
+        return 2;
+
+      if (pattern->type().in({reified::Cap, reified::Action}))
+        return multiplicity(pattern / Group);
+
+      if (pattern == reified::Choice)
+      {
+        size_t left = multiplicity(pattern / reified::First);
+        size_t right = multiplicity(pattern / reified::Last);
+        return (left == right) ? left : 2;
+      }
+
+      if (pattern == Group)
+      {
+        size_t sum = 0;
+        for (auto& child : *pattern)
+        {
+          sum += multiplicity(child);
+        }
+        return sum;
+      }
+
+      return 2;
+    }
+
+    // Return the list of tokens matched by a pattern of multiplicity 1. If it
+    // matches zero or multiple nodes, return an empty vector.
+    static std::vector<Token> only_tokens(Node pattern)
+    {
+      if (pattern == reified::Cap || pattern == reified::Children)
+      {
+        pattern = pattern / Group;
+      }
+
+      if (pattern == reified::TokenMatch)
+      {
+        std::vector<Token> tokens;
+        std::transform(
+          pattern->begin(),
+          pattern->end(),
+          std::back_inserter(tokens),
+          [](auto& token_node) {
+            Location loc = token_node->location();
+            return detail::find_token(loc.view());
+          });
+        return tokens;
+      }
+      else if (pattern == reified::RegexMatch)
+      {
+        auto token_node = pattern / reified::Token;
+        Location loc = token_node->location();
+        auto token = detail::find_token(loc.view());
+        return {token};
+      }
+      else if (pattern == Group)
+      {
+        std::vector<Token> tokens;
+        for (auto& child : *pattern)
+        {
+          if (multiplicity(child) == 0)
+          {
+            // Skip 0-multiplicity patterns
+          }
+          else if (multiplicity(child) == 1 && tokens.empty())
+          {
+            tokens = only_tokens(child);
+          }
+          else
+          {
+            // Either multiple 1-multiplicity patterns, or a pattern with
+            // multiplicity > 1
+            tokens.clear();
+            break;
+          }
+        }
+        return tokens;
+      }
+      return {};
+    }
+
+    static bool
+    tokens_are_subset(std::vector<Token> subset, std::vector<Token> superset)
+    {
+      for (auto& token : subset)
+      {
+        bool found = false;
+        for (auto& token2 : superset)
+        {
+          if (token == token2)
+          {
+            found = true;
+            break;
+          }
+        }
+        if (!found)
+          return false;
+      }
+      return true;
+    }
+
+    static bool tokens_are_subset(std::vector<Token> subset, Node superset)
+    {
+      if (!superset->type().in(
+            {reified::Inside, reified::InsideStar, reified::TokenMatch}))
+      {
+        throw std::runtime_error(
+          "tokens_are_subset called with non-token-matching patterns");
+      }
+
+      std::vector<Token> superset_tokens;
+      std::transform(
+        superset->begin(),
+        superset->end(),
+        std::back_inserter(superset_tokens),
+        [](auto& token_node) {
+          return detail::find_token(token_node->location().view());
+        });
+
+      return tokens_are_subset(subset, superset_tokens);
+    }
+
+    static bool tokens_are_subset(Node subset, Node superset)
+    {
+      if (
+        !subset->type().in(
+          {reified::Inside, reified::InsideStar, reified::TokenMatch}) ||
+        !superset->type().in(
+          {reified::Inside, reified::InsideStar, reified::TokenMatch}))
+      {
+        throw std::runtime_error(
+          "tokens_are_subset called with non-token-matching patterns");
+      }
+
+      std::vector<Token> subset_tokens;
+      std::transform(
+        subset->begin(),
+        subset->end(),
+        std::back_inserter(subset_tokens),
+        [](auto& token_node) {
+          return detail::find_token(token_node->location().view());
+        });
+
+      std::vector<Token> superset_tokens;
+      std::transform(
+        superset->begin(),
+        superset->end(),
+        std::back_inserter(superset_tokens),
+        [](auto& token_node) {
+          return detail::find_token(token_node->location().view());
+        });
+      return tokens_are_subset(subset_tokens, superset_tokens);
+    }
+
+    // Check if a pattern is prefix of another, i.e. if it will match if the
+    // longer pattern matches. This function does not aim to be complete but
+    // should catch many cases.
+    static bool includes_prefix(Node prefix, Node pattern)
+    {
+      // Assume patterns are Groups
+      if (prefix != Group || pattern != Group)
+        return false;
+
+      auto prefix_it = prefix->begin();
+      auto pattern_it = pattern->begin();
+      while (prefix_it != prefix->end() && pattern_it != pattern->end())
+      {
+        auto prefix_node = *prefix_it;
+        auto pattern_node = *pattern_it;
+
+        // We only support capturing a single node inside a Cap for now.
+        if (prefix_node == reified::Cap && (prefix_node / Group)->size() == 1)
+        {
+          prefix_node = (prefix_node / Group)->at(0);
+        }
+
+        if (
+          prefix_node == reified::Inside || prefix_node == reified::InsideStar)
+        {
+          // Assume In appears in the same position in both patterns
+          if (pattern_node->type() != prefix_node->type())
+            return false;
+
+          if (!tokens_are_subset(pattern_node, prefix_node))
+            return false;
+        }
+        else if (prefix_node == reified::First || prefix_node == reified::Last)
+        {
+          // If the prefix is First or Last, the pattern must be the same
+          if (pattern_node != prefix_node)
+            return false;
+        }
+        else if (pattern_node->type().in(
+                   {reified::Inside,
+                    reified::InsideStar,
+                    reified::First,
+                    reified::Last}))
+        {
+          // If pattern is In, First or Last, the Prefix could be more general
+          ++pattern_it;
+          continue;
+        }
+        else if (prefix_node == reified::TokenMatch)
+        {
+          auto tokens = only_tokens(pattern_node);
+          if (tokens.empty() || !tokens_are_subset(tokens, prefix_node))
+            return false;
+        }
+        else if (prefix_node == reified::Children)
+        {
+          if (pattern_node->type() != reified::Children)
+            return false;
+
+          if (!includes_prefix(prefix_node / Group, pattern_node / Group))
+            return false;
+
+          if (!includes_prefix(
+                prefix_node / reified::Children,
+                pattern_node / reified::Children))
+            return false;
+        }
+        else if (prefix_node == reified::Any)
+        {
+          // Any matches any one thing
+          if (multiplicity(pattern_node) != 1)
+            return false;
+        }
+        else if (prefix_node == reified::Rep)
+        {
+          // Require repetition to be equivalent
+          if (pattern_node != reified::Rep)
+            return false;
+
+          if (
+            !includes_prefix(prefix_node / Group, pattern_node / Group) ||
+            !includes_prefix(pattern_node / Group, prefix_node / Group))
+            return false;
+        }
+        else if (prefix_node == reified::Opt)
+        {
+          // Require optional patterns to be equivalent
+          if (pattern_node != reified::Opt)
+            return false;
+
+          if (
+            !includes_prefix(prefix_node / Group, pattern_node / Group) ||
+            !includes_prefix(pattern_node / Group, prefix_node / Group))
+            return false;
+        }
+        else
+        {
+          // Unhandled pattern type in prefix. Assume no match.
+          return false;
+        }
+
+        ++prefix_it;
+        ++pattern_it;
+      }
+      return prefix_it == prefix->end();
+    }
+
+    // Check a reified pattern for common bugs.
+    static PassDef check_pattern()
     {
       return {
         "check_pattern",
@@ -477,7 +469,8 @@ namespace trieste
             {
               return Error << (ErrorAst << captured_pattern)
                            << (ErrorMsg ^
-                               "Capture group '" + pattern_to_string(captured_pattern) +
+                               "Capture group '" +
+                                 pattern_to_string(captured_pattern) +
                                  "' is always empty");
             }
             return NoChange;
@@ -493,7 +486,8 @@ namespace trieste
             {
               return Error << (ErrorAst << parent_pattern)
                            << (ErrorMsg ^
-                               "Parent pattern '" + pattern_to_string(parent_pattern) +
+                               "Parent pattern '" +
+                                 pattern_to_string(parent_pattern) +
                                  "' should match exactly one node");
             }
             return NoChange;
@@ -504,7 +498,8 @@ namespace trieste
             {
               return Error << (ErrorAst << _(Group))
                            << (ErrorMsg ^
-                               "Negated pattern '" + pattern_to_string(_(Group)) +
+                               "Negated pattern '" +
+                                 pattern_to_string(_(Group)) +
                                  "' should match exactly one node. "
                                  "Consider using negative lookahead instead.");
             }
@@ -529,11 +524,8 @@ namespace trieste
 
     static bool token_appears_in_wf(wf::Wellformed& wf, Token token)
     {
-      for (auto& [parent, shape] : wf.shapes)
+      for (auto& [_, shape] : wf.shapes)
       {
-        if (parent == token)
-          return true;
-
         if (std::holds_alternative<wf::Fields>(shape))
         {
           auto& fields = std::get<wf::Fields>(shape);
@@ -559,6 +551,8 @@ namespace trieste
       return false;
     }
 
+    // Check if all tokens mentioned in a pattern can appear according to
+    // well-formedness rules.
     PassDef check_that_tokens_exist(
       wf::Wellformed& prev_wf,
       wf::Wellformed& result_wf,
