@@ -1982,19 +1982,7 @@ T(Divide)
 ```
 
 In a very cool way, Trieste allows us to detect divide by zero errors.
-However, this now means that, potentially, some of the nodes in our
-AST will be of type error, resulting in empty subexpressions. This means
-we need to add some error handling, for example:
-
-```c++
-// Note how we pattern match explicitly for the Error node
-In(Expression) *
-    (MathsOp << ((T(Expression)[Expression] << T(Error)) * T(Literal))) >>
-  [](Match& _) {
-    return err(_(Expression), "Invalid left hand argument");
-  },
-```
-
-By finding these errors explicitly we can propagate the error up the
-tree, thus eventually allowing the bad subtree to be exempted from the
-WF check and allowing the testing to proceed.
+Whenever an error node occurs in the AST after a pass, the result returned
+by the corresponding `Reader`, `Writer` or `Rewriter` is flagged so that
+the client code can react accordingly (for example display error messages
+to the user).
