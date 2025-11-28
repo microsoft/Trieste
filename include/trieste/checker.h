@@ -452,8 +452,8 @@ namespace trieste
             {
               return Error << (ErrorAst << _(Group))
                            << (ErrorMsg ^
-                               "Pattern '" + pattern_to_string(_(Group)) +
-                                 "' would be infinitely repeated");
+                               ("Pattern '" + pattern_to_string(_(Group)) +
+                                "' would be infinitely repeated"));
             }
             return NoChange;
           },
@@ -469,9 +469,9 @@ namespace trieste
             {
               return Error << (ErrorAst << captured_pattern)
                            << (ErrorMsg ^
-                               "Capture group '" +
-                                 pattern_to_string(captured_pattern) +
-                                 "' is always empty");
+                               ("Capture group '" +
+                                pattern_to_string(captured_pattern) +
+                                "' is always empty"));
             }
             return NoChange;
           },
@@ -486,9 +486,9 @@ namespace trieste
             {
               return Error << (ErrorAst << parent_pattern)
                            << (ErrorMsg ^
-                               "Parent pattern '" +
-                                 pattern_to_string(parent_pattern) +
-                                 "' should match exactly one node");
+                               ("Parent pattern '" +
+                                pattern_to_string(parent_pattern) +
+                                "' should match exactly one node"));
             }
             return NoChange;
           },
@@ -498,10 +498,10 @@ namespace trieste
             {
               return Error << (ErrorAst << _(Group))
                            << (ErrorMsg ^
-                               "Negated pattern '" +
-                                 pattern_to_string(_(Group)) +
-                                 "' should match exactly one node. "
-                                 "Consider using negative lookahead instead.");
+                               ("Negated pattern '" +
+                                pattern_to_string(_(Group)) +
+                                "' should match exactly one node. "
+                                "Consider using negative lookahead instead."));
             }
             return NoChange;
           },
@@ -581,8 +581,8 @@ namespace trieste
 
             return Error
               << (ErrorMsg ^
-                  "Token '" + std::string(token.str()) +
-                    "' is not defined in well-formedness rules");
+                  ("Token '" + std::string(token.str()) +
+                   "' is not defined in well-formedness rules"));
           },
         }};
       bool check_wf = this->check_wf_;
