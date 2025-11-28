@@ -124,4 +124,17 @@ namespace trieste
     return writer.write(ast->clone());
   }
 
+  inline Reader operator>>=(Reader&& reader, Rewriter&& rewriter)
+  {
+    auto reader_passes = reader.passes();
+    for (auto pass : rewriter.passes())
+    {
+      reader_passes.push_back(pass);
+    }
+    return Reader(
+      reader.language_name(),
+      reader_passes,
+      reader.parser());
+  }
+
 } // namespace trieste
