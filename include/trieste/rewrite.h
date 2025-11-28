@@ -6,7 +6,6 @@
 #include "debug.h"
 #include "regex.h"
 #include "token.h"
-#include "wf.h"
 #include "trieste/intrusive_ptr.h"
 
 #include <array>
