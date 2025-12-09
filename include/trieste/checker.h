@@ -135,7 +135,7 @@ namespace trieste
     }
 
     // The multiplicity of a pattern is the expected number of nodes it matches.
-    // 0 or 1 means that many nodes, more than than means we don't know.
+    // 0 or 1 means that many nodes, more than that means we don't know.
     static size_t multiplicity(Node pattern)
     {
       if (pattern->type().in(
@@ -692,7 +692,6 @@ namespace trieste
         // Check for malformed patterns
         for (auto& pattern : patterns)
         {
-          std::vector<std::string> error_messages;
           auto ok = reified::pattern_wf.check(pattern);
           if (!ok)
           {
@@ -744,6 +743,7 @@ namespace trieste
                   << "Pattern is shadowed by earlier pattern:" << std::endl
                   << pattern_to_string(*prefix_it) << std::endl
                   << "------------" << std::endl;
+              ret = 1;
             }
             ++pattern_it;
           }

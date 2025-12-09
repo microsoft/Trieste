@@ -824,7 +824,7 @@ namespace trieste
         return false;
       }
 
-    void reify(Node parent) const override
+      void reify(Node parent) const override
       {
         Node inside = reified::Inside;
         for (const auto& type : types)

@@ -1955,7 +1955,7 @@ It will also identify rewrite rules that will never run because
 their patterns are shadowed by a previous pattern. Usage:
 ```
 Check patterns for bugs
-Usage: ./dist/infix/infix_trieste test [OPTIONS] [start] [end]
+Usage: ./dist/infix/infix_trieste check [OPTIONS] [start] [end]
 
 POSITIONALS:
   start TEXT:{expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
