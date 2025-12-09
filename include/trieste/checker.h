@@ -135,8 +135,14 @@ namespace trieste
     }
 
     // The multiplicity of a pattern is the expected number of nodes it matches.
-    // 0 or 1 means that many nodes, more than that means we don't know.
-    static size_t multiplicity(Node pattern)
+    enum class Multiplicity
+    {
+      Zero,
+      One,
+      Unknown
+    };
+
+    static Multiplicity multiplicity(Node pattern)
     {
       if (pattern->type().in(
             {reified::First,
@@ -145,40 +151,42 @@ namespace trieste
              reified::InsideStar,
              reified::Pred,
              reified::NegPred}))
-        return 0;
+        return Multiplicity::Zero;
 
       if (pattern->type().in(
             {reified::Any,
              reified::RegexMatch,
              reified::TokenMatch,
-             reified::Not,
-             reified::Children}))
-        return 1;
+             reified::Not}))
+        return Multiplicity::One;
 
       if (pattern->type().in({reified::Opt, reified::Rep}))
-        return 2;
+        return Multiplicity::Unknown;
 
-      if (pattern->type().in({reified::Cap, reified::Action}))
+      if (pattern->type().in({reified::Children, reified::Cap, reified::Action}))
         return multiplicity(pattern / Group);
 
       if (pattern == reified::Choice)
       {
-        size_t left = multiplicity(pattern / reified::First);
-        size_t right = multiplicity(pattern / reified::Last);
-        return (left == right) ? left : 2;
+        auto left = multiplicity(pattern / reified::First);
+        auto right = multiplicity(pattern / reified::Last);
+        return (left == right) ? left : Multiplicity::Unknown;
       }
 
       if (pattern == Group)
       {
-        size_t sum = 0;
+        Multiplicity sum = Multiplicity::Zero;
         for (auto& child : *pattern)
         {
-          sum += multiplicity(child);
+          auto child_mult = multiplicity(child);
+          sum = sum        == Multiplicity::Zero? child_mult:
+                child_mult == Multiplicity::Zero? sum:
+                Multiplicity::Unknown;
         }
         return sum;
       }
 
-      return 2;
+      return Multiplicity::Unknown;
     }
 
     // Return the list of tokens matched by a pattern of multiplicity 1. If it
@@ -215,11 +223,11 @@ namespace trieste
         std::vector<Token> tokens;
         for (auto& child : *pattern)
         {
-          if (multiplicity(child) == 0)
+          if (multiplicity(child) == Multiplicity::Zero)
           {
             // Skip 0-multiplicity patterns
           }
-          else if (multiplicity(child) == 1 && tokens.empty())
+          else if (multiplicity(child) == Multiplicity::One && tokens.empty())
           {
             tokens = only_tokens(child);
           }
@@ -239,21 +247,14 @@ namespace trieste
     static bool
     tokens_are_subset(std::vector<Token> subset, std::vector<Token> superset)
     {
-      for (auto& token : subset)
-      {
-        bool found = false;
-        for (auto& token2 : superset)
-        {
-          if (token == token2)
-          {
-            found = true;
-            break;
-          }
-        }
-        if (!found)
-          return false;
-      }
-      return true;
+      std::sort(subset.begin(), subset.end());
+      subset.erase(std::unique(subset.begin(), subset.end()), subset.end());
+
+      std::sort(superset.begin(), superset.end());
+      superset.erase(std::unique(superset.begin(), superset.end()), superset.end());
+
+      return std::includes(
+        superset.begin(), superset.end(), subset.begin(), subset.end());
     }
 
     static bool tokens_are_subset(std::vector<Token> subset, Node superset)
@@ -379,7 +380,7 @@ namespace trieste
         else if (prefix_node == reified::Any)
         {
           // Any matches any one thing
-          if (multiplicity(pattern_node) != 1)
+          if (multiplicity(pattern_node) != Multiplicity::One)
             return false;
         }
         else if (prefix_node == reified::Rep)
@@ -448,7 +449,7 @@ namespace trieste
           },
 
           T(reified::Rep) << T(Group)[Group] >> [](auto& _) -> Node {
-            if (multiplicity(_(Group)) == 0)
+            if (multiplicity(_(Group)) == Multiplicity::Zero)
             {
               return Error << (ErrorAst << _(Group))
                            << (ErrorMsg ^
@@ -465,7 +466,7 @@ namespace trieste
 
           T(reified::Cap) << T(Group)[Group] >> [](auto& _) -> Node {
             auto captured_pattern = _(Group);
-            if (multiplicity(captured_pattern) == 0)
+            if (multiplicity(captured_pattern) == Multiplicity::Zero)
             {
               return Error << (ErrorAst << captured_pattern)
                            << (ErrorMsg ^
@@ -482,7 +483,7 @@ namespace trieste
             auto parent_pattern = _(Group);
             auto child_pattern = _(reified::Children);
             auto mult = multiplicity(parent_pattern);
-            if (mult != 1)
+            if (mult != Multiplicity::One)
             {
               return Error << (ErrorAst << parent_pattern)
                            << (ErrorMsg ^
@@ -494,7 +495,7 @@ namespace trieste
           },
 
           T(reified::Not) << T(Group)[Group] >> [](auto& _) -> Node {
-            if (multiplicity(_(Group)) != 1)
+            if (multiplicity(_(Group)) != Multiplicity::One)
             {
               return Error << (ErrorAst << _(Group))
                            << (ErrorMsg ^
