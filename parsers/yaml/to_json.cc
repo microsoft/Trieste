@@ -36,6 +36,7 @@ namespace
     | (FlowSequence <<= wf_strings_flow_tokens++)
     | (FlowMappingItem <<= (Key >>= wf_strings_flow_tokens) * (Value >>= wf_strings_flow_tokens))
     | (MappingItem <<= (Key >>= wf_strings_tokens) * (Value >>= wf_strings_tokens))
+    | (TagValue <<= TagPrefix * TagName * (Value >>= wf_strings_tokens))
     ;
   // clang-format on
 
@@ -44,12 +45,13 @@ namespace
 
   // clang-format off
   inline const auto wf_lookup =
-    wf_strings
+    wf_strings 
     | (Document <<= Directives * DocumentStart * (Value >>= wf_lookup_tokens) * DocumentEnd)
     | (Sequence <<= wf_lookup_tokens++)
     | (FlowSequence <<= wf_lookup_flow_tokens++)
     | (FlowMappingItem <<= (Key >>= wf_lookup_flow_tokens) * (Value >>= wf_lookup_flow_tokens))
     | (MappingItem <<= (Key >>= wf_lookup_tokens) * (Value >>= wf_lookup_tokens))
+    | (TagValue <<= TagPrefix * TagName * (Value >>= wf_lookup_tokens))
     ;
   // clang-format on
 
