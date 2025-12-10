@@ -163,7 +163,8 @@ namespace trieste
       if (pattern->type().in({reified::Opt, reified::Rep}))
         return Multiplicity::Unknown;
 
-      if (pattern->type().in({reified::Children, reified::Cap, reified::Action}))
+      if (pattern->type().in(
+            {reified::Children, reified::Cap, reified::Action}))
         return multiplicity(pattern / Group);
 
       if (pattern == reified::Choice)
@@ -251,7 +252,8 @@ namespace trieste
       subset.erase(std::unique(subset.begin(), subset.end()), subset.end());
 
       std::sort(superset.begin(), superset.end());
-      superset.erase(std::unique(superset.begin(), superset.end()), superset.end());
+      superset.erase(
+        std::unique(superset.begin(), superset.end()), superset.end());
 
       return std::includes(
         superset.begin(), superset.end(), subset.begin(), subset.end());
@@ -310,6 +312,51 @@ namespace trieste
       return tokens_are_subset(subset_tokens, superset_tokens);
     }
 
+    // This is used to traverse a pattern tree in a depth-first manner.
+    struct StackedIterator {
+      std::vector<std::tuple<Node, NodeIt>> stack;
+
+      StackedIterator(Node root)
+      {
+        push(root);
+      }
+
+      bool empty() const
+      {
+        return stack.empty();
+      }
+
+      void push(Node node)
+      {
+        stack.push_back({node, node->begin()});
+      }
+
+      void pop()
+      {
+        stack.pop_back();
+      }
+
+      Node operator*()
+      {
+        return *std::get<1>(stack.back());
+      }
+
+      void operator++()
+      {
+        bool repeat;
+        do {
+          repeat = false;
+          auto& [node_group, it] = stack.back();
+          ++it;
+          if (it == node_group->end())
+          {
+            pop();
+            repeat = true;
+          }
+         } while (!empty() && repeat);
+      }
+    };
+
     // Check if a pattern is prefix of another, i.e. if it will match if the
     // longer pattern matches. This function does not aim to be complete but
     // should catch many cases.
@@ -319,17 +366,23 @@ namespace trieste
       if (prefix != Group || pattern != Group)
         return false;
 
-      auto prefix_it = prefix->begin();
-      auto pattern_it = pattern->begin();
-      while (prefix_it != prefix->end() && pattern_it != pattern->end())
+      StackedIterator prefix_it(prefix);
+      StackedIterator pattern_it(pattern);
+      while (!prefix_it.empty() && !pattern_it.empty())
       {
         auto prefix_node = *prefix_it;
         auto pattern_node = *pattern_it;
 
-        // We only support capturing a single node inside a Cap for now.
-        if (prefix_node == reified::Cap && (prefix_node / Group)->size() == 1)
+        if (prefix_node == reified::Cap)
         {
-          prefix_node = (prefix_node / Group)->at(0);
+          prefix_it.push(prefix_node / Group);
+          continue;
+        }
+
+        if (pattern_node == reified::Cap)
+        {
+          pattern_it.push(pattern_node / Group);
+          continue;
         }
 
         if (
@@ -380,6 +433,14 @@ namespace trieste
         else if (prefix_node == reified::Any)
         {
           // Any matches any one thing
+          while (multiplicity(pattern_node) == Multiplicity::Zero)
+          {
+            ++pattern_it;
+            if (pattern_it.empty())
+              continue;
+            pattern_node = *pattern_it;
+          }
+
           if (multiplicity(pattern_node) != Multiplicity::One)
             return false;
         }
@@ -414,7 +475,7 @@ namespace trieste
         ++prefix_it;
         ++pattern_it;
       }
-      return prefix_it == prefix->end();
+      return prefix_it.empty();
     }
 
     // Check a reified pattern for common bugs.
