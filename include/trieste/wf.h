@@ -25,6 +25,7 @@ namespace trieste
   namespace wf
   {
     using TokenTerminalDistance = std::map<Token, std::size_t>;
+    using SymtabKeys = std::pair<std::vector<Token>, size_t>;
 
     struct Gen
     {
@@ -34,7 +35,7 @@ namespace trieste
       size_t target_depth;
       size_t ceiling_depth;
       double alpha;
-      std::map<Token, std::pair<Token, size_t>> binding_keys;
+      std::map<Token, std::pair<std::vector<Token>, size_t>> binding_keys;
       bool gen_bound_vars;
 
       /* The generator chooses which token to emit next. It makes this choice
@@ -56,7 +57,7 @@ namespace trieste
         GenNodeLocationF gloc_,
         Seed seed_,
         size_t target_depth_,
-        std::map<Token, std::pair<Token, size_t>> binding_keys_,
+        std::map<Token, SymtabKeys> binding_keys_,
         bool gen_bound_vars_,
         double alpha_ = 1,
         size_t ceiling_multiplier_ = 2)
@@ -65,13 +66,18 @@ namespace trieste
         rand(seed_),
         target_depth(target_depth_),
         ceiling_depth(ceiling_multiplier_ * target_depth),
-        alpha(alpha_), 
+        alpha(alpha_),
         binding_keys(binding_keys_),
         gen_bound_vars(gen_bound_vars_)
       {
         // Warm up RNG
         for(int i = 0; i < 10; i++)
           rand();
+      }
+
+      static bool contains_type(std::vector<Token>& tokens, Token t)
+      {
+        return std::find(tokens.begin(), tokens.end(), t) != tokens.end();
       }
 
       Token choose(const std::vector<Token>& tokens, std::size_t depth)
@@ -170,16 +176,18 @@ namespace trieste
         {
           // Look up symbols in the current scope that match the binding type
           scope->get_symbols(symbols, [&](auto& n) {
+            auto it = binding_keys.find(n->type());
             return (
               n->type() & flag::lookup &&
-              binding_keys[n->type()].first == type);
+              it != binding_keys.end() && 
+              contains_type(it->second.first, type));
           });
         }
         return symbols;
       }
 
       // Returns true if we should generate a bound variable
-      bool gen_bound(Node parent, Token child_type)
+      bool should_gen_bound(Node parent, Token child_type)
       {
         if (!gen_bound_vars)
           return false;
@@ -188,30 +196,24 @@ namespace trieste
         std::vector<Token> bound_nodes = {};
         for (auto& [parent_type, binds_to] : binding_keys)
         {
-          if (binds_to.first == child_type)
+          if (contains_type(binds_to.first, child_type))
             bound_nodes.push_back(parent_type);
         }
         if (bound_nodes.empty())
         {
           return false;
         }
-        else if (
-          std::find(bound_nodes.begin(), bound_nodes.end(), parent->type()) !=
+        if (
+          std::find(bound_nodes.begin(), bound_nodes.end(), parent->type()) ==
           bound_nodes.end())
         {
-          // Check if the node we are generating is the binding key of the
-          // current parent node
-          auto key_field_index = binding_keys[parent->type()].second;
-          auto key_field_type = binding_keys[parent->type()].first;
-          auto current_index = parent->size() - 2; // Child is last pushed node
-          if (key_field_type == child_type)
-            // Generate a bound variable if we are not at the binding site
-            return key_field_index != current_index;
-          else
-            return false; 
+          return true; // Not at binding site
         }
-        else // Not at binding site
-          return true;
+        // If the node we are generating is the binding key of the
+        // parent node, check that it is not the binding key itself
+        auto key_field_index = binding_keys[parent->type()].second;
+        auto child_index = parent->size() - 1; // child is already added 
+        return key_field_index != child_index || !(parent->type() & flag::shadowing);
       }
 
       public:
@@ -220,21 +222,16 @@ namespace trieste
           auto type = child->type();
           Nodes symbols = get_symbols(type, parent->scope());
 
-          // Ensure we're not always use bindings when they exist by adding +1
+          // Ensure we don't always use bindings when they exist by adding +1
           auto rand_symbol = static_cast<size_t>(next() % (symbols.size() + 1));
-          // If we have a bound symbol to use, we're not at the binding site,
-          // and the parent type allows shadowing, use a bound symbol
-          if (
-            rand_symbol < symbols.size() && gen_bound(parent, type) &&
-            !(parent->type() & flag::shadowing))
+          // Prefer location from a symbol table 
+          if (rand_symbol < symbols.size() && should_gen_bound(parent, type))
           {
             auto key_index = binding_keys[type].second;
             return (symbols[rand_symbol]->at(key_index))->location();
           }
-          else // Use fresh location
-          { 
-            return gloc(rand, child);;
-          }
+          // Use fresh location
+          return gloc(rand, child);
         }
     };
     struct Choice
@@ -250,21 +247,17 @@ namespace trieste
       SNMALLOC_SLOW_PATH Choice& operator=(Choice&&) = default;
       SNMALLOC_SLOW_PATH ~Choice() = default;
 
+      bool accepts_type(const Token& type) const
+      {
+        return std::find(types.begin(), types.end(), type) != types.end();
+      }
+
       bool check(Node node) const
       {
         if (node == Error)
           return true;
 
-        auto ok = false;
-
-        for (auto& type : types)
-        {
-          if (node == type)
-          {
-            ok = true;
-            break;
-          }
-        }
+        auto ok = accepts_type(node->type());
 
         if (!ok)
         {
@@ -750,32 +743,40 @@ namespace trieste
         return ok;
       }
 
+    private:
+      void populate_binding_keys(std::map<Token, SymtabKeys>& binding_keys) const
+      {
+        for (const auto& [t, s] : shapes)
+        {
+          Token tok = t;
+          std::visit(
+            [&](auto const& shape) {
+              using ShapeType = std::decay_t<decltype(shape)>;
+              if constexpr (std::is_same_v<ShapeType, Fields>)
+              {
+                if (shape.binding != Invalid)
+                {
+                  auto key_index = shape.index(shape.binding);
+                  binding_keys.emplace(
+                    tok,
+                    std::make_pair(
+                      shape.fields.at(key_index).choice.types, key_index));
+                }
+              }
+            },
+            s);
+        }
+      }
+
+      public:
       Node gen(GenNodeLocationF gloc, Seed seed, size_t target_depth, bool gen_bound) const
       {
         // Collect map of tokens to their binding token and the corresponding
         // index
-        std::map<Token, std::pair<Token, size_t>> binding_keys;
+        std::map<Token, SymtabKeys> binding_keys = {};
         if (gen_bound)
-        {
-          for (const auto& [t, s] : shapes)
-          {
-            std::visit(
-              [&](auto const& shape) {
-                using ShapeType = std::decay_t<decltype(shape)>;
-                if constexpr (std::is_same_v<ShapeType, Fields>)
-                {
-                  if (shape.binding != Invalid)
-                  {
-                    binding_keys.emplace(
-                      t,
-                      std::make_pair(
-                        shape.binding, shape.index(shape.binding)));
-                  }
-                }
-              },
-              s);
-          }
-        }
+          populate_binding_keys(binding_keys);
+        
         auto g = Gen(
           compute_minimum_distance_to_terminal(target_depth),
           gloc,

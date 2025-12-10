@@ -22,7 +22,7 @@ namespace trieste
     size_t start_index_;
     size_t end_index_;
     size_t max_retries_;
-    bool bound_vars_; // Generate bound variable names
+    bool bound_vars_ = true; // Generate bound variable names
 
     double calculate_entropy(std::vector<uint8_t>& byte_values) {
       std::map<uint8_t, double> freq;
@@ -212,7 +212,6 @@ namespace trieste
       bound_vars_ = gen_bound_vars;
       return *this;
     }
-
 
     int test()
     {
