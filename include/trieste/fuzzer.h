@@ -22,6 +22,7 @@ namespace trieste
     size_t start_index_;
     size_t end_index_;
     size_t max_retries_;
+    bool bound_vars_; 
 
     double calculate_entropy(std::vector<uint8_t>& byte_values) {
       std::map<uint8_t, double> freq;
@@ -58,7 +59,8 @@ namespace trieste
       failfast_(false),
       start_index_(1),
       end_index_(passes.size()),
-      max_retries_(100)
+      max_retries_(100),
+      bound_vars_(true)
     {}
 
     Fuzzer(const Reader& reader)
@@ -207,6 +209,11 @@ namespace trieste
       return 0;
     }
 
+    Fuzzer& bound_vars(bool gen_bound_vars) {
+      bound_vars_ = gen_bound_vars;
+      return *this;
+    }
+
     int test()
     {
       WFContext context;
@@ -242,12 +249,12 @@ namespace trieste
         {
           size_t actual_seed = seed;
 
-          auto ast = prev.gen(generators_, actual_seed, max_depth_);
+          auto ast = prev.gen(generators_, actual_seed, max_depth_, bound_vars_);
 
           size_t hash = ast->hash();
           while (ast_hashes.find(hash) != ast_hashes.end() && retries < max_retries_) {
             actual_seed = retry_seed;
-            ast = prev.gen(generators_, actual_seed, max_depth_);
+            ast = prev.gen(generators_, actual_seed, max_depth_, bound_vars_);
             hash = ast->hash();
             retry_seed++;
             retries++;
@@ -296,7 +303,7 @@ namespace trieste
               err << "============" << std::endl
                   << "Pass: " << pass->name() << ", seed: " << actual_seed << std::endl
                   << "------------" << std::endl
-                  << prev.gen(generators_, actual_seed, max_depth_) << "------------"
+                  << prev.gen(generators_, actual_seed, max_depth_, bound_vars_) << "------------"
                   << std::endl
                   << new_ast;
             }

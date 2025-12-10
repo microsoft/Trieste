@@ -119,6 +119,10 @@ namespace trieste
       test->add_option("-r,--max_retries", test_max_retries,
                        "Maximum number of retries for finding unique trees");
 
+      auto bound_vars = true;
+      test->add_option("--gen_bound", bound_vars,
+                       "Generate bound variable names if possible");
+
       auto entropy = test->add_subcommand("debug_entropy",
                                           "Test entropy of random number generation, using seed_count seeds and max_depth warm-up");
 
@@ -215,7 +219,8 @@ namespace trieste
           .seed_count(test_seed_count)
           .start_index(reader.pass_index(test_start_pass))
           .end_index(reader.pass_index(test_end_pass))
-          .start_seed(test_seed);
+          .start_seed(test_seed)
+          .bound_vars(bound_vars);
 
         return *entropy ? fuzzer.debug_entropy() : fuzzer.test();
       }
