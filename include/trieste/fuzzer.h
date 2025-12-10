@@ -22,7 +22,7 @@ namespace trieste
     size_t start_index_;
     size_t end_index_;
     size_t max_retries_;
-    bool bound_vars_ = true; // Generate bound variable names
+    bool bound_vars_; 
 
     double calculate_entropy(std::vector<uint8_t>& byte_values) {
       std::map<uint8_t, double> freq;
@@ -59,7 +59,8 @@ namespace trieste
       failfast_(false),
       start_index_(1),
       end_index_(passes.size()),
-      max_retries_(100)
+      max_retries_(100),
+      bound_vars_(true)
     {}
 
     Fuzzer(const Reader& reader)
