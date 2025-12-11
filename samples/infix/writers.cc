@@ -160,34 +160,6 @@ namespace
             // generative testing.
             return Literal << (Int ^ "0");
           },
-
-        // Note how we pattern match explicitly for the Error node
-        In(Expression) *
-            (MathsOp
-             << ((T(Expression)[Expression] << T(Error)) * T(Literal))) >>
-          [](Match& _) {
-            return err(_(Expression), "Invalid left hand argument");
-          },
-
-        In(Expression) *
-            (MathsOp
-             << (T(Literal) * (T(Expression)[Expression] << T(Error)))) >>
-          [](Match& _) {
-            return err(_(Expression), "Invalid right hand argument");
-          },
-
-        In(Expression) *
-            (MathsOp[Op]
-             << ((T(Expression) << T(Error)) * (T(Expression) << T(Error)))) >>
-          [](Match& _) { return err(_(Op), "No valid arguments"); },
-
-        In(Calculation) *
-            (T(Output)[Output] << (T(String) * (T(Expression) << T(Error)))) >>
-          [](Match& _) { return err(_(Output), "Empty output expression"); },
-
-        In(Calculation) *
-            (T(Assign)[Assign] << (T(Ident) * (T(Expression) << T(Error)))) >>
-          [](Match& _) { return err(_(Assign), "Empty assign expression"); },
       }};
   }
 

@@ -1755,28 +1755,32 @@ in [infix.cc](infix.cc).
 ## Running the `infix_trieste` Executable
 
 Trieste also provides a default way of creating an executable in the `Driver`
-class. The resulting program will do some incredibly useful things for us:
+class. The resulting program will do some incredibly useful things for us
+(note how we first merge our `Reader` and `Rewriter` into a new single
+`Reader` object):
 
 ``` c++
 int main(int argc, char** argv)
 {
-  return trieste::Driver(infix::reader()).run(argc, argv);
+  Reader read_and_calculate = infix::reader() >>= infix::calculate();
+  return Driver(read_and_calculate).run(argc, argv);
 }
 ```
 
 Usage:
 
 ```
-infix_trieste
+infix
 Usage: ./dist/infix/infix_trieste [OPTIONS] SUBCOMMAND
 
-Options:
-  -h,--help                   Print this help message and exit
-  --help-all                  Expand all help
+OPTIONS:
+  -h,     --help              Print this help message and exit
+          --help-all          Expand all help
 
-Subcommands:
+SUBCOMMANDS:
   build                       Build a path
   test                        Run automated tests
+  check                       Check patterns for bugs
 ```
 
 ### `build`
@@ -1787,18 +1791,21 @@ AST file. Its usage is:
 Build a path
 Usage: ./dist/infix/infix_trieste build [OPTIONS] path
 
-Positionals:
+POSITIONALS:
   path TEXT REQUIRED          Path to compile.
 
-Options:
-  -h,--help                   Print this help message and exit
-  --help-all                  Expand all help
-  -l,--log_level TEXT         Set Log Level to one of Trace, Debug, Info, Warning, Output, Error, None
-  -w,                         Check well-formedness.
-  -p,--pass TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
+OPTIONS:
+  -h,     --help              Print this help message and exit
+          --help-all          Expand all help
+  -l,     --log_level TEXT    Set Log Level to one of Trace, Debug, Info, Warning, Output,
+                              Error, None
+  -w                          Check well-formedness.
+  -p,     --pass TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
                               Run up to this pass.
-  -o,--output TEXT            Output path.
-  --dump_passes TEXT          Dump passes to the supplied directory.
+  -o,     --output TEXT       Output path.
+  -n,     --language_name TEXT
+                              Language name to use for the output file.
+          --dump_passes TEXT  Dump passes to the supplied directory.
 ```
 
 for example:
@@ -1809,12 +1816,15 @@ outputs:
 
 ```
 ---------
-Pass	Iterations	Changes	Time (us)
-expressions     2       5       110
-multiply_divide 1       0       50
-add_subtract    2       2       95
-trim    2       2       76
-check_refs      2       1       68
+Parse time (us): 486
+Pass            Iterations  Changes  Time (us)
+expressions     2           5        132
+multiply_divide 1           0        53
+add_subtract    2           2        96
+trim            2           2        75
+check_refs      2           1        71
+maths           4           10       118
+cleanup         2           6        60
 ---------
 ```
 
@@ -1822,38 +1832,17 @@ and creates the file `simple.trieste` containing:
 
 ``` lisp
 infix
-check_refs
+cleanup
 (top
   {}
   (infix-calculation
-    {
-      x = infix-assign
-      y = infix-assign}
-    (infix-assign
-      (infix-ident 1:x)
-      (infix-expression
-        (infix-int 1:5)))
+    {}
     (infix-output
-      (infix-string 3:"x")
-      (infix-expression
-        (infix-ref
-          (infix-ident 1:x))))
-    (infix-assign
-      (infix-ident 1:y)
-      (infix-expression
-        (infix-subtract
-          (infix-expression
-            (infix-int 1:2))
-          (infix-expression
-            (infix-int 1:1)))))
+      (infix-string 1:x)
+      (infix-int 1:5))
     (infix-output
-      (infix-string 8:"1 + 10")
-      (infix-expression
-        (infix-add
-          (infix-expression
-            (infix-int 1:1))
-          (infix-expression
-            (infix-int 2:10)))))))
+      (infix-string 6:1 + 10)
+      (infix-int 2:11))))
 ```
 
 ### `test`
@@ -1864,20 +1853,26 @@ the well-formedness definitions. Usage:
 Run automated tests
 Usage: ./dist/infix/infix_trieste test [OPTIONS] [start] [end]
 
-Positionals:
+POSITIONALS:
   start TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs}
                               Start at this pass.
   end TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs}
                               End at this pass.
 
-Options:
-  -h,--help                   Print this help message and exit
-  --help-all                  Expand all help
-  -c,--seed_count UINT        Number of iterations per pass
-  -s,--seed UINT              Random seed for testing
-  -l,--log_level TEXT         Set Log Level to one of Trace, Debug, Info, Warning, Output, Error, None
-  -d,--max_depth UINT         Maximum depth of AST to test
-  -f,--failfast               Stop on first failure
+OPTIONS:
+  -h,     --help              Print this help message and exit
+          --help-all          Expand all help
+  -c,     --seed_count UINT   Number of iterations per pass
+  -s,     --seed UINT         Random seed for testing
+  -l,     --log_level TEXT    Set Log Level to one of Trace, Debug, Info, Warning, Output,
+                              Error, None
+  -d,     --max_depth UINT    Maximum depth of AST to test
+  -f,     --failfast          Stop on first failure
+  -r,     --max_retries UINT  Maximum number of retries for finding unique trees
+
+SUBCOMMANDS:
+  debug_entropy               Test entropy of random number generation, using seed_count seeds
+                              and max_depth warm-up
 ```
 
 For each pass, it will use its input WF definition to produce
@@ -1890,19 +1885,99 @@ example
 outputs:
 
 ```
-Testing x1000, seed: 3316469074
+Testing x1000, seed: 2123362925
+
 Testing pass: expressions
+
+  errored 861 times.
+    Empty expression: 6
+    Invalid assign: 427
+    Invalid output: 1
+    syntax error: 427
+  passed 139 times.
+  796 hash unique trees (2000 retries).
+
 Testing pass: multiply_divide
+
+  errored 667 times.
+    No arguments: 667
+  passed 333 times.
+    trivial: 319
+  1000 hash unique trees (1429 retries).
+
 Testing pass: add_subtract
+
+  errored 856 times.
+    No arguments: 856
+  passed 144 times.
+    trivial: 130
+  1000 hash unique trees (1224 retries).
+
 Testing pass: trim
+
+  errored 915 times.
+    Only one value allowed per expression: 915
+  passed 85 times.
+    trivial: 76
+  1000 hash unique trees (1079 retries).
+
 Testing pass: check_refs
+
+  errored 759 times.
+    undefined: 759
+  passed 241 times.
+    trivial: 241
+  1000 hash unique trees (1139 retries).
+
 Testing pass: maths
+
+  errored 342 times.
+    Divide by zero: 342
+  passed 658 times.
+    trivial: 1
+  1000 hash unique trees (1203 retries).
+
 Testing pass: cleanup
+
+  passed 1000 times.
+    trivial: 1
+  1000 hash unique trees (1350 retries).
 ```
 
 This testing can be incredibly helpful in finding errors in the WF
 definitions and the rewrite rules, but also requires that you explicitly
 produce error messages for all possible syntax problems in each pass.
+
+
+### `check`
+The `check` command will check all used patterns for common bugs.
+It will also identify rewrite rules that will never run because
+their patterns are shadowed by a previous pattern. Usage:
+```
+Check patterns for bugs
+Usage: ./dist/infix/infix_trieste check [OPTIONS] [start] [end]
+
+POSITIONALS:
+  start TEXT:{expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
+                              Start at this pass.
+  end TEXT:{expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
+                              End at this pass.
+
+OPTIONS:
+  -h,     --help              Print this help message and exit
+          --help-all          Expand all help
+  -l,     --log_level TEXT    Set Log Level to one of Trace, Debug, Info, Warning, Output,
+                              Error, None
+  -w                          Check patterns for tokens that are not mentioned in
+                              well-formedness rules.
+  -i,     --ignore_token TEXT ...
+                              Ignore this token when checking patterns against well-formedness
+                              rules.
+```
+
+There are no errors in the `infix` language that `check` can find,
+but it is useful to run regularly when learning how to use Trieste
+and when updating a pass.
 
 ## Errors
 
@@ -1910,14 +1985,14 @@ Yet another advantage of a multi-pass rewrite system like Trieste is
 the ability to produce fine-grained errors. Indeed, as we just mentioned,
 the testing system of the driver will require these messages and help
 you find the various edge and corner cases in your rules. Most of these
-messages will likely be in the first pass (i.e. post-parse). 
+messages will likely be in the first pass (i.e. post-parse).
 
 The `Error` token allows the creation of a special node which we can
 use to replace the erroneous node. This will then exempt that subtree
 from the well-formedness check. This is the mechanism by which we can
 use the testing system to discover edge cases, i.e. the testing will
 not proceed to the next pass until all of the invalid subtrees have
-been marked as `Error`. `Error` nodes can conveniently be created with 
+been marked as `Error`. `Error` nodes can conveniently be created with
 the `err` function:
 
 ``` c++
@@ -1982,19 +2057,7 @@ T(Divide)
 ```
 
 In a very cool way, Trieste allows us to detect divide by zero errors.
-However, this now means that, potentially, some of the nodes in our
-AST will be of type error, resulting in empty subexpressions. This means
-we need to add some error handling, for example:
-
-```c++
-// Note how we pattern match explicitly for the Error node
-In(Expression) *
-    (MathsOp << ((T(Expression)[Expression] << T(Error)) * T(Literal))) >>
-  [](Match& _) {
-    return err(_(Expression), "Invalid left hand argument");
-  },
-```
-
-By finding these errors explicitly we can propagate the error up the
-tree, thus eventually allowing the bad subtree to be exempted from the
-WF check and allowing the testing to proceed.
+Whenever an error node occurs in the AST after a pass, the result returned
+by the corresponding `Reader`, `Writer` or `Rewriter` is flagged so that
+the client code can react accordingly (for example display error messages
+to the user).

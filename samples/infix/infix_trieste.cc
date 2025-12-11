@@ -4,5 +4,7 @@
 
 int main(int argc, char** argv)
 {
-  return trieste::Driver(infix::reader()).run(argc, argv);
+  using namespace trieste;
+  Reader read_and_calculate = infix::reader() >>= infix::calculate();
+  return Driver(read_and_calculate).run(argc, argv);
 }
