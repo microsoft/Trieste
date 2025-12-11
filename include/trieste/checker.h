@@ -661,7 +661,8 @@ namespace trieste
       input_wf_(&input_wf),
       start_index_(1),
       end_index_(passes.size()),
-      check_wf_(false)
+      check_wf_(false),
+      ignored_tokens_({Top})
     {}
 
     Checker(const Reader& reader)
