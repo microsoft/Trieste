@@ -13,6 +13,7 @@ target_link_libraries(infix_trieste
 add_test(NAME infix COMMAND infix_trieste test -f)
 add_test(NAME invalid_input COMMAND infix ./infix)
 set_property(TEST invalid_input PROPERTY WILL_FAIL On)
+add_test(NAME infix_check COMMAND infix_trieste check -w)
 
 add_executable(infix
   reader.cc

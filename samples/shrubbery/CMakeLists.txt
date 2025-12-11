@@ -10,5 +10,6 @@ target_link_libraries(shrubbery
 )
 
 add_test(NAME shrubbery COMMAND shrubbery test -f)
+add_test(NAME shrubbery_check COMMAND shrubbery check -w)
 
 install(TARGETS shrubbery RUNTIME DESTINATION shrubbery)
