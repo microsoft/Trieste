@@ -36,6 +36,8 @@ function(testsuite name)
   file (GLOB test_collections CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cmake)
   file (GLOB_RECURSE all_files CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *)
 
+  set(GOLDEN_DIRS)
+
   foreach(test_collection ${test_collections})
     set (test_set)
     
@@ -94,6 +96,7 @@ function(testsuite name)
 
       # Add output comparison for each golden / output file
       set (golden_dir  ${CMAKE_CURRENT_SOURCE_DIR}/${output_dir_relative} )
+      list(APPEND GOLDEN_DIRS ${golden_dir})
       file (GLOB_RECURSE results CONFIGURE_DEPENDS RELATIVE ${golden_dir} ${golden_dir}/*)
       # Check if there are any files to compare for this test.
       list(LENGTH results res_length)
@@ -110,9 +113,9 @@ function(testsuite name)
         add_custom_command(OUTPUT ${output_dir_relative}_fake
           COMMAND
             ${CMAKE_COMMAND}
-            -E copy_if_different
-            ${output_dir}/*
-            ${golden_dir}/
+            -Dsrc=${output_dir}/*
+            -Ddst=${golden_dir}/
+            -P ${DIR_OF_TESTSUITE_CMAKE}/copy_if_different_and_exists.cmake
           APPEND
         )
       else()
@@ -132,9 +135,9 @@ function(testsuite name)
           add_custom_command(OUTPUT "${output_dir_relative}_fake"
             COMMAND
               ${CMAKE_COMMAND}
-              -E copy_if_different
-              ${output_dir}/${result}
-              ${golden_dir}/${result}
+              -Dsrc=${output_dir}/${result}
+              -Ddst=${golden_dir}/${result}
+              -P ${DIR_OF_TESTSUITE_CMAKE}/copy_if_different_and_exists.cmake
             APPEND
           )
         endforeach()
@@ -142,9 +145,9 @@ function(testsuite name)
         add_custom_command(OUTPUT "${output_dir_relative}_fake"
           COMMAND
             ${CMAKE_COMMAND}
-            -E copy_if_different
-            ${output_dir}/exit_code.txt
-            ${golden_dir}/exit_code.txt
+            -Dsrc=${output_dir}/exit_code.txt
+            -Ddst=${golden_dir}/exit_code.txt
+            -P ${DIR_OF_TESTSUITE_CMAKE}/copy_if_different_and_exists.cmake
           APPEND
         )
 
@@ -153,6 +156,8 @@ function(testsuite name)
     add_custom_target("update-dump-${test_collection}" DEPENDS ${test_set})
     list(APPEND UPDATE_DUMPS_TARGETS "update-dump-${test_collection}")
   endforeach()
+
+  list(REMOVE_DUPLICATES GOLDEN_DIRS)
 
   string(REPLACE ";" "\n" LAUNCH_JSON2 "${LAUNCH_JSON}")
 
@@ -172,5 +177,18 @@ function(testsuite name)
     add_dependencies(update-dump ${UPDATE_DUMPS_TARGETS})
   else()
     add_custom_target(update-dump DEPENDS ${UPDATE_DUMPS_TARGETS})
+  endif()
+
+  if(GOLDEN_DIRS)
+    add_custom_target(update-dump-clean
+      COMMAND ${CMAKE_COMMAND} -E remove_directory ${GOLDEN_DIRS}
+      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target update-dump
+      USES_TERMINAL
+    )
+  else()
+    add_custom_target(update-dump-clean
+      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target update-dump
+      USES_TERMINAL
+    )
   endif()
 endfunction()
