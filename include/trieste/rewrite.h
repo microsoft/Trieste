@@ -1222,6 +1222,26 @@ namespace trieste
     {
       NodeRange range;
     };
+
+    struct ExtendNode
+    {
+      Node node;
+    };
+
+    struct ExtendNodeRange
+    {
+      NodeRange range;
+    };
+
+    struct ExtendNodes
+    {
+      Nodes nodes;
+    };
+
+    struct ExtendRangeContents
+    {
+      NodeRange range;
+    };
   }
 
   template<typename F>
@@ -1280,6 +1300,26 @@ namespace trieste
   inline detail::EphemeralNodeRange operator-(NodeRange node)
   {
     return {node};
+  }
+
+  inline detail::ExtendNode operator+(Node node)
+  {
+    return {node};
+  }
+
+  inline detail::ExtendNodeRange operator+(NodeRange range)
+  {
+    return {range};
+  }
+
+  inline detail::ExtendNodes operator+(Nodes nodes)
+  {
+    return {std::move(nodes)};
+  }
+
+  inline detail::ExtendRangeContents operator+(detail::RangeContents range_contents)
+  {
+    return {range_contents.range};
   }
 
   inline detail::RangeContents operator*(NodeRange range)
@@ -1344,6 +1384,46 @@ namespace trieste
   inline Node operator<<(Node node, Nodes range)
   {
     node->push_back({range.begin(), range.end()});
+    return node;
+  }
+
+  inline Node operator<<(Node node, detail::ExtendNode ext)
+  {
+    if (ext.node)
+    {
+      node->push_back(ext.node);
+      node->extend(ext.node->location());
+    }
+    return node;
+  }
+
+  inline Node operator<<(Node node, detail::ExtendNodeRange ext)
+  {
+    for (Node& n : ext.range)
+    {
+      node->push_back(n);
+      node->extend(n->location());
+    }
+    return node;
+  }
+
+  inline Node operator<<(Node node, detail::ExtendNodes ext)
+  {
+    for (Node& n : ext.nodes)
+    {
+      node->push_back(n);
+      node->extend(n->location());
+    }
+    return node;
+  }
+
+  inline Node operator<<(Node node, detail::ExtendRangeContents ext)
+  {
+    for (Node& n : ext.range)
+    {
+      node->push_back({n->begin(), n->end()});
+      node->extend(n->location());
+    }
     return node;
   }
 
