@@ -501,6 +501,15 @@ namespace trieste
       return {};
     }
 
+    const Nodes& includes()
+    {
+      static Nodes empty_includes;
+      if (!symtab_)
+        return empty_includes;
+
+      return symtab_->includes;
+    }
+
     template<typename F>
     Nodes& get_symbols(Nodes& result, F&& f)
     {
