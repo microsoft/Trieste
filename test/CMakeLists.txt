@@ -21,3 +21,11 @@ enable_warnings(trieste_source_test)
 target_link_libraries(trieste_source_test trieste::trieste)
 
 add_test(NAME trieste_source_test COMMAND trieste_source_test --depth 6 WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_source_test>)
+
+add_executable(trieste_nodeworker_test
+  nodeworker_test.cc
+)
+enable_warnings(trieste_nodeworker_test)
+target_link_libraries(trieste_nodeworker_test trieste::trieste)
+
+add_test(NAME trieste_nodeworker_test COMMAND trieste_nodeworker_test WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_nodeworker_test>)
