@@ -248,6 +248,12 @@ namespace trieste
 
     Location operator*(const Location& that) const
     {
+      if (!source)
+        return that;
+
+      if (!that.source)
+        return *this;
+
       if (source != that.source)
         return *this;
 
