@@ -7,10 +7,8 @@
 #include <utility>
 #include <vector>
 
-namespace infix
+namespace trieste
 {
-  using namespace trieste;
-
   /// Lifecycle states for nodes managed by `NodeWorker`.
   enum class WorkerStatus
   {
@@ -238,5 +236,4 @@ namespace infix
     std::deque<Node> worklist_;
     Work work_;
   };
-
-} // namespace infix
+} // namespace trieste
