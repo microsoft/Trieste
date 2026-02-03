@@ -6,7 +6,6 @@
 #include <trieste/nodeworker.h>
 
 using namespace trieste;
-using namespace infix;
 
 // Test tokens for our test nodes
 inline const auto TestNode = TokenDef("nodeworker_test.TestNode");
