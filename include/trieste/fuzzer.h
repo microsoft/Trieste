@@ -22,7 +22,381 @@ namespace trieste
     size_t start_index_;
     size_t end_index_;
     size_t max_retries_;
-    bool bound_vars_; 
+    bool bound_vars_;
+    bool test_sequence_;
+    bool size_stats_;
+
+    struct SeedContext
+    {
+      size_t current_seed = 0;
+      size_t retry_seed = 0;
+      size_t retries = 0;
+      std::set<size_t> ast_hashes;
+    };
+
+    struct Survivor
+    {
+      Node ast;
+      size_t original_seed;
+      size_t total_changes;
+    };
+
+    struct PassStats
+    {
+      size_t passed_count = 0;
+      size_t trivial_count = 0;
+      size_t failed_count = 0;
+      size_t error_count = 0;
+      size_t change_count = 0;
+
+      std::vector<size_t> passed_sizes;
+      std::vector<size_t> passed_heights;
+      std::vector<size_t> error_sizes;
+      std::vector<size_t> error_heights;
+
+      std::map<std::string, size_t> error_msgs;
+      std::vector<Survivor> survivors;
+
+      void log(bool size_stats)
+      {
+        logging::Info info;
+
+        if (failed_count > 0)
+          info << "  " << failed_count << " well-formedness errors." << std::endl;
+
+        if (error_count > 0)
+        {
+          info << "  " << error_count << " stopped by errors." << std::endl;
+
+          for (auto [msg, count] : error_msgs)
+          {
+            info << "    \"" << msg << "\": " << count << std::endl;
+          }
+
+          if (size_stats)
+          {
+            info << "    average size: " << avg(error_sizes) << std::endl;
+            info << "    max size: " << max(error_sizes) << std::endl;
+            info << "    average height: " << avg(error_heights) << std::endl;
+            info << "    max height: " << max(error_heights) << std::endl;
+          }
+        }
+
+        if ((error_count > 0 && passed_count > 0) || trivial_count > 0)
+        {
+          info << "  " << passed_count << " survivors." << std::endl;
+          if (trivial_count > 0)
+            info << "    " << trivial_count << " trivial." << std::endl;
+
+          if (size_stats)
+          {
+            info << "    average size: " << avg(passed_sizes) << std::endl;
+            info << "    max size: " << max(passed_sizes) << std::endl;
+            info << "    average height: " << avg(passed_heights) << std::endl;
+            info << "    max height: " << max(passed_heights) << std::endl;
+          }
+        }
+
+        info << "  total changes: " << change_count << std::endl;
+      }
+    };
+
+    enum RunResult
+    {
+      OK,
+      FAIL,
+      ERROR
+    };
+
+    struct PassResult
+    {
+      Node ast;
+      RunResult result;
+    };
+
+    /// @brief Generate an AST that has not been generated before (while
+    /// adhering to the retry budget).
+    /// @param wf The well-formedness rules to guide AST generation.
+    /// @param context The seed context containing current seed and retry
+    /// information.
+    /// @return The generated AST node.
+    Node gen_ast(const wf::Wellformed& wf, SeedContext& context)
+    {
+      auto ast = wf.gen(generators_, context.current_seed, max_depth_, bound_vars_);
+      size_t hash = ast->hash();
+      while (context.ast_hashes.find(hash) != context.ast_hashes.end() &&
+             context.retries < max_retries_)
+      {
+        context.current_seed = context.retry_seed++;
+        ast = wf.gen(generators_, context.current_seed, max_depth_, bound_vars_);
+        hash = ast->hash();
+        context.retries++;
+      }
+      context.ast_hashes.insert(hash);
+      return ast;
+    }
+
+    /// @brief Run a single pass on the given AST and update statistics.
+    /// @param ast The current abstract syntax tree.
+    /// @param pass The pass to run.
+    /// @param wf The well-formedness rules to validate the AST.
+    /// @param pass_stats The recorded statistics for the pass.
+    /// @return The result of running the pass, including the new AST, success status, and number of changes.
+    PassResult run_pass(
+      Node& ast,
+      const Pass& pass,
+      const wf::Wellformed& wf,
+      PassStats& pass_stats)
+    {
+      auto [new_ast, count, changes] = pass->run(ast);
+
+      pass_stats.change_count += changes;
+
+      Nodes errors;
+      new_ast->get_errors(errors);
+      if (!errors.empty())
+      {
+        pass_stats.error_count++;
+        if (size_stats_)
+        {
+          pass_stats.error_sizes.push_back(new_ast->tree_size());
+          pass_stats.error_heights.push_back(new_ast->tree_height());
+        }
+
+        Node error = errors.front();
+        for (auto& c : *error)
+        {
+          if (c->type() == ErrorMsg)
+          {
+            pass_stats.error_msgs[std::string(c->location().view())]++;
+            break;
+          }
+        }
+        // Pass added error nodes, so doesn't need to satisfy wf.
+        return {new_ast, RunResult::ERROR};
+      }
+
+      bool ok = true;
+      if (wf)
+      {
+        ok = wf.build_st(new_ast);
+        ok = wf.check(new_ast) && ok;
+      }
+
+      if (ok)
+      {
+        pass_stats.passed_count++;
+        if (changes == 0) pass_stats.trivial_count++;
+        if (size_stats_)
+        {
+          pass_stats.passed_sizes.push_back(new_ast->tree_size());
+          pass_stats.passed_heights.push_back(new_ast->tree_height());
+        }
+        return {new_ast, RunResult::OK};
+      }
+      else
+      {
+        pass_stats.failed_count++;
+        return {new_ast, RunResult::FAIL};
+      }
+    }
+
+    /// @brief Test a single pass over a number of generated ASTs.
+    /// @param pass the pass to test
+    /// @param prev the previous well-formedness spec for regenerating ASTs
+    /// @param seed_context the context for seed management
+    /// @return the statistics for the pass test
+    PassStats test_pass(
+      Pass& pass,
+      const trieste::wf::Wellformed& prev,
+      SeedContext& seed_context)
+    {
+      PassStats pass_stats;
+      for (size_t seed = start_seed_; seed < start_seed_ + seed_count_; seed++)
+      {
+        seed_context.current_seed = seed;
+
+        auto ast = gen_ast(prev, seed_context);
+
+        logging::Trace() << "============" << std::endl
+                         << "Pass: " << pass->name()
+                         << ", seed: " << seed_context.current_seed << std::endl
+                         << "------------" << std::endl
+                         << ast << "------------" << std::endl;
+
+        auto old_changes = pass_stats.change_count;
+        auto [new_ast, result] = run_pass(ast, pass, pass->wf(), pass_stats);
+
+        logging::Trace() << new_ast << "------------" << std::endl << std::endl;
+
+        if (result == RunResult::FAIL)
+        {
+          logging::Error err;
+          if (!logging::Trace::active())
+          {
+            // We haven't printed what failed with Trace earlier, so do it
+            // now. Regenerate the start Ast for the error message.
+            err << "============" << std::endl
+                << "Pass: " << pass->name()
+                << ", seed: " << seed_context.current_seed << std::endl
+                << "------------" << std::endl
+                << prev.gen(generators_, seed_context.current_seed, max_depth_, bound_vars_)
+                << "------------" << std::endl
+                << new_ast;
+          }
+
+          err << "============" << std::endl
+              << "Failed pass: " << pass->name()
+              << ", seed: " << seed_context.current_seed << std::endl;
+
+          if (failfast_)
+            break;
+        }
+
+        if (test_sequence_ && result == RunResult::OK)
+        {
+          pass_stats.survivors.push_back({new_ast, seed_context.current_seed, pass_stats.change_count - old_changes});
+        }
+      }
+
+      return pass_stats;
+    }
+
+    /// @brief Test a single pass over a set of survivor ASTs.
+    /// @param pass the pass to test
+    /// @param survivors the survivor ASTs from the previous pass
+    /// @return the statistics for the pass test
+    PassStats test_pass_with_survivors(Pass& pass, std::vector<Survivor>& survivors)
+    {
+      PassStats pass_stats;
+      for (auto& survivor : survivors)
+      {
+        logging::Trace() << "============" << std::endl
+                         << "Pass: " << pass->name()
+                         << ", survivor from seed " << survivor.original_seed << std::endl
+                         << "------------" << std::endl
+                         << survivor.ast << "------------" << std::endl;
+
+        auto old_ast = survivor.ast->clone();
+        auto old_changes = pass_stats.change_count;
+
+        auto [new_ast, result] = run_pass(survivor.ast, pass, pass->wf(), pass_stats);
+
+        logging::Trace() << new_ast << "------------" << std::endl << std::endl;
+
+        if (result == RunResult::FAIL)
+        {
+          logging::Error err;
+          if (!logging::Trace::active())
+          {
+            // We haven't printed what failed with Trace earlier, so do it
+            // now. Regenerate the start Ast for the error message.
+            err << "============" << std::endl
+                << "Pass: " << pass->name()
+                << ", survivor from seed " << survivor.original_seed << std::endl
+                << "------------" << std::endl
+                << old_ast
+                << "------------" << std::endl
+                << new_ast;
+          }
+
+          err << "============" << std::endl
+              << "Failed pass: " << pass->name()
+              << ", survivor from seed " << survivor.original_seed << std::endl;
+          if (failfast_)
+            break;
+        }
+
+        if (test_sequence_ && result == RunResult::OK)
+        {
+          pass_stats.survivors.push_back(
+            {new_ast,
+             survivor.original_seed,
+             survivor.total_changes + pass_stats.change_count - old_changes});
+        }
+      }
+
+      return pass_stats;
+    }
+
+    void log_sequence_stats(
+      std::vector<Survivor>& survivors,
+      size_t& initial_hash_unique,
+      size_t& total_failed,
+      size_t& total_errors,
+      std::vector<size_t>& changes_per_pass,
+      std::vector<size_t>& error_sizes,
+      std::vector<size_t>& error_heights)
+    {
+      size_t total_survivors = survivors.size();
+      size_t total_trivial = 0;
+      const size_t passes_run = end_index_ - start_index_ + 1;
+
+      std::vector<size_t> sizes;
+      std::vector<size_t> heights;
+
+      for (auto& survivor : survivors)
+      {
+        logging::Trace() << "Survivor from seed " << survivor.original_seed
+                         << " with " << survivor.total_changes
+                         << " changes:" << std::endl
+                         << survivor.ast << "------------";
+
+        if (survivor.total_changes < passes_run)
+          total_trivial++;
+
+        if (size_stats_)
+        {
+          sizes.push_back(survivor.ast->tree_size());
+          heights.push_back(survivor.ast->tree_height());
+        }
+      }
+
+      logging::Info info;
+      info << "After full sequence from "
+           << passes_.at(start_index_ - 1)->name() << " to "
+           << passes_.at(end_index_ - 1)->name() << " (seed: " << start_seed_
+           << "):" << std::endl;
+
+      info << "  " << seed_count_ << " initial trees (" << initial_hash_unique
+           << " hash unique)." << std::endl;
+
+      if (total_failed > 0)
+        info << "  " << total_failed << " well-formedness failures"
+             << std::endl;
+
+      if (total_errors > 0)
+      {
+        info << "  " << total_errors << " stopped by errors" << std::endl;
+
+        if (size_stats_)
+        {
+          info << "    average size: " << avg(error_sizes) << std::endl;
+          info << "    max size: " << max(error_sizes) << std::endl;
+          info << "    average height: " << avg(error_heights) << std::endl;
+          info << "    max height: " << max(error_heights) << std::endl;
+        }
+      }
+
+      info << "  " << total_survivors << " survivors ("
+           << (total_survivors * 100.0 / seed_count_) << "%)." << std::endl;
+
+      if (total_trivial > 0)
+        info << "    " << total_trivial
+             << " with < 1 change per pass on average ("
+             << (total_trivial * 100.0 / seed_count_) << "%)." << std::endl;
+
+      if (size_stats_)
+      {
+        info << "    average size: " << avg(sizes) << std::endl;
+        info << "    max size: " << max(sizes) << std::endl;
+        info << "    average height: " << avg(heights) << std::endl;
+        info << "    max height: " << max(heights) << std::endl;
+      }
+
+      info << "  average changes per pass: " << avg(changes_per_pass)
+           << std::endl;
+    }
 
     double calculate_entropy(std::vector<uint8_t>& byte_values) {
       std::map<uint8_t, double> freq;
@@ -43,6 +417,20 @@ namespace trieste
       return entropy;
     }
 
+    static size_t avg(std::vector<size_t>& v) {
+      if (v.empty()) return 0;
+      return std::accumulate(v.begin(), v.end(), 0.0) / v.size();
+    }
+
+    static size_t max(std::vector<size_t>& v) {
+      if (v.empty()) return 0;
+      return *std::max_element(v.begin(), v.end());
+    }
+
+    static size_t sum(std::vector<size_t>& v) {
+      return std::accumulate(v.begin(), v.end(), 0.0);
+    }
+
   public:
     Fuzzer() {}
 
@@ -60,7 +448,9 @@ namespace trieste
       start_index_(1),
       end_index_(passes.size()),
       max_retries_(100),
-      bound_vars_(true)
+      bound_vars_(true),
+      test_sequence_(false),
+      size_stats_(false)
     {}
 
     Fuzzer(const Reader& reader)
@@ -158,6 +548,28 @@ namespace trieste
       return *this;
     }
 
+    bool test_sequence() const
+    {
+      return test_sequence_;
+    }
+
+    Fuzzer& test_sequence(bool test_sequence)
+    {
+      test_sequence_ = test_sequence;
+      return *this;
+    }
+
+    bool size_stats() const
+    {
+      return size_stats_;
+    }
+
+    Fuzzer& size_stats(bool size_stats)
+    {
+      size_stats_ = size_stats;
+      return *this;
+    }
+
     int debug_entropy() {
       const uint8_t NO_BYTES = 4;
       const size_t no_samples = max_depth_;
@@ -216,381 +628,118 @@ namespace trieste
 
     int test()
     {
+      if (end_index_ < start_index_)
+      {
+        logging::Error()
+          << "pass range is empty"
+          << std::endl;
+        return 1;
+      }
       WFContext context;
+      std::vector<Survivor> survivors;
+
+      size_t total_failed = 0;
+      size_t total_errors = 0;
+      size_t initial_hash_unique = 0;
+
+      std::vector<size_t> changes_per_pass;
+      std::vector<size_t> error_sizes;
+      std::vector<size_t> error_heights;
       int ret = 0;
+
       for (size_t i = start_index_; i <= end_index_; i++)
       {
         auto& pass = passes_.at(i - 1);
         auto& wf = pass->wf();
         auto& prev = i > 1 ? passes_.at(i - 2)->wf() : *input_wf_;
 
-        size_t passed_count = 0;
-        size_t trivial_count = 0;
-        size_t error_count = 0;
-        size_t failed_count = 0;
-        std::map<std::string, size_t> error_msgs;
-        std::set<size_t> ast_hashes;
-
         if (!prev || !wf)
         {
           logging::Info() << "Skipping pass: " << pass->name() << std::endl;
+          if (test_sequence_)
+          {
+            auto pass_stats = test_pass_with_survivors(pass, survivors);
+            survivors = pass_stats.survivors;
+          }
           continue;
         }
 
-        logging::Info() << "Testing pass: " << pass->name() << std::endl;
+        logging::Info() << "Testing pass: " << pass->name();
         context.push_back(prev);
         context.push_back(wf);
 
-        size_t retry_seed = start_seed_ + seed_count_;
-        size_t retries = 0;
+        SeedContext seed_context;
+        seed_context.retry_seed = start_seed_ + seed_count_;
 
-        for (size_t seed = start_seed_; seed < start_seed_ + seed_count_;
-             seed++)
+        PassStats pass_stats;
+        if (!test_sequence_ || i == start_index_)
         {
-          size_t actual_seed = seed;
-
-          auto ast = prev.gen(generators_, actual_seed, max_depth_, bound_vars_);
-
-          size_t hash = ast->hash();
-          while (ast_hashes.find(hash) != ast_hashes.end() && retries < max_retries_) {
-            actual_seed = retry_seed;
-            ast = prev.gen(generators_, actual_seed, max_depth_, bound_vars_);
-            hash = ast->hash();
-            retry_seed++;
-            retries++;
-          }
-
-          ast_hashes.insert(hash);
-
-          logging::Trace() << "============" << std::endl
-                           << "Pass: " << pass->name() << ", seed: " << actual_seed
-                           << std::endl
-                           << "------------" << std::endl
-                           << ast << "------------" << std::endl;
-
-          auto [new_ast, count, changes] = pass->run(ast);
-          logging::Trace() << new_ast << "------------" << std::endl
-                           << std::endl;
-
-          auto ok = wf.build_st(new_ast);
-          if (ok)
-          {
-            Nodes errors;
-            new_ast->get_errors(errors);
-            if (!errors.empty())
-            {
-              // Pass added error nodes, so doesn't need to satisfy wf.
-              error_count++;
-              Node error = errors.front();
-              for (auto& c : *error) {
-                  if(c->type() == ErrorMsg) {
-                      error_msgs[std::string(c->location().view())]++;
-                      break;
-                  }
-              }
-              continue;
-            }
-          }
-          ok = wf.check(new_ast) && ok;
-
-          if (!ok)
-          {
-            logging::Error err;
-            if (!logging::Trace::active())
-            {
-              // We haven't printed what failed with Trace earlier, so do it
-              // now. Regenerate the start Ast for the error message.
-              err << "============" << std::endl
-                  << "Pass: " << pass->name() << ", seed: " << actual_seed << std::endl
-                  << "------------" << std::endl
-                  << prev.gen(generators_, actual_seed, max_depth_, bound_vars_) << "------------"
-                  << std::endl
-                  << new_ast;
-            }
-
-            err << "============" << std::endl
-                << "Failed pass: " << pass->name() << ", seed: " << actual_seed
-                << std::endl;
-            ret = 1;
-
-            failed_count++;
-
-            if (failfast_)
-              return ret;
-          }
-          if (ok) passed_count++;
-          if (ok && changes == 0) trivial_count++;
+          pass_stats = test_pass(pass, prev, seed_context);
         }
-
-        logging::Info info;
-
-        if (failed_count > 0) info << "  not WF " << failed_count << " times." << std::endl;
-
-        if (error_count > 0) info << "  errored " << error_count << " times." << std::endl;
-        for (auto [msg, count] : error_msgs) {
-          info << "    " << msg << ": " << count << std::endl;
-        }
-
-        if ((error_count > 0 && passed_count > 0) || trivial_count > 0)
+        else
         {
-          info << "  passed " << passed_count << " times." << std::endl;
-          if (trivial_count > 0) info << "    trivial: " << trivial_count << std::endl;
+          logging::Info() << "  " << survivors.size() << " survivors from previous pass.";
+          if (survivors.empty()) {
+            context.pop_front();
+            context.pop_front();
+            break;
+          }
+          pass_stats = test_pass_with_survivors(pass, survivors);
         }
 
-        size_t hash_unique = ast_hashes.size();
-        info << "  " << ast_hashes.size() << " hash unique "
-             << (hash_unique == 1? "tree": "trees")
-             << " (" << retries << (retries == 1? " retry": " retries") << ")." << std::endl;
+        if (test_sequence_)
+          survivors = pass_stats.survivors;
+
+        if (pass_stats.failed_count > 0)
+        {
+          ret = 1;
+          if (failfast_) return ret;
+        }
+
+        total_failed += pass_stats.failed_count;
+        total_errors += pass_stats.error_count;
+        changes_per_pass.push_back(pass_stats.change_count);
+
+        if (test_sequence_ && size_stats_)
+        {
+          error_sizes.insert(error_sizes.end(), pass_stats.error_sizes.begin(), pass_stats.error_sizes.end());
+          error_heights.insert(error_heights.end(), pass_stats.error_heights.begin(), pass_stats.error_heights.end());
+        }
+
+        size_t hash_unique = seed_context.ast_hashes.size();
+
+        if (initial_hash_unique == 0) initial_hash_unique = hash_unique;
+
+        if (hash_unique > 0)
+        {
+          logging::Info() << "  generated " << seed_context.ast_hashes.size()
+                          << " hash unique "
+                          << (hash_unique == 1 ? "tree" : "trees") << " ("
+                          << seed_context.retries
+                          << (seed_context.retries == 1 ? " retry" : " retries")
+                          << ").";
+        }
+
+        pass_stats.log(size_stats_);
 
         context.pop_front();
         context.pop_front();
+      }
+
+      if (test_sequence_)
+      {
+        log_sequence_stats(
+          survivors,
+          initial_hash_unique,
+          total_failed,
+          total_errors,
+          changes_per_pass,
+          error_sizes,
+          error_heights
+        );
       }
 
       return ret;
     }
-
-    // Error counts by message
-    using ErrCount = std::map<std::string,size_t>;
-
-    size_t avg(std::vector<size_t>& v) {
-      if (v.empty()) return 0;
-      return std::accumulate(v.begin(), v.end(), 0.0) / v.size();
-    }
-
-    size_t max(std::vector<size_t>& v) {
-      if (v.empty()) return 0;
-      return *std::max_element(v.begin(), v.end());
-    }
-
-     size_t sum(std::vector<size_t>& v) {
-      return std::accumulate(v.begin(), v.end(), 0.0);
-    }
-
-    int test_sequence()
-      { 
-        WFContext context;
-        int ret = 0;
-        size_t passed_trivial_count = 0;
-        size_t errored_trivial_count = 0;
-        size_t wf_errors = 0;
-        std::map<std::string, ErrCount> error_passes; // pass name -> (error message -> count)
-        std::vector<size_t> failed_ast_sizes; // tree sizes of failed runs
-        std::vector<size_t> passed_ast_sizes; // tree sizes of passed runs
-        std::vector<size_t> failed_ast_heights; // tree heights of failed runs
-        std::vector<size_t> passed_ast_heights; // tree sizes of passed runs
-        std::vector<size_t> rewrites; // total number of rewrites
-
-        // Starting pass 
-        auto& init_pass = passes_.at(start_index_ - 1);
-        auto& init_wf = init_pass->wf();
-        auto& gen_wf = start_index_ > 1 
-              ? passes_.at(start_index_ - 2)->wf() 
-              : *input_wf_;
-
-        if (!gen_wf || !init_wf){
-            logging::Error() << "cannot generate tree without a specification!"
-                             << std::endl; 
-          return 1; 
-        }
-
-        logging::Info() << "Fuzzing sequence from " 
-                  << passes_.at(start_index_ - 1)->name() 
-                  << " to "
-                  << passes_.at(end_index_ - 1)->name() 
-                  << std::endl
-                  << "============" << std::endl;
-        auto retry_seed = start_seed_ + seed_count_;
-        size_t retries = 0;
-        std::set<size_t> ast_hashes;
-
-        for (size_t seed = start_seed_; 
-             seed < start_seed_ + seed_count_;
-             seed++)
-        {
-          auto actual_seed = seed;
-          std::vector<size_t> sequence_rewrites; //Number of changes made by every pass in the sequence
-          bool seq_ok = true;   //False if no WF-errors occured 
-          bool errored = false; //True if Error nodes were added to the tree 
-
-          // Generate initial ast  
-          auto ast = gen_wf.gen(generators_, actual_seed, max_depth_);
-          size_t hash = ast->hash();
-          while (ast_hashes.find(hash) != ast_hashes.end() && retries < max_retries_) {
-            actual_seed = retry_seed;
-            ast = gen_wf.gen(generators_, actual_seed, max_depth_);
-            hash = ast->hash();
-            retry_seed++;
-            retries++;
-          }
-
-          ast_hashes.insert(hash);  
-
-          for (auto i = start_index_; i <= end_index_; i++)
-          { 
-            auto& pass = passes_.at(i - 1);
-            auto& wf = pass->wf();
-            auto& prev = i > 1 
-                ? passes_.at(i - 2)->wf() 
-                : *input_wf_;
-
-              if (!prev || !wf)
-              {
-                logging::Info() << "Skipping pass: " << pass->name() << std::endl;
-                continue;
-              }
-        
-              context.push_back(prev);
-              context.push_back(wf);
-              
-              auto ast_copy = ast->clone(); //Save clone before running pass 
-            
-              auto [new_ast, count, changes] = pass->run(ast);
-              ast = new_ast;
-              sequence_rewrites.push_back(changes); 
-
-              logging::Trace() << "============" << std::endl
-                           << "applying pass " << pass->name() 
-                           << std::endl
-                           << ast_copy 
-                           << "------------" << std::endl
-                           << new_ast << "------------" << std::endl;
-
-              // TODO: Why are we building the symbol tables here?
-              auto ok = wf.build_st(new_ast);
-              if (ok)
-              {
-                Nodes errors;
-                new_ast->get_errors(errors);
-                if (!errors.empty()) {
-                  Node error = errors.front();
-                  errored = true; 
-                  failed_ast_sizes.push_back(ast->tree_size());
-                  failed_ast_heights.push_back(ast->tree_height());
-                  for (auto& c : *error) {
-                    if(c->type() == ErrorMsg) {
-                      auto err_msg = std::string(c->location().view());
-                      error_passes[pass->name()][err_msg]++; 
-                      break;
-                    }
-                  }
-                  break; // No need to run subsequent passes if Error is found
-                }
-              }
-              ok = wf.check(new_ast) && ok; 
-              // If not well-formed 
-              if (!ok)
-              {
-                logging::Error err;
-                if (!logging::Trace::active())
-                {
-                  // We haven't printed what failed with Trace earlier, so do it
-                  // now.
-                  err << "============" << std::endl
-                      << "------------" << std::endl
-                      << ast_copy << "------------" << std::endl
-                      << "resulted in ill-formed tree: " << std::endl
-                      << new_ast << "------------" << std::endl;
-                }
-                seq_ok = false;
-                wf_errors++;
-                ret = 1;
-
-                if (failfast_)
-                  return ret;
-              }
-
-              context.pop_front();
-              context.pop_front();
-
-          } //End sequence loop 
-          rewrites.push_back(sum(sequence_rewrites)); //Keep track of rewrites
-
-          if (seq_ok && !errored) {
-            logging::Trace() << "============" << std::endl
-                             << "Full sequence passed with tree of size: " 
-                             << ast->tree_size() << std::endl 
-                             << "and height: " << ast->tree_height() << std::endl
-                             << ast << "------------" << std::endl;
-            
-            passed_ast_sizes.push_back(ast->tree_size());
-            passed_ast_heights.push_back(ast->tree_height());
-
-            if (avg(sequence_rewrites) < 1) 
-            {
-            passed_trivial_count++;
-            }
-          }
-          else if (!seq_ok && avg(sequence_rewrites) < 1)
-          {
-            errored_trivial_count++;
-          } 
-          
-        } //End generation loop 
-
-        // Log stats 
-        size_t passed_count = passed_ast_heights.size();
-        size_t failed_count = failed_ast_heights.size();
-        logging::Info info;
-        if (wf_errors > 0) info << " not WF " << wf_errors << " times." << std::endl;
-
-
-        if (!error_passes.empty())
-        {
-          for (size_t i = 0; i < start_index_-1; i++){ 
-            info << " pass " << passes_.at(i)->name() << " not run." << std::endl;
-          }
-          info << "Error count per pass: " << std::endl; 
-          for (size_t i = start_index_; i <= end_index_; i++){
-            auto pass = passes_.at(i-1);
-            auto pass_errors = error_passes.find(pass->name());
-            if(pass_errors == error_passes.end())
-            { 
-              info << " pass " << pass->name() << " : 0" << std::endl;
-            }
-            else
-            {
-              ErrCount err_msgs = pass_errors->second;
-              const std::size_t sum = std::accumulate(
-              std::begin(err_msgs),
-              std::end(err_msgs),
-              0,
-              [](const std::size_t acc, const std::pair<const std::string, std::size_t>& c)
-              { return acc + c.second; });
-              info << " pass " << pass->name() << " : " << sum << std::endl; 
-              for (auto [msg,count] : err_msgs)
-              {
-                info << "    " << msg << ": " << count << std::endl;
-              }
-            }
-          }
-        }
-        if ((!error_passes.empty() && passed_count > 0) 
-            || passed_trivial_count > 0
-            || errored_trivial_count > 0)
-        {
-          info << std::endl;
-          info << " failed to run full sequence: " << failed_count << " times." << std::endl;
-          info << " passed full sequence: " << passed_count << " times." << std::endl;
-          if (passed_trivial_count > 0) info << " trees that passed sequence with < 1 change per pass on average: " << passed_trivial_count << std::endl;
-          if (errored_trivial_count > 0) info << " trees that failed sequence with < 1 change per pass on average: " << errored_trivial_count << std::endl;
-          info << " average rewrites per pass: " << avg(rewrites) << std::endl;
-        }
-        size_t hash_unique = ast_hashes.size();
-        info << "  " << ast_hashes.size() << " hash unique "
-             << (hash_unique == 1? "tree": "trees")
-             << " (" << retries << (retries == 1? " retry": " retries") << ")." << std::endl;
-        info << std::endl;
-        info << " failed runs: " << std::endl
-             << "   average tree size: " << avg(failed_ast_sizes) << std::endl
-             << "   average tree height: " << avg(failed_ast_heights) << std::endl
-             << "   max tree size: " << max(failed_ast_sizes) << std::endl
-             << "   max tree height: " << max(failed_ast_heights) << std::endl;
-        info << " passed runs: " << std::endl
-             << "   average tree size: " << avg(passed_ast_sizes) << std::endl
-             << "   average tree height: " << avg(passed_ast_heights) << std::endl
-             << "   max tree size: " << max(passed_ast_sizes) << std::endl
-             << "   max tree height: " << avg(passed_ast_heights) << std::endl;
-        return ret;
-      }
   };
 }

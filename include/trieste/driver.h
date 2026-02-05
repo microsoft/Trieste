@@ -116,9 +116,11 @@ namespace trieste
       bool test_failfast = false;
       test->add_flag("-f,--failfast", test_failfast, "Stop on first failure");
 
-      // Test passes in sequence
-      bool test_sequence = false; 
-      test->add_flag("--sequence", test_sequence, "Run all passes on generated tree starting from START");
+      bool test_sequence = false;
+      test->add_flag("--sequence", test_sequence, "Test sequence of passes on generated trees");
+
+      bool test_size_stats = false;
+      test->add_flag("--size_stats", test_size_stats, "Collect size statistics for ASTs");
 
       std::optional<size_t> test_max_retries = std::nullopt;
       test->add_option("-r,--max_retries", test_max_retries,
@@ -246,7 +248,10 @@ namespace trieste
         }
         else if (test_end_pass.empty())
         {
-          test_end_pass = test_start_pass;
+          if (test_sequence)
+            test_end_pass = pass_names_no_parse.back();
+          else
+            test_end_pass = test_start_pass;
         }
 
         Fuzzer fuzzer = Fuzzer(reader)
@@ -257,17 +262,15 @@ namespace trieste
           .start_index(reader.pass_index(test_start_pass))
           .end_index(reader.pass_index(test_end_pass))
           .start_seed(test_seed)
-          .bound_vars(bound_vars);
+          .bound_vars(bound_vars)
+          .test_sequence(test_sequence)
+          .size_stats(test_size_stats);
 
-        if(*entropy) 
-        { 
+        if(*entropy)
+        {
           return fuzzer.debug_entropy();
         }
-        else if (test_sequence) 
-        { 
-          return fuzzer.test_sequence();
-        }
-        else 
+        else
         {
           return fuzzer.test();
         }
