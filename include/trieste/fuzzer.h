@@ -101,6 +101,88 @@ namespace trieste
       }
     };
 
+    struct SequenceStats
+    {
+      size_t passes_run;
+      size_t seed_count;
+      size_t initial_hash_unique;
+      size_t total_failed;
+      size_t total_errors;
+      std::vector<size_t> changes_per_pass;
+      std::vector<size_t> error_sizes;
+      std::vector<size_t> error_heights;
+
+      SequenceStats(size_t passes_run, size_t seed_count)
+      : passes_run(passes_run), seed_count(seed_count), initial_hash_unique(0), total_failed(0), total_errors(0)
+      {}
+
+      void log(std::vector<Survivor>& survivors, bool size_stats)
+      {
+        size_t total_survivors = survivors.size();
+        size_t total_trivial = 0;
+
+        std::vector<size_t> sizes;
+        std::vector<size_t> heights;
+
+        for (auto& survivor : survivors)
+        {
+          logging::Trace() << "Survivor from seed " << survivor.original_seed
+                           << " with " << survivor.total_changes
+                           << " changes:" << std::endl
+                           << survivor.ast << "------------";
+
+          if (survivor.total_changes < passes_run)
+            total_trivial++;
+
+          if (size_stats)
+          {
+            sizes.push_back(survivor.ast->tree_size());
+            heights.push_back(survivor.ast->tree_height());
+          }
+      }
+
+      logging::Info info;
+      info << "  " << seed_count << " initial trees (" << initial_hash_unique
+           << " hash unique)." << std::endl;
+
+      if (total_failed > 0)
+        info << "  " << total_failed << " well-formedness failures"
+             << std::endl;
+
+      if (total_errors > 0)
+      {
+        info << "  " << total_errors << " stopped by errors" << std::endl;
+
+        if (size_stats)
+        {
+          info << "    average size: " << avg(error_sizes) << std::endl;
+          info << "    max size: " << max(error_sizes) << std::endl;
+          info << "    average height: " << avg(error_heights) << std::endl;
+          info << "    max height: " << max(error_heights) << std::endl;
+        }
+      }
+
+      info << "  " << total_survivors << " survivors ("
+           << (total_survivors * 100.0 / seed_count) << "%)." << std::endl;
+
+      if (total_trivial > 0)
+        info << "    " << total_trivial
+             << " with < 1 change per pass on average ("
+             << (total_trivial * 100.0 / seed_count) << "%)." << std::endl;
+
+      if (size_stats)
+      {
+        info << "    average size: " << avg(sizes) << std::endl;
+        info << "    max size: " << max(sizes) << std::endl;
+        info << "    average height: " << avg(heights) << std::endl;
+        info << "    max height: " << max(heights) << std::endl;
+      }
+
+      info << "  average changes per pass: " << avg(changes_per_pass)
+           << std::endl;
+    }
+    };
+
     enum RunResult
     {
       OK,
@@ -317,85 +399,6 @@ namespace trieste
       }
 
       return pass_stats;
-    }
-
-    void log_sequence_stats(
-      std::vector<Survivor>& survivors,
-      size_t& initial_hash_unique,
-      size_t& total_failed,
-      size_t& total_errors,
-      std::vector<size_t>& changes_per_pass,
-      std::vector<size_t>& error_sizes,
-      std::vector<size_t>& error_heights)
-    {
-      size_t total_survivors = survivors.size();
-      size_t total_trivial = 0;
-      const size_t passes_run = end_index_ - start_index_ + 1;
-
-      std::vector<size_t> sizes;
-      std::vector<size_t> heights;
-
-      for (auto& survivor : survivors)
-      {
-        logging::Trace() << "Survivor from seed " << survivor.original_seed
-                         << " with " << survivor.total_changes
-                         << " changes:" << std::endl
-                         << survivor.ast << "------------";
-
-        if (survivor.total_changes < passes_run)
-          total_trivial++;
-
-        if (size_stats_)
-        {
-          sizes.push_back(survivor.ast->tree_size());
-          heights.push_back(survivor.ast->tree_height());
-        }
-      }
-
-      logging::Info info;
-      info << "After full sequence from "
-           << passes_.at(start_index_ - 1)->name() << " to "
-           << passes_.at(end_index_ - 1)->name() << " (seed: " << start_seed_
-           << "):" << std::endl;
-
-      info << "  " << seed_count_ << " initial trees (" << initial_hash_unique
-           << " hash unique)." << std::endl;
-
-      if (total_failed > 0)
-        info << "  " << total_failed << " well-formedness failures"
-             << std::endl;
-
-      if (total_errors > 0)
-      {
-        info << "  " << total_errors << " stopped by errors" << std::endl;
-
-        if (size_stats_)
-        {
-          info << "    average size: " << avg(error_sizes) << std::endl;
-          info << "    max size: " << max(error_sizes) << std::endl;
-          info << "    average height: " << avg(error_heights) << std::endl;
-          info << "    max height: " << max(error_heights) << std::endl;
-        }
-      }
-
-      info << "  " << total_survivors << " survivors ("
-           << (total_survivors * 100.0 / seed_count_) << "%)." << std::endl;
-
-      if (total_trivial > 0)
-        info << "    " << total_trivial
-             << " with < 1 change per pass on average ("
-             << (total_trivial * 100.0 / seed_count_) << "%)." << std::endl;
-
-      if (size_stats_)
-      {
-        info << "    average size: " << avg(sizes) << std::endl;
-        info << "    max size: " << max(sizes) << std::endl;
-        info << "    average height: " << avg(heights) << std::endl;
-        info << "    max height: " << max(heights) << std::endl;
-      }
-
-      info << "  average changes per pass: " << avg(changes_per_pass)
-           << std::endl;
     }
 
     double calculate_entropy(std::vector<uint8_t>& byte_values) {
@@ -636,13 +639,9 @@ namespace trieste
         return 1;
       }
       WFContext context;
+      SequenceStats sequence_stats(end_index_ - start_index_ + 1, seed_count_);
       std::vector<Survivor> survivors;
 
-      size_t total_failed = 0;
-      size_t total_errors = 0;
-      size_t initial_hash_unique = 0;
-
-      std::vector<size_t> changes_per_pass;
       std::vector<size_t> error_sizes;
       std::vector<size_t> error_heights;
       int ret = 0;
@@ -696,19 +695,22 @@ namespace trieste
           if (failfast_) return ret;
         }
 
-        total_failed += pass_stats.failed_count;
-        total_errors += pass_stats.error_count;
-        changes_per_pass.push_back(pass_stats.change_count);
-
-        if (test_sequence_ && size_stats_)
+        if (test_sequence_)
         {
-          error_sizes.insert(error_sizes.end(), pass_stats.error_sizes.begin(), pass_stats.error_sizes.end());
-          error_heights.insert(error_heights.end(), pass_stats.error_heights.begin(), pass_stats.error_heights.end());
+          sequence_stats.total_failed += pass_stats.failed_count;
+          sequence_stats.total_errors += pass_stats.error_count;
+          sequence_stats.changes_per_pass.push_back(pass_stats.change_count);
+
+          if (size_stats_)
+          {
+            sequence_stats.error_sizes.insert(sequence_stats.error_sizes.end(), pass_stats.error_sizes.begin(), pass_stats.error_sizes.end());
+            sequence_stats.error_heights.insert(sequence_stats.error_heights.end(), pass_stats.error_heights.begin(), pass_stats.error_heights.end());
+          }
         }
 
         size_t hash_unique = seed_context.ast_hashes.size();
 
-        if (initial_hash_unique == 0) initial_hash_unique = hash_unique;
+        if (sequence_stats.initial_hash_unique == 0) sequence_stats.initial_hash_unique = hash_unique;
 
         if (hash_unique > 0)
         {
@@ -728,15 +730,12 @@ namespace trieste
 
       if (test_sequence_)
       {
-        log_sequence_stats(
-          survivors,
-          initial_hash_unique,
-          total_failed,
-          total_errors,
-          changes_per_pass,
-          error_sizes,
-          error_heights
-        );
+        logging::Info() << "After full sequence from "
+                        << passes_.at(start_index_ - 1)->name() << " to "
+                        << passes_.at(end_index_ - 1)->name() << " (seed: " << start_seed_
+                        << "):";
+
+        sequence_stats.log(survivors, size_stats_);
       }
 
       return ret;
