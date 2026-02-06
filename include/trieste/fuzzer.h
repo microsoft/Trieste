@@ -686,9 +686,6 @@ namespace trieste
           pass_stats = test_pass_with_survivors(pass, survivors);
         }
 
-        if (test_sequence_)
-          survivors = pass_stats.survivors;
-
         if (pass_stats.failed_count > 0)
         {
           ret = 1;
@@ -697,6 +694,8 @@ namespace trieste
 
         if (test_sequence_)
         {
+          survivors = pass_stats.survivors;
+
           sequence_stats.total_failed += pass_stats.failed_count;
           sequence_stats.total_errors += pass_stats.error_count;
           sequence_stats.changes_per_pass.push_back(pass_stats.change_count);
