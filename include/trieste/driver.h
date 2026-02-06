@@ -120,7 +120,14 @@ namespace trieste
       test->add_flag("--sequence", test_sequence, "Test sequence of passes on generated trees");
 
       bool test_size_stats = false;
-      test->add_flag("--size_stats", test_size_stats, "Collect size statistics for ASTs");
+      test->add_flag("--size_stats", test_size_stats, "Collect size statistics for ASTs (defaults to log level Info)");
+
+      test->callback([&]() {
+        if (test_size_stats && logging::detail::default_report_level == logging::detail::LogLevel::Uninitialized)
+        {
+          logging::set_log_level_from_string("Info");
+        }
+      });
 
       std::optional<size_t> test_max_retries = std::nullopt;
       test->add_option("-r,--max_retries", test_max_retries,
