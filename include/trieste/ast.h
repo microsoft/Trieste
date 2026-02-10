@@ -484,6 +484,20 @@ namespace trieste
       return children.insert(pos, first, last);
     }
 
+    NodeIt insert(NodeIt pos, size_t count, Token token)
+    {
+      if (count == 0)
+        return pos;
+
+      std::vector<Node> nodes(count, token);
+      for (Node& n : nodes)
+      {
+        n->parent_ = this;
+        n->add_flags();
+      }
+      return children.insert(pos, nodes.begin(), nodes.end());
+    }
+
     Node scope()
     {
       auto p = parent_;
