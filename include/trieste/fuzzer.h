@@ -420,18 +420,18 @@ namespace trieste
       return entropy;
     }
 
+    static size_t sum(std::vector<size_t>& v) {
+      return std::accumulate(v.begin(), v.end(), 0);
+    }
+
     static size_t avg(std::vector<size_t>& v) {
       if (v.empty()) return 0;
-      return std::accumulate(v.begin(), v.end(), 0.0) / v.size();
+      return sum(v) / v.size();
     }
 
     static size_t max(std::vector<size_t>& v) {
       if (v.empty()) return 0;
       return *std::max_element(v.begin(), v.end());
-    }
-
-    static size_t sum(std::vector<size_t>& v) {
-      return std::accumulate(v.begin(), v.end(), 0.0);
     }
 
   public:
@@ -642,8 +642,6 @@ namespace trieste
       SequenceStats sequence_stats(end_index_ - start_index_ + 1, seed_count_);
       std::vector<Survivor> survivors;
 
-      std::vector<size_t> error_sizes;
-      std::vector<size_t> error_heights;
       int ret = 0;
 
       for (size_t i = start_index_; i <= end_index_; i++)
