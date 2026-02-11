@@ -421,7 +421,7 @@ namespace trieste
     }
 
     static size_t sum(std::vector<size_t>& v) {
-      return std::accumulate(v.begin(), v.end(), 0);
+      return std::accumulate(v.begin(), v.end(), (size_t) 0);
     }
 
     static size_t avg(std::vector<size_t>& v) {
