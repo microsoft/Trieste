@@ -103,17 +103,17 @@ namespace trieste
 
     struct SequenceStats
     {
-      size_t passes_run;
-      size_t seed_count;
-      size_t initial_hash_unique;
-      size_t total_failed;
-      size_t total_errors;
-      std::vector<size_t> changes_per_pass;
-      std::vector<size_t> error_sizes;
-      std::vector<size_t> error_heights;
+      size_t passes_run_;
+      size_t seed_count_;
+      size_t initial_hash_unique_;
+      size_t total_failed_;
+      size_t total_errors_;
+      std::vector<size_t> changes_per_pass_;
+      std::vector<size_t> error_sizes_;
+      std::vector<size_t> error_heights_;
 
       SequenceStats(size_t passes_run, size_t seed_count)
-      : passes_run(passes_run), seed_count(seed_count), initial_hash_unique(0), total_failed(0), total_errors(0)
+      : passes_run_(passes_run), seed_count_(seed_count), initial_hash_unique_(0), total_failed_(0), total_errors_(0)
       {}
 
       void log(std::vector<Survivor>& survivors, bool size_stats)
@@ -131,7 +131,7 @@ namespace trieste
                            << " changes:" << std::endl
                            << survivor.ast << "------------";
 
-          if (survivor.total_changes < passes_run)
+          if (survivor.total_changes < passes_run_)
             total_trivial++;
 
           if (size_stats)
@@ -142,33 +142,33 @@ namespace trieste
       }
 
       logging::Info info;
-      info << "  " << seed_count << " initial trees (" << initial_hash_unique
+      info << "  " << seed_count_ << " initial trees (" << initial_hash_unique_
            << " hash unique)." << std::endl;
 
-      if (total_failed > 0)
-        info << "  " << total_failed << " well-formedness failures"
+      if (total_failed_ > 0)
+        info << "  " << total_failed_ << " well-formedness failures"
              << std::endl;
 
-      if (total_errors > 0)
+      if (total_errors_ > 0)
       {
-        info << "  " << total_errors << " stopped by errors" << std::endl;
+        info << "  " << total_errors_ << " stopped by errors" << std::endl;
 
         if (size_stats)
         {
-          info << "    average size: " << avg(error_sizes) << std::endl;
-          info << "    max size: " << max(error_sizes) << std::endl;
-          info << "    average height: " << avg(error_heights) << std::endl;
-          info << "    max height: " << max(error_heights) << std::endl;
+          info << "    average size: " << avg(error_sizes_) << std::endl;
+          info << "    max size: " << max(error_sizes_) << std::endl;
+          info << "    average height: " << avg(error_heights_) << std::endl;
+          info << "    max height: " << max(error_heights_) << std::endl;
         }
       }
 
       info << "  " << total_survivors << " survivors ("
-           << (total_survivors * 100.0 / seed_count) << "%)." << std::endl;
+           << (total_survivors * 100.0 / seed_count_) << "%)." << std::endl;
 
       if (total_trivial > 0)
         info << "    " << total_trivial
              << " with < 1 change per pass on average ("
-             << (total_trivial * 100.0 / seed_count) << "%)." << std::endl;
+             << (total_trivial * 100.0 / seed_count_) << "%)." << std::endl;
 
       if (size_stats)
       {
@@ -178,7 +178,7 @@ namespace trieste
         info << "    max height: " << max(heights) << std::endl;
       }
 
-      info << "  average changes per pass: " << avg(changes_per_pass)
+      info << "  average changes per pass: " << avg(changes_per_pass_)
            << std::endl;
     }
     };
@@ -694,20 +694,20 @@ namespace trieste
         {
           survivors = pass_stats.survivors;
 
-          sequence_stats.total_failed += pass_stats.failed_count;
-          sequence_stats.total_errors += pass_stats.error_count;
-          sequence_stats.changes_per_pass.push_back(pass_stats.change_count);
+          sequence_stats.total_failed_ += pass_stats.failed_count;
+          sequence_stats.total_errors_ += pass_stats.error_count;
+          sequence_stats.changes_per_pass_.push_back(pass_stats.change_count);
 
           if (size_stats_)
           {
-            sequence_stats.error_sizes.insert(sequence_stats.error_sizes.end(), pass_stats.error_sizes.begin(), pass_stats.error_sizes.end());
-            sequence_stats.error_heights.insert(sequence_stats.error_heights.end(), pass_stats.error_heights.begin(), pass_stats.error_heights.end());
+            sequence_stats.error_sizes_.insert(sequence_stats.error_sizes_.end(), pass_stats.error_sizes.begin(), pass_stats.error_sizes.end());
+            sequence_stats.error_heights_.insert(sequence_stats.error_heights_.end(), pass_stats.error_heights.begin(), pass_stats.error_heights.end());
           }
         }
 
         size_t hash_unique = seed_context.ast_hashes.size();
 
-        if (sequence_stats.initial_hash_unique == 0) sequence_stats.initial_hash_unique = hash_unique;
+        if (sequence_stats.initial_hash_unique_ == 0) sequence_stats.initial_hash_unique_ = hash_unique;
 
         if (hash_unique > 0)
         {
