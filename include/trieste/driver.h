@@ -116,6 +116,19 @@ namespace trieste
       bool test_failfast = false;
       test->add_flag("-f,--failfast", test_failfast, "Stop on first failure");
 
+      bool test_sequence = false;
+      test->add_flag("--sequence", test_sequence, "Test sequence of passes on generated trees");
+
+      bool test_size_stats = false;
+      test->add_flag("--size_stats", test_size_stats, "Collect size statistics for ASTs (defaults to log level Info)");
+
+      test->callback([&]() {
+        if (test_size_stats && logging::detail::default_report_level == logging::detail::LogLevel::Uninitialized)
+        {
+          logging::set_log_level_from_string("Info");
+        }
+      });
+
       std::optional<size_t> test_max_retries = std::nullopt;
       test->add_option("-r,--max_retries", test_max_retries,
                        "Maximum number of retries for finding unique trees");
@@ -242,7 +255,10 @@ namespace trieste
         }
         else if (test_end_pass.empty())
         {
-          test_end_pass = test_start_pass;
+          if (test_sequence)
+            test_end_pass = pass_names_no_parse.back();
+          else
+            test_end_pass = test_start_pass;
         }
 
         Fuzzer fuzzer = Fuzzer(reader)
@@ -253,9 +269,18 @@ namespace trieste
           .start_index(reader.pass_index(test_start_pass))
           .end_index(reader.pass_index(test_end_pass))
           .start_seed(test_seed)
-          .bound_vars(bound_vars);
+          .bound_vars(bound_vars)
+          .test_sequence(test_sequence)
+          .size_stats(test_size_stats);
 
-        return *entropy ? fuzzer.debug_entropy() : fuzzer.test();
+        if(*entropy)
+        {
+          return fuzzer.debug_entropy();
+        }
+        else
+        {
+          return fuzzer.test();
+        }
       }
       else if (*check)
       {
