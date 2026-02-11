@@ -21,7 +21,7 @@ int main(int argc, char** argv)
   uint32_t count = 100;
   app.add_option("-c,--count", count, "Number of seed to test");
 
-  bool sequence = false; 
+  bool sequence = false;
   app.add_flag("--sequence", sequence, "Test passes in sequence");
 
   bool failfast = false;
@@ -60,7 +60,10 @@ int main(int argc, char** argv)
     fuzzer = Fuzzer(json::writer("fuzzer"), reader.parser().generators());
   }
 
-  return sequence 
-    ? fuzzer.start_seed(seed).seed_count(count).failfast(failfast).test_sequence()
-    : fuzzer.start_seed(seed).seed_count(count).failfast(failfast).test();
+  return fuzzer.start_seed(seed)
+    .seed_count(count)
+    .failfast(failfast)
+    .max_retries(count * 2)
+    .test_sequence(sequence)
+    .test();
 }

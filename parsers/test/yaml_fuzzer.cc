@@ -68,7 +68,7 @@ int main(int argc, char** argv)
   else if (transform == "to_json")
   {
     fuzzer = Fuzzer(yaml::to_json(), reader.parser().generators());
-  } 
+  }
   else if (transform == "all")
   {
     std::vector<Pass> passes = reader.passes();
@@ -77,7 +77,10 @@ int main(int argc, char** argv)
     fuzzer = Fuzzer(passes, reader.parser().wf(), reader.parser().generators());
   }
 
-  return sequence 
-    ? fuzzer.start_seed(seed).seed_count(count).failfast(failfast).test_sequence() 
-    : fuzzer.start_seed(seed).seed_count(count).failfast(failfast).test();
+  return fuzzer.start_seed(seed)
+    .seed_count(count)
+    .failfast(failfast)
+    .max_retries(count * 2)
+    .test_sequence(sequence)
+    .test();
 }
