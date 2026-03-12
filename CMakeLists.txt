@@ -62,7 +62,7 @@ FetchContent_MakeAvailable_ExcludeFromAll(snmalloc)
 FetchContent_Declare(
   re2
   GIT_REPOSITORY https://github.com/google/re2
-  GIT_TAG 2022-12-01
+  GIT_TAG 2025-11-05
   GIT_SHALLOW TRUE
 )
 
