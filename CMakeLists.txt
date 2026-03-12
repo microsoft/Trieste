@@ -34,19 +34,32 @@ set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
 
 set(TRIESTE_SANITIZE "" CACHE STRING "Argument to pass to sanitize (disabled by default)")
 
-# Used to provide
-#  FetchContent_MakeAvailable_ExcludeFromAll
-FetchContent_Declare(
-    cmake_utils
-    GIT_REPOSITORY https://github.com/mjp41/cmake_utils
-    GIT_TAG 2bf98b5773ea7282197c823e205547d8c2e323c0
-    GIT_SHALLOW FALSE
-)
+# FetchContent_MakeAvailable with EXCLUDE_FROM_ALL support.
+# CMake 3.28+ supports EXCLUDE_FROM_ALL natively in FetchContent_Declare /
+# FetchContent_MakeAvailable. For older versions, fall back to the deprecated
+# FetchContent_Populate + add_subdirectory(EXCLUDE_FROM_ALL) pattern.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.28")
+  macro(FetchContent_Declare_ExcludeFromAll name)
+    FetchContent_Declare(${name} ${ARGN} EXCLUDE_FROM_ALL)
+  endmacro()
+  function(FetchContent_MakeAvailable_ExcludeFromAll name)
+    FetchContent_MakeAvailable(${name})
+  endfunction()
+else()
+  macro(FetchContent_Declare_ExcludeFromAll name)
+    FetchContent_Declare(${name} ${ARGN})
+  endmacro()
+  function(FetchContent_MakeAvailable_ExcludeFromAll name)
+    FetchContent_GetProperties(${name})
+    string(TOLOWER "${name}" nameLower)
+    if(NOT ${nameLower}_POPULATED)
+      FetchContent_Populate(${name})
+      add_subdirectory(${${nameLower}_SOURCE_DIR} ${${nameLower}_BINARY_DIR} EXCLUDE_FROM_ALL)
+    endif()
+  endfunction()
+endif()
 
-FetchContent_MakeAvailable(cmake_utils)
-
-
-FetchContent_Declare(
+FetchContent_Declare_ExcludeFromAll(
   snmalloc
   GIT_REPOSITORY https://github.com/microsoft/snmalloc
   GIT_TAG b8e28be14b3fd98e27c2fe87c0296570f6d3990e
@@ -59,7 +72,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable_ExcludeFromAll(snmalloc)
 
-FetchContent_Declare(
+FetchContent_Declare_ExcludeFromAll(
   re2
   GIT_REPOSITORY https://github.com/google/re2
   GIT_TAG 2025-11-05
@@ -68,7 +81,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable_ExcludeFromAll(re2)
 
-FetchContent_Declare(
+FetchContent_Declare_ExcludeFromAll(
   cli11
   GIT_REPOSITORY https://github.com/CLIUtils/CLI11
   GIT_TAG 4160d259d961cd393fd8d67590a8c7d210207348
