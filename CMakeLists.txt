@@ -49,7 +49,7 @@ FetchContent_MakeAvailable(cmake_utils)
 FetchContent_Declare(
   snmalloc
   GIT_REPOSITORY https://github.com/microsoft/snmalloc
-  GIT_TAG 4d232d5459958f84be067a16d48ef4e2af705ae7
+  GIT_TAG 1c7a93aad54198423944a786da9dad3962134f75
   # per https://gitlab.kitware.com/cmake/cmake/-/issues/17770, do not use GIT_SHALLOW here
   # or it will silently break new builds days later, once the commit hash above no longer
   # matches a named branch, like main.
