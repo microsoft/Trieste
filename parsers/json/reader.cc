@@ -28,7 +28,6 @@ namespace
     return changes;
   }
 
-
   // clang-format off
   inline const auto wf_groups =
     (Top <<= wf_value_tokens++[1])

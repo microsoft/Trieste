@@ -31,10 +31,12 @@ int main(int argc, char** argv)
     return app.exit(e);
   }
 
-  Checker reader_checker =
-    Checker(json::reader()).check_against_wf(check_against_wf).ignored_tokens(ignored_tokens);
-  Checker writer_checker =
-    Checker(json::writer("checker")).check_against_wf(check_against_wf).ignored_tokens(ignored_tokens);
+  Checker reader_checker = Checker(json::reader())
+                             .check_against_wf(check_against_wf)
+                             .ignored_tokens(ignored_tokens);
+  Checker writer_checker = Checker(json::writer("checker"))
+                             .check_against_wf(check_against_wf)
+                             .ignored_tokens(ignored_tokens);
 
   return reader_checker.check() + writer_checker.check();
 }

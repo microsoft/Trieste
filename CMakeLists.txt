@@ -49,7 +49,7 @@ FetchContent_MakeAvailable(cmake_utils)
 FetchContent_Declare(
   snmalloc
   GIT_REPOSITORY https://github.com/microsoft/snmalloc
-  GIT_TAG b8e28be14b3fd98e27c2fe87c0296570f6d3990e
+  GIT_TAG 4d232d5459958f84be067a16d48ef4e2af705ae7
   # per https://gitlab.kitware.com/cmake/cmake/-/issues/17770, do not use GIT_SHALLOW here
   # or it will silently break new builds days later, once the commit hash above no longer
   # matches a named branch, like main.
@@ -186,6 +186,13 @@ export(EXPORT ${PROJECT_NAME}_Targets
 
 # Register package in the User Package Registry
 export(PACKAGE trieste)
+
+# #############################################
+# # Formatting targets
+clangformat_targets(
+  VERSION 18
+  INCLUDE_PATTERNS include/*.h include/*.cc parsers/*.cc parsers/*.h samples/*.cc samples/*.h test/*.cc test/*.h
+)
 
 # #############################################
 # # Add core Trieste tests

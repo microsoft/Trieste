@@ -5,50 +5,50 @@
 namespace
 {
   bool is_space(char c)
+  {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+  }
+
+  void escape_char(std::ostream& os, char c)
+  {
+    switch (c)
     {
-      return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+      case '\n':
+        os << "\\n";
+        break;
+
+      case '\r':
+        os << "\\r";
+        break;
+
+      case '\b':
+        os << "\\b";
+        break;
+
+      case '\f':
+        os << "\\f";
+        break;
+
+      case '\t':
+        os << "\\t";
+        break;
+
+      case ' ':
+      case '/':
+        os << c;
+        break;
+
+      default:
+        os << "\\" << c;
+        break;
     }
-  
-    void escape_char(std::ostream& os, char c)
-    {
-      switch (c)
-      {
-        case '\n':
-          os << "\\n";
-          break;
-
-        case '\r':
-          os << "\\r";
-          break;
-
-        case '\b':
-          os << "\\b";
-          break;
-
-        case '\f':
-          os << "\\f";
-          break;
-
-        case '\t':
-          os << "\\t";
-          break;
-
-        case ' ':
-        case '/':
-          os << c;
-          break;
-
-        default:
-          os << "\\" << c;
-          break;
-      }
-    }
+  }
 }
 
 namespace trieste
 {
   namespace yaml
-  { 
+  {
     using namespace trieste;
 
     std::ostream&

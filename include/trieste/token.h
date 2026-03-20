@@ -185,7 +185,8 @@ namespace trieste
   // Special tokens for error handling
   inline const auto Invalid = TokenDef("invalid", flag::internal);
   inline const auto Error = TokenDef("error", flag::internal);
-  inline const auto ErrorMsg = TokenDef("errormsg", flag::print | flag::internal);
+  inline const auto ErrorMsg =
+    TokenDef("errormsg", flag::print | flag::internal);
   inline const auto ErrorAst = TokenDef("errorast", flag::internal);
 
   // Special tokens for reified patterns

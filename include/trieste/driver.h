@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "fuzzer.h"
 #include "checker.h"
+#include "fuzzer.h"
 #include "trieste.h"
 
 #include <CLI/CLI.hpp>
@@ -69,7 +69,9 @@ namespace trieste
 
       std::string language_name = reader.language_name();
       build->add_option(
-        "-n,--language_name", language_name, "Language name to use for the output file.");
+        "-n,--language_name",
+        language_name,
+        "Language name to use for the output file.");
 
       std::filesystem::path dump_passes;
       build->add_option(
@@ -89,7 +91,8 @@ namespace trieste
       uint32_t test_seed = std::random_device()();
       test->add_option("-s,--seed", test_seed, "Random seed for testing");
 
-      auto pass_names_no_parse = std::vector(pass_names.begin() + 1, pass_names.end());
+      auto pass_names_no_parse =
+        std::vector(pass_names.begin() + 1, pass_names.end());
 
       std::string test_start_pass;
       test->add_option("start", test_start_pass, "Start at this pass.")
@@ -117,20 +120,23 @@ namespace trieste
       test->add_flag("-f,--failfast", test_failfast, "Stop on first failure");
 
       std::optional<size_t> test_max_retries = std::nullopt;
-      test->add_option("-r,--max_retries", test_max_retries,
-                       "Maximum number of retries for finding unique trees");
+      test->add_option(
+        "-r,--max_retries",
+        test_max_retries,
+        "Maximum number of retries for finding unique trees");
 
       auto bound_vars = true;
-      test->add_option("--gen_bound", bound_vars,
-                       "Generate bound variable names if possible");
+      test->add_option(
+        "--gen_bound", bound_vars, "Generate bound variable names if possible");
 
       // Subcommand to test entropy of random number generation.
-      auto entropy = test->add_subcommand("debug_entropy",
-                                          "Test entropy of random number generation, using seed_count seeds and max_depth warm-up");
+      auto entropy = test->add_subcommand(
+        "debug_entropy",
+        "Test entropy of random number generation, using seed_count seeds and "
+        "max_depth warm-up");
 
       // Checker command line options.
-      auto check = app.add_subcommand("check",
-                                      "Check patterns for bugs");
+      auto check = app.add_subcommand("check", "Check patterns for bugs");
 
       std::string check_start_pass;
       check->add_option("start", check_start_pass, "Start at this pass.")
@@ -151,13 +157,18 @@ namespace trieste
         ->check(logging::set_log_level_from_string);
 
       bool check_wf = false;
-      check->add_flag("-w", check_wf, "Check patterns for tokens that are not mentioned in well-formedness rules.");
+      check->add_flag(
+        "-w",
+        check_wf,
+        "Check patterns for tokens that are not mentioned in well-formedness "
+        "rules.");
 
       std::vector<std::string> ignored_tokens;
       check->add_option(
         "-i,--ignore_token",
         ignored_tokens,
-        "Ignore this token when checking patterns against well-formedness rules.");
+        "Ignore this token when checking patterns against well-formedness "
+        "rules.");
 
       try
       {
@@ -189,9 +200,9 @@ namespace trieste
 
           if (view.compare(0, pos, reader.language_name()) != 0)
           {
-            logging::Debug() << "File " << path
-                             << " does not start with the language name \""
-                             << reader.language_name() << "\"" << std::endl;
+            logging::Debug()
+              << "File " << path << " does not start with the language name \""
+              << reader.language_name() << "\"" << std::endl;
           }
           reader.start_pass(pass).offset(pos2 + 1);
         }
@@ -245,15 +256,17 @@ namespace trieste
           test_end_pass = test_start_pass;
         }
 
-        Fuzzer fuzzer = Fuzzer(reader)
-          .max_retries(test_max_retries? *test_max_retries: test_seed_count * 2)
-          .max_depth(test_max_depth)
-          .failfast(test_failfast)
-          .seed_count(test_seed_count)
-          .start_index(reader.pass_index(test_start_pass))
-          .end_index(reader.pass_index(test_end_pass))
-          .start_seed(test_seed)
-          .bound_vars(bound_vars);
+        Fuzzer fuzzer =
+          Fuzzer(reader)
+            .max_retries(
+              test_max_retries ? *test_max_retries : test_seed_count * 2)
+            .max_depth(test_max_depth)
+            .failfast(test_failfast)
+            .seed_count(test_seed_count)
+            .start_index(reader.pass_index(test_start_pass))
+            .end_index(reader.pass_index(test_end_pass))
+            .start_seed(test_seed)
+            .bound_vars(bound_vars);
 
         return *entropy ? fuzzer.debug_entropy() : fuzzer.test();
       }
@@ -276,10 +289,10 @@ namespace trieste
         }
 
         auto checker = Checker(reader)
-          .start_index(reader.pass_index(check_start_pass))
-          .end_index(reader.pass_index(check_end_pass))
-          .check_against_wf(check_wf)
-          .ignored_tokens(ignored_tokens);
+                         .start_index(reader.pass_index(check_start_pass))
+                         .end_index(reader.pass_index(check_end_pass))
+                         .check_against_wf(check_wf)
+                         .ignored_tokens(ignored_tokens);
 
         return checker.check();
       }

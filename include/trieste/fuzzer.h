@@ -22,20 +22,23 @@ namespace trieste
     size_t start_index_;
     size_t end_index_;
     size_t max_retries_;
-    bool bound_vars_; 
+    bool bound_vars_;
 
-    double calculate_entropy(std::vector<uint8_t>& byte_values) {
+    double calculate_entropy(std::vector<uint8_t>& byte_values)
+    {
       std::map<uint8_t, double> freq;
       size_t total = byte_values.size();
 
       // Count occurrences of each byte value
-      for (uint8_t byte : byte_values) {
+      for (uint8_t byte : byte_values)
+      {
         freq[byte]++;
       }
 
       // Compute probabilities and entropy
       double entropy = 0.0;
-      for (const auto& [byte, count] : freq) {
+      for (const auto& [byte, count] : freq)
+      {
         double p = count / total;
         entropy -= p * std::log2(p);
       }
@@ -158,58 +161,76 @@ namespace trieste
       return *this;
     }
 
-    int debug_entropy() {
+    int debug_entropy()
+    {
       const uint8_t NO_BYTES = 4;
       const size_t no_samples = max_depth_;
       std::vector<std::vector<uint32_t>> seed_samples;
-      for (size_t seed = start_seed_; seed < start_seed_ + seed_count_; seed++) {
+      for (size_t seed = start_seed_; seed < start_seed_ + seed_count_; seed++)
+      {
         Rand rand = Rand(seed);
         std::vector<uint32_t> samples;
-        for (size_t count = 0; count < no_samples; count++) {
+        for (size_t count = 0; count < no_samples; count++)
+        {
           samples.push_back(rand());
         }
         seed_samples.push_back(samples);
       }
 
-      for (size_t count = 0; count < no_samples; count++) {
+      for (size_t count = 0; count < no_samples; count++)
+      {
         std::vector<uint8_t> byte_samples[NO_BYTES];
-        for (size_t i = 0; i < seed_count_; i++) {
+        for (size_t i = 0; i < seed_count_; i++)
+        {
           uint32_t sample = seed_samples.at(i).at(count);
-          for (int b = 0; b < NO_BYTES; b++) {
+          for (int b = 0; b < NO_BYTES; b++)
+          {
             uint8_t byte = (sample >> (8 * b)) & 0xFF;
             byte_samples[b].push_back(byte);
           }
         }
 
-        std::string nth = count % 10 == 0 ? "1st" : count % 10 == 1 ? "2nd" : count % 10 == 2 ? "3rd" : std::to_string(count + 1) + "th";
+        std::string nth = count % 10 == 0 ? "1st" :
+          count % 10 == 1                 ? "2nd" :
+          count % 10 == 2                 ? "3rd" :
+                                            std::to_string(count + 1) + "th";
 
-        std::cout << "Entropy when sampling the " << nth << " value from " << seed_count_ << " adjacent starting seeds" << std::endl;
-        for (int b = 0; b < NO_BYTES; b++) {
+        std::cout << "Entropy when sampling the " << nth << " value from "
+                  << seed_count_ << " adjacent starting seeds" << std::endl;
+        for (int b = 0; b < NO_BYTES; b++)
+        {
           double entropy = calculate_entropy(byte_samples[b]);
-          std::cout << "== Entropy for byte " << b << ": " << entropy << " bits" << std::endl;
+          std::cout << "== Entropy for byte " << b << ": " << entropy << " bits"
+                    << std::endl;
         }
       }
 
       std::vector<uint8_t> byte_samples[NO_BYTES];
       Rand rand = Rand(start_seed_);
 
-      for (size_t count = 0; count < seed_count_; count++) {
+      for (size_t count = 0; count < seed_count_; count++)
+      {
         uint32_t sample = rand();
-        for (int b = 0; b < NO_BYTES; b++) {
+        for (int b = 0; b < NO_BYTES; b++)
+        {
           uint8_t byte = (sample >> (8 * b)) & 0xFF;
           byte_samples[b].push_back(byte);
         }
       }
 
-      std::cout << "Entropy when sampling " << seed_count_ << " values from the first seed" << std::endl;
-      for (int b = 0; b < NO_BYTES; b++) {
+      std::cout << "Entropy when sampling " << seed_count_
+                << " values from the first seed" << std::endl;
+      for (int b = 0; b < NO_BYTES; b++)
+      {
         double entropy = calculate_entropy(byte_samples[b]);
-        std::cout << "== Entropy for byte " << b << ": " << entropy << " bits" << std::endl;
+        std::cout << "== Entropy for byte " << b << ": " << entropy << " bits"
+                  << std::endl;
       }
       return 0;
     }
 
-    Fuzzer& bound_vars(bool gen_bound_vars) {
+    Fuzzer& bound_vars(bool gen_bound_vars)
+    {
       bound_vars_ = gen_bound_vars;
       return *this;
     }
@@ -249,10 +270,13 @@ namespace trieste
         {
           size_t actual_seed = seed;
 
-          auto ast = prev.gen(generators_, actual_seed, max_depth_, bound_vars_);
+          auto ast =
+            prev.gen(generators_, actual_seed, max_depth_, bound_vars_);
 
           size_t hash = ast->hash();
-          while (ast_hashes.find(hash) != ast_hashes.end() && retries < max_retries_) {
+          while (ast_hashes.find(hash) != ast_hashes.end() &&
+                 retries < max_retries_)
+          {
             actual_seed = retry_seed;
             ast = prev.gen(generators_, actual_seed, max_depth_, bound_vars_);
             hash = ast->hash();
@@ -263,8 +287,8 @@ namespace trieste
           ast_hashes.insert(hash);
 
           logging::Trace() << "============" << std::endl
-                           << "Pass: " << pass->name() << ", seed: " << actual_seed
-                           << std::endl
+                           << "Pass: " << pass->name()
+                           << ", seed: " << actual_seed << std::endl
                            << "------------" << std::endl
                            << ast << "------------" << std::endl;
 
@@ -282,11 +306,13 @@ namespace trieste
               // Pass added error nodes, so doesn't need to satisfy wf.
               error_count++;
               Node error = errors.front();
-              for (auto& c : *error) {
-                  if(c->type() == ErrorMsg) {
-                      error_msgs[std::string(c->location().view())]++;
-                      break;
-                  }
+              for (auto& c : *error)
+              {
+                if (c->type() == ErrorMsg)
+                {
+                  error_msgs[std::string(c->location().view())]++;
+                  break;
+                }
               }
               continue;
             }
@@ -301,10 +327,11 @@ namespace trieste
               // We haven't printed what failed with Trace earlier, so do it
               // now. Regenerate the start Ast for the error message.
               err << "============" << std::endl
-                  << "Pass: " << pass->name() << ", seed: " << actual_seed << std::endl
-                  << "------------" << std::endl
-                  << prev.gen(generators_, actual_seed, max_depth_, bound_vars_) << "------------"
+                  << "Pass: " << pass->name() << ", seed: " << actual_seed
                   << std::endl
+                  << "------------" << std::endl
+                  << prev.gen(generators_, actual_seed, max_depth_, bound_vars_)
+                  << "------------" << std::endl
                   << new_ast;
             }
 
@@ -318,29 +345,35 @@ namespace trieste
             if (failfast_)
               return ret;
           }
-          if (ok) passed_count++;
-          if (ok && changes == 0) trivial_count++;
+          if (ok)
+            passed_count++;
+          if (ok && changes == 0)
+            trivial_count++;
         }
 
         logging::Info info;
 
-        if (failed_count > 0) info << "  not WF " << failed_count << " times." << std::endl;
+        if (failed_count > 0)
+          info << "  not WF " << failed_count << " times." << std::endl;
 
-        if (error_count > 0) info << "  errored " << error_count << " times." << std::endl;
-        for (auto [msg, count] : error_msgs) {
+        if (error_count > 0)
+          info << "  errored " << error_count << " times." << std::endl;
+        for (auto [msg, count] : error_msgs)
+        {
           info << "    " << msg << ": " << count << std::endl;
         }
 
         if ((error_count > 0 && passed_count > 0) || trivial_count > 0)
         {
           info << "  passed " << passed_count << " times." << std::endl;
-          if (trivial_count > 0) info << "    trivial: " << trivial_count << std::endl;
+          if (trivial_count > 0)
+            info << "    trivial: " << trivial_count << std::endl;
         }
 
         size_t hash_unique = ast_hashes.size();
         info << "  " << ast_hashes.size() << " hash unique "
-             << (hash_unique == 1? "tree": "trees")
-             << " (" << retries << (retries == 1? " retry": " retries") << ")." << std::endl;
+             << (hash_unique == 1 ? "tree" : "trees") << " (" << retries
+             << (retries == 1 ? " retry" : " retries") << ")." << std::endl;
 
         context.pop_front();
         context.pop_front();
