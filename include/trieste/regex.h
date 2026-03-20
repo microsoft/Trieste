@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "logging.h"
 #include "ast.h"
+#include "logging.h"
 
 #include <re2/re2.h>
 

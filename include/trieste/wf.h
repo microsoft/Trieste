@@ -71,7 +71,7 @@ namespace trieste
         gen_bound_vars(gen_bound_vars_)
       {
         // Warm up RNG
-        for(int i = 0; i < 10; i++)
+        for (int i = 0; i < 10; i++)
           rand();
       }
 
@@ -167,8 +167,8 @@ namespace trieste
       {
         return rand();
       }
-      
-      private:
+
+    private:
       Nodes get_symbols(Token type, Node scope)
       {
         Nodes symbols;
@@ -178,8 +178,7 @@ namespace trieste
           scope->get_symbols(symbols, [&](auto& n) {
             auto it = binding_keys.find(n->type());
             return (
-              n->type() & flag::lookup &&
-              it != binding_keys.end() && 
+              n->type() & flag::lookup && it != binding_keys.end() &&
               contains_type(it->second.first, type));
           });
         }
@@ -212,35 +211,35 @@ namespace trieste
         // If the node we are generating is the binding key of the
         // parent node, check that it is not the binding key itself
         auto key_field_index = binding_keys[parent->type()].second;
-        auto child_index = parent->size() - 1; // child is already added 
-        return key_field_index != child_index || !(parent->type() & flag::shadowing);
+        auto child_index = parent->size() - 1; // child is already added
+        return key_field_index != child_index ||
+          !(parent->type() & flag::shadowing);
       }
 
-      public:
-        Location location(Node parent, Node child)
-        {
-          auto type = child->type();
-          Nodes symbols = get_symbols(type, parent->scope());
+    public:
+      Location location(Node parent, Node child)
+      {
+        auto type = child->type();
+        Nodes symbols = get_symbols(type, parent->scope());
 
-          // Ensure we don't always use bindings when they exist by adding +1
-          auto rand_symbol = static_cast<size_t>(next() % (symbols.size() + 1));
-          // Prefer location from a symbol table 
-          if (rand_symbol < symbols.size() && should_gen_bound(parent, type))
-          {
-            auto key_index = binding_keys[type].second;
-            return (symbols[rand_symbol]->at(key_index))->location();
-          }
-          // Use fresh location
-          return gloc(rand, child);
+        // Ensure we don't always use bindings when they exist by adding +1
+        auto rand_symbol = static_cast<size_t>(next() % (symbols.size() + 1));
+        // Prefer location from a symbol table
+        if (rand_symbol < symbols.size() && should_gen_bound(parent, type))
+        {
+          auto key_index = binding_keys[type].second;
+          return (symbols[rand_symbol]->at(key_index))->location();
         }
+        // Use fresh location
+        return gloc(rand, child);
+      }
     };
     struct Choice
     {
       std::vector<Token> types;
 
       SNMALLOC_SLOW_PATH Choice() = default;
-      SNMALLOC_SLOW_PATH Choice(std::vector<Token> types_) :
-        types{types_} {}
+      SNMALLOC_SLOW_PATH Choice(std::vector<Token> types_) : types{types_} {}
       SNMALLOC_SLOW_PATH Choice(const Choice&) = default;
       SNMALLOC_SLOW_PATH Choice(Choice&&) = default;
       SNMALLOC_SLOW_PATH Choice& operator=(const Choice&) = default;
@@ -306,7 +305,7 @@ namespace trieste
       void gen(Gen& g, size_t depth, Node node) const
       {
         Token type = g.choose(types, depth);
-        
+
         // We may need a fresh location, so the child needs to be in the AST by
         // the time we call g.location().
         auto child = NodeDef::create(type);
@@ -323,8 +322,10 @@ namespace trieste
       bool has_minlen = false;
       bool has_maxlen = false;
 
-      SNMALLOC_SLOW_PATH Sequence(Choice choice_, size_t minlen_, size_t maxlen_) :
-        choice{choice_}, min_len{minlen_}, max_len(maxlen_) {}
+      SNMALLOC_SLOW_PATH
+      Sequence(Choice choice_, size_t minlen_, size_t maxlen_)
+      : choice{choice_}, min_len{minlen_}, max_len(maxlen_)
+      {}
       SNMALLOC_SLOW_PATH Sequence() = default;
       SNMALLOC_SLOW_PATH Sequence(const Sequence&) = default;
       SNMALLOC_SLOW_PATH Sequence(Sequence&&) = default;
@@ -341,15 +342,14 @@ namespace trieste
       {
         if (has_minlen && has_maxlen)
           throw std::runtime_error(
-            "Too many bounds when building sequence: ["
-            + std::to_string(min_len) + "]["
-            + std::to_string(max_len) + "]["
-            + std::to_string(new_len) + "]");
+            "Too many bounds when building sequence: [" +
+            std::to_string(min_len) + "][" + std::to_string(max_len) + "][" +
+            std::to_string(new_len) + "]");
 
         if (has_minlen && !has_maxlen && new_len < min_len)
           throw std::runtime_error(
-            "Upper bound is below lower bound when building sequence: ["
-            + std::to_string(min_len) + "][" + std::to_string(new_len) + "]");
+            "Upper bound is below lower bound when building sequence: [" +
+            std::to_string(min_len) + "][" + std::to_string(new_len) + "]");
 
         if (!has_minlen)
         {
@@ -420,7 +420,8 @@ namespace trieste
         for (i = 0; i < min_len; ++i)
           choice.gen(g, depth, node);
 
-        if(depth >= g.target_depth){
+        if (depth >= g.target_depth)
+        {
           return;
         }
 
@@ -440,8 +441,9 @@ namespace trieste
       std::vector<Field> fields;
       Token binding;
 
-      SNMALLOC_SLOW_PATH Fields(std::vector<Field> fields_, Token binding_) :
-        fields{fields_}, binding{binding_} {}
+      SNMALLOC_SLOW_PATH Fields(std::vector<Field> fields_, Token binding_)
+      : fields{fields_}, binding{binding_}
+      {}
       SNMALLOC_SLOW_PATH Fields() = default;
       SNMALLOC_SLOW_PATH Fields(const Fields&) = default;
       SNMALLOC_SLOW_PATH Fields(Fields&&) = default;
@@ -607,8 +609,9 @@ namespace trieste
       Token type;
       ShapeT shape;
 
-      SNMALLOC_SLOW_PATH Shape(Token type_, ShapeT shape_) :
-        type{type_}, shape{shape_} {}
+      SNMALLOC_SLOW_PATH Shape(Token type_, ShapeT shape_)
+      : type{type_}, shape{shape_}
+      {}
       SNMALLOC_SLOW_PATH Shape() = default;
       SNMALLOC_SLOW_PATH Shape(const Shape&) = default;
       SNMALLOC_SLOW_PATH Shape(Shape&&) = default;
@@ -744,7 +747,8 @@ namespace trieste
       }
 
     private:
-      void populate_binding_keys(std::map<Token, SymtabKeys>& binding_keys) const
+      void
+      populate_binding_keys(std::map<Token, SymtabKeys>& binding_keys) const
       {
         for (const auto& [t, s] : shapes)
         {
@@ -768,15 +772,17 @@ namespace trieste
         }
       }
 
-      public:
-      Node gen(GenNodeLocationF gloc, Seed seed, size_t target_depth, bool gen_bound) const
+    public:
+      Node
+      gen(GenNodeLocationF gloc, Seed seed, size_t target_depth, bool gen_bound)
+        const
       {
         // Collect map of tokens to their binding token and the corresponding
         // index
         std::map<Token, SymtabKeys> binding_keys = {};
         if (gen_bound)
           populate_binding_keys(binding_keys);
-        
+
         auto g = Gen(
           compute_minimum_distance_to_terminal(target_depth),
           gloc,
@@ -919,20 +925,23 @@ namespace trieste
         return Choice{std::vector<Token>{type1, type2}};
       }
 
-      inline SNMALLOC_SLOW_PATH Choice operator|(const Token& type, const Choice& choice)
+      inline SNMALLOC_SLOW_PATH Choice
+      operator|(const Token& type, const Choice& choice)
       {
         Choice result{choice.types};
         result.types.push_back(type);
         return result;
       }
 
-      inline SNMALLOC_SLOW_PATH Choice operator|(const Token& type, Choice&& choice)
+      inline SNMALLOC_SLOW_PATH Choice
+      operator|(const Token& type, Choice&& choice)
       {
         choice.types.push_back(type);
         return std::move(choice);
       }
 
-      inline SNMALLOC_SLOW_PATH Choice operator|(const Choice& choice1, const Choice& choice2)
+      inline SNMALLOC_SLOW_PATH Choice
+      operator|(const Choice& choice1, const Choice& choice2)
       {
         Choice result{choice1.types};
         result.types.insert(
@@ -940,7 +949,8 @@ namespace trieste
         return result;
       }
 
-      inline SNMALLOC_SLOW_PATH Choice operator|(const Choice& choice1, Choice&& choice2)
+      inline SNMALLOC_SLOW_PATH Choice
+      operator|(const Choice& choice1, Choice&& choice2)
       {
         choice2.types.insert(
           choice2.types.end(), choice1.types.begin(), choice1.types.end());
@@ -962,7 +972,8 @@ namespace trieste
         return choice2 | choice1;
       }
 
-      inline SNMALLOC_SLOW_PATH Choice operator-(const Choice& choice, const Token& type)
+      inline SNMALLOC_SLOW_PATH Choice
+      operator-(const Choice& choice, const Token& type)
       {
         Choice result{choice.types};
         result.types.erase(
@@ -971,7 +982,8 @@ namespace trieste
         return result;
       }
 
-      inline SNMALLOC_SLOW_PATH Choice operator-(const Choice& choice1, const Choice& choice2)
+      inline SNMALLOC_SLOW_PATH Choice
+      operator-(const Choice& choice1, const Choice& choice2)
       {
         Choice result{choice1.types};
         result.types.erase(
@@ -988,7 +1000,10 @@ namespace trieste
 
       inline Sequence operator++(const Token& type, int)
       {
-        return Sequence{Choice{std::vector<Token>{type}}, 0, std::numeric_limits<size_t>::max()};
+        return Sequence{
+          Choice{std::vector<Token>{type}},
+          0,
+          std::numeric_limits<size_t>::max()};
       }
 
       inline Sequence operator++(const Choice& choice, int)
@@ -1076,7 +1091,8 @@ namespace trieste
         return (fst >>= fst) * snd;
       }
 
-      inline SNMALLOC_SLOW_PATH Fields operator*(const Fields& fst, const Field& snd)
+      inline SNMALLOC_SLOW_PATH Fields
+      operator*(const Fields& fst, const Field& snd)
       {
         auto fields = Fields{fst.fields, Invalid};
         fields.fields.push_back(snd);
@@ -1245,26 +1261,30 @@ namespace trieste
         return wf;
       }
 
-      inline Wellformed operator-(const Wellformed& wf, const Token& token) {
+      inline Wellformed operator-(const Wellformed& wf, const Token& token)
+      {
         Wellformed wf2;
         wf2.shapes.insert(wf.shapes.begin(), wf.shapes.end());
         wf2.shapes.erase(token);
         return wf2;
       }
 
-      inline Wellformed operator-(const Wellformed& wf, Token&& token) {
+      inline Wellformed operator-(const Wellformed& wf, Token&& token)
+      {
         Wellformed wf2;
         wf2.shapes.insert(wf.shapes.begin(), wf.shapes.end());
         wf2.shapes.erase(token);
         return wf2;
       }
 
-      inline Wellformed operator-(Wellformed&& wf, const Token& token) {
+      inline Wellformed operator-(Wellformed&& wf, const Token& token)
+      {
         wf.shapes.erase(token);
         return std::move(wf);
       }
 
-      inline Wellformed operator-(Wellformed&& wf, Token&& token) {
+      inline Wellformed operator-(Wellformed&& wf, Token&& token)
+      {
         wf.shapes.erase(token);
         return std::move(wf);
       }
@@ -1350,26 +1370,17 @@ namespace trieste
     using namespace wf;
     using namespace ops;
 
-    inline auto pattern = Cap | Any | TokenMatch | RegexMatch | Opt | Rep | Not | Choice | InsideStar |
-      Inside | First | Last | Children | Pred | NegPred | Action;
+    inline auto pattern = Cap | Any | TokenMatch | RegexMatch | Opt | Rep |
+      Not | Choice | InsideStar | Inside | First | Last | Children | Pred |
+      NegPred | Action;
 
-    inline auto pattern_wf =
-      (Top <<= Group)
-      | (Cap <<= Group * Token)
-      | (TokenMatch <<= Token++[1])
-      | (RegexMatch <<= Token * Regex)
-      | (Opt <<= Group)
-      | (Rep <<= Group)
-      | (Not <<= Group)
-      | (Choice <<= (First >>= Group) * (Last >>= Group))
-      | (InsideStar <<= Token++[1])
-      | (Inside <<= Token++[1])
-      | (Children <<= Group * (Children >>= Group))
-      | (Pred <<= Group)
-      | (NegPred <<= Group)
-      | (Action <<= Group)
-      | (Group <<= pattern++[1])
-      ;
+    inline auto pattern_wf = (Top <<= Group) | (Cap <<= Group * Token) |
+      (TokenMatch <<= Token++[1]) | (RegexMatch <<= Token * Regex) |
+      (Opt <<= Group) | (Rep <<= Group) | (Not <<= Group) |
+      (Choice <<= (First >>= Group) * (Last >>= Group)) |
+      (InsideStar <<= Token++[1]) | (Inside <<= Token++[1]) |
+      (Children <<= Group * (Children >>= Group)) | (Pred <<= Group) |
+      (NegPred <<= Group) | (Action <<= Group) | (Group <<= pattern++[1]);
   }
 
   struct WFContext

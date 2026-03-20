@@ -18,8 +18,8 @@ inline const auto TestLeaf = TokenDef("nodeworker_test.TestLeaf");
 enum class BlockMode
 {
   Single, // Use block_on for single dependency
-  All,    // Use block_on_all for multiple dependencies
-  Any,    // Use block_on_any for multiple dependencies
+  All, // Use block_on_all for multiple dependencies
+  Any, // Use block_on_any for multiple dependencies
 };
 
 struct TestWork
@@ -180,8 +180,9 @@ bool test_multiple_independent()
   worker.add(n3);
   worker.run();
 
-  if (!worker.is_resolved(n1) || !worker.is_resolved(n2) ||
-      !worker.is_resolved(n3))
+  if (
+    !worker.is_resolved(n1) || !worker.is_resolved(n2) ||
+    !worker.is_resolved(n3))
   {
     std::cout << "FAILED: not all nodes resolved" << std::endl;
     return false;
@@ -298,8 +299,9 @@ bool test_block_on_all()
   worker.run();
 
   // All should be resolved
-  if (!worker.is_resolved(dep1) || !worker.is_resolved(dep2) ||
-      !worker.is_resolved(dep3))
+  if (
+    !worker.is_resolved(dep1) || !worker.is_resolved(dep2) ||
+    !worker.is_resolved(dep3))
   {
     std::cout << "FAILED: not all dependencies resolved" << std::endl;
     return false;
@@ -386,7 +388,8 @@ bool test_chain()
   worker.add(a);
   worker.run();
 
-  if (!worker.is_resolved(a) || !worker.is_resolved(b) || !worker.is_resolved(c))
+  if (
+    !worker.is_resolved(a) || !worker.is_resolved(b) || !worker.is_resolved(c))
   {
     std::cout << "FAILED: not all nodes resolved" << std::endl;
     return false;
@@ -444,8 +447,9 @@ bool test_multiple_dependents()
     return false;
   }
 
-  if (!worker.is_resolved(d1) || !worker.is_resolved(d2) ||
-      !worker.is_resolved(d3))
+  if (
+    !worker.is_resolved(d1) || !worker.is_resolved(d2) ||
+    !worker.is_resolved(d3))
   {
     std::cout << "FAILED: not all dependents resolved" << std::endl;
     return false;

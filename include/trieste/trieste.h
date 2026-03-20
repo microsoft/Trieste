@@ -131,10 +131,7 @@ namespace trieste
     {
       reader_passes.push_back(pass);
     }
-    return Reader(
-      reader.language_name(),
-      reader_passes,
-      reader.parser());
+    return Reader(reader.language_name(), reader_passes, reader.parser());
   }
 
 } // namespace trieste

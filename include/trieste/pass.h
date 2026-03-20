@@ -198,15 +198,15 @@ namespace trieste
       return {node, count, changes_sum};
     }
 
-  std::vector<Node> reify_patterns()
-  {
-    std::vector<Node> patterns;
-    for (auto& [pat, _] : rules_)
+    std::vector<Node> reify_patterns()
     {
-      patterns.push_back(pat.value.reify());
+      std::vector<Node> patterns;
+      for (auto& [pat, _] : rules_)
+      {
+        patterns.push_back(pat.value.reify());
+      }
+      return patterns;
     }
-    return patterns;
-  }
 
   private:
     void compile_rules()
@@ -291,7 +291,7 @@ namespace trieste
           n->set_location(loc);
         });
 
-        replaced = replace == Reapply? REAPPLY: replace->size();
+        replaced = replace == Reapply ? REAPPLY : replace->size();
         it = node->insert(it, replace->begin(), replace->end());
       }
       else
