@@ -39,16 +39,18 @@ namespace trieste
     const uint8_t Value3 = 0b00001111;
     const uint8_t Value4 = 0b00000111;
 
-    const uint32_t Max1 = 0x007F;
-    const uint32_t Max2 = 0x07FF;
-    const uint32_t Max3 = 0xFFFF;
-    const uint32_t Max4 = 0x10FFFF;
+    typedef uint32_t rune_t;
+
+    const rune_t Max1 = 0x007F;
+    const rune_t Max2 = 0x07FF;
+    const rune_t Max3 = 0xFFFF;
+    const rune_t Max4 = 0x10FFFF;
 
     const std::size_t ShiftX = 6;
 
-    const uint32_t Bad = 0xFFFD;
+    const rune_t Bad = 0xFFFD;
 
-    inline std::ostream& write_rune(std::ostream& os, uint32_t value)
+    inline std::ostream& write_rune(std::ostream& os, rune_t value)
     {
       if (value <= Max1)
       {
@@ -91,7 +93,7 @@ namespace trieste
 
     struct rune
     {
-      rune(uint32_t v) : value(v) {}
+      rune(rune_t v) : value(v) {}
       std::size_t size()
       {
         if (value <= Max1)
@@ -124,7 +126,7 @@ namespace trieste
         return os.str();
       }
 
-      uint32_t value;
+      rune_t value;
     };
 
     using runestring = std::basic_string<char32_t>;
@@ -167,7 +169,7 @@ namespace trieste
         uint8_t c1 = static_cast<uint8_t>(utf8[1]);
         if ((c1 & MaskX) == MarkX)
         {
-          uint32_t value = c0 & Value2;
+          rune_t value = c0 & Value2;
           value = (value << ShiftX) | (c1 & ValueX);
           return {value, utf8.substr(0, 2)};
         }
@@ -178,7 +180,7 @@ namespace trieste
         uint8_t c2 = static_cast<uint8_t>(utf8[2]);
         if ((c1 & MaskX) == MarkX && (c2 & MaskX) == MarkX)
         {
-          uint32_t value = c0 & Value3;
+          rune_t value = c0 & Value3;
           value = (value << ShiftX) | (c1 & ValueX);
           value = (value << ShiftX) | (c2 & ValueX);
           return {value, utf8.substr(0, 3)};
@@ -193,7 +195,7 @@ namespace trieste
           (c1 & MaskX) == MarkX && (c2 & MaskX) == MarkX &&
           (c3 & MaskX) == MarkX)
         {
-          uint32_t value = c0 & Value4;
+          rune_t value = c0 & Value4;
           value = (value << ShiftX) | (c1 & ValueX);
           value = (value << ShiftX) | (c2 & ValueX);
           value = (value << ShiftX) | (c3 & ValueX);
@@ -213,7 +215,7 @@ namespace trieste
     inline std::ostream&
     operator<<(std::ostream& os, const runestring_view& runes)
     {
-      for (uint32_t r : runes)
+      for (rune_t r : runes)
       {
         os << rune(r);
       }
@@ -223,7 +225,7 @@ namespace trieste
 
     inline std::ostream& operator<<(std::ostream& os, const runestring& runes)
     {
-      for (uint32_t r : runes)
+      for (rune_t r : runes)
       {
         os << rune(r);
       }
@@ -251,7 +253,7 @@ namespace trieste
     {
       auto runes = utf8_to_runestring(contents, false);
       return !std::any_of(
-        runes.begin(), runes.end(), [](uint32_t r) { return r == Bad; });
+        runes.begin(), runes.end(), [](rune_t r) { return r == Bad; });
     }
 
     inline DetectResult detect_utf16(const std::string& contents)
@@ -321,7 +323,7 @@ namespace trieste
 
     inline DetectResult detect_utf32(const std::string& contents)
     {
-      const std::set<uint32_t> big_endian = {
+      const std::set<rune_t> big_endian = {
         0x0000002C, // comma
         0x00000022, // double quote
         0x00000028, // left parenthesis
@@ -336,7 +338,7 @@ namespace trieste
         0x0000000A, // newline
       };
 
-      const std::set<uint32_t> little_endian = {
+      const std::set<rune_t> little_endian = {
         0x2C000000, // comma
         0x22000000, // double quote
         0x28000000, // left parenthesis
@@ -364,7 +366,7 @@ namespace trieste
         uint8_t b1 = static_cast<uint8_t>(contents[i + 1]);
         uint8_t b2 = static_cast<uint8_t>(contents[i + 2]);
         uint8_t b3 = static_cast<uint8_t>(contents[i + 3]);
-        uint32_t value = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+        rune_t value = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
         if (little_endian.find(value) != little_endian.end())
         {
           le_counts++;
@@ -444,7 +446,7 @@ namespace trieste
     {
       std::ostringstream os;
       auto runes = utf8_to_runestring(input);
-      for (uint32_t r : runes)
+      for (rune_t r : runes)
       {
         os << rune(r);
       }

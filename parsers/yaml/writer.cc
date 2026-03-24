@@ -445,27 +445,28 @@ namespace
       {
         // string entirely of newlines
         result = result + "\n" + indent;
-        RE2::GlobalReplace(&result, R"(\n)", options.newline);
+        TRegex::GlobalReplace(&result, R"(\n)", options.newline);
         return result;
       }
       else
       {
         // the event-style escaped string undercounts newlines
         // by one, so we need to add one back in.
-        RE2::GlobalReplace(&result, R"(([^\s])(\n+)([^ \n]))", "\\1\n\\2\\3");
+        TRegex::GlobalReplace(
+          &result, R"(([^\s])(\n+)([^ \n]))", "\\1\n\\2\\3");
         if (node == Folded)
         {
           // In the special case of indent-preserving newlines
           // we need to remove the extra newline that will have been
           // added at the end of the block.
-          RE2::GlobalReplace(
+          TRegex::GlobalReplace(
             &result, R"((\n\n(?: [^\n]+\n)+|^(?: [^\n]+\n)+)\n)", "\\1");
         }
       }
     }
 
-    RE2::GlobalReplace(&result, R"(\n([^\n]))", "\n" + indent + "\\1");
-    RE2::GlobalReplace(&result, R"(\n)", options.newline);
+    TRegex::GlobalReplace(&result, R"(\n([^\n]))", "\n" + indent + "\\1");
+    TRegex::GlobalReplace(&result, R"(\n)", options.newline);
     return result;
   }
 
@@ -594,7 +595,7 @@ namespace
     {
       str = unescape_block(
         plain, str, options, spaces.out().indent(options.indent).inner_str());
-      RE2::GlobalReplace(&str, "'", "''");
+      TRegex::GlobalReplace(&str, "'", "''");
       return "'" + str + "'";
     }
 
@@ -678,7 +679,7 @@ namespace
         single.str(),
         options,
         spaces.out().indent(options.indent).inner_str());
-      RE2::GlobalReplace(&single_str, "'", "''");
+      TRegex::GlobalReplace(&single_str, "'", "''");
       os << "'" << single_str << "'" << options.newline;
       return false;
     }

@@ -8,9 +8,14 @@ option(TRIESTE_BUILD_SAMPLES "Specifies whether to build the samples" ON)
 option(TRIESTE_BUILD_PARSERS "Specifies whether to build the parsers" ON)
 option(TRIESTE_BUILD_PARSER_TESTS "Specifies whether to build the parser tests" OFF)
 option(TRIESTE_BUILD_PARSER_TOOLS "Specifies whether to build parser tools" OFF)
+option(TRIESTE_BUILD_REGEX_BENCHMARK "Build regex engine benchmark against RE2 (opt-in; fetches RE2)" OFF)
 option(TRIESTE_USE_CXX17 "Specifies whether to target the C++17 standard" OFF)
 option(TRIESTE_CLEAN_INSTALL "Specifies whether to delete all files (recursively) from the install prefix before install" OFF)
 option(TRIESTE_USE_SNMALLOC "Specifies that new/delete should be overridden with snmalloc" ON)
+
+if(TRIESTE_BUILD_REGEX_BENCHMARK AND NOT TRIESTE_ENABLE_TESTING)
+  message(FATAL_ERROR "TRIESTE_BUILD_REGEX_BENCHMARK requires TRIESTE_ENABLE_TESTING=ON.")
+endif()
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
@@ -29,8 +34,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(SNMALLOC_BUILD_TESTING OFF CACHE INTERNAL "Turn off snmalloc tests")
 set(SNMALLOC_USE_CXX17 ${TRIESTE_USE_CXX17})
-
-set(RE2_BUILD_TESTING OFF CACHE INTERNAL "Turn off RE2 tests")
 
 set(TRIESTE_SANITIZE "" CACHE STRING "Argument to pass to sanitize (disabled by default)")
 
@@ -60,15 +63,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable_ExcludeFromAll(snmalloc)
 
 FetchContent_Declare(
-  re2
-  GIT_REPOSITORY https://github.com/google/re2
-  GIT_TAG 2022-12-01
-  GIT_SHALLOW TRUE
-)
-
-FetchContent_MakeAvailable_ExcludeFromAll(re2)
-
-FetchContent_Declare(
   cli11
   GIT_REPOSITORY https://github.com/CLIUtils/CLI11
   GIT_TAG 4160d259d961cd393fd8d67590a8c7d210207348
@@ -92,7 +86,6 @@ target_include_directories(trieste
 
 target_link_libraries(trieste
   INTERFACE
-  re2::re2
   CLI11::CLI11
   snmalloc
 )
@@ -141,7 +134,7 @@ endif()
 # Installation instructions
 set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR}/dist)
 
-set(INSTALL_DEPS snmalloc re2 CLI11)
+set(INSTALL_DEPS snmalloc CLI11)
 if (TRIESTE_USE_SNMALLOC)
   list(APPEND INSTALL_DEPS snmalloc-new-override)
 endif()

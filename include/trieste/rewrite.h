@@ -507,11 +507,11 @@ namespace trieste
     {
     private:
       Token type;
-      std::shared_ptr<RE2> regex;
+      std::shared_ptr<TRegex> regex;
 
     public:
       RegexMatch(const Token& type_, const std::string& re)
-      : type(type_), regex(std::make_shared<RE2>(re))
+      : type(type_), regex(std::make_shared<TRegex>(re))
       {}
 
       PatternPtr clone() const& override
@@ -524,7 +524,7 @@ namespace trieste
         if ((it == parent->end()) || ((*it)->type() != type))
           return false;
 
-        if (!RE2::FullMatch((*it)->location().view(), *regex))
+        if (!TRegex::FullMatch((*it)->location().view(), *regex))
           return false;
 
         ++it;
@@ -535,7 +535,8 @@ namespace trieste
       {
         Node match = reified::RegexMatch;
         match->push_back(NodeDef::create(reified::Token, Location(type.str())));
-        match->push_back(NodeDef::create(reified::Regex, Location(regex->pattern())));
+        match->push_back(
+          NodeDef::create(reified::Regex, Location(regex->pattern())));
         parent->push_back(match);
         reify_continuation(parent);
       }
@@ -785,7 +786,8 @@ namespace trieste
       {
         Node inside_star = reified::InsideStar;
         for (const auto& type : types)
-          inside_star->push_back(NodeDef::create(reified::Token, Location(type.str())));
+          inside_star->push_back(
+            NodeDef::create(reified::Token, Location(type.str())));
         parent->push_back(inside_star);
         reify_continuation(parent);
       }
@@ -828,7 +830,8 @@ namespace trieste
       {
         Node inside = reified::Inside;
         for (const auto& type : types)
-          inside->push_back(NodeDef::create(reified::Token, Location(type.str())));
+          inside->push_back(
+            NodeDef::create(reified::Token, Location(type.str())));
         parent->push_back(inside);
         reify_continuation(parent);
       }
@@ -1317,7 +1320,8 @@ namespace trieste
     return {std::move(nodes)};
   }
 
-  inline detail::ExtendRangeContents operator+(detail::RangeContents range_contents)
+  inline detail::ExtendRangeContents
+  operator+(detail::RangeContents range_contents)
   {
     return {range_contents.range};
   }

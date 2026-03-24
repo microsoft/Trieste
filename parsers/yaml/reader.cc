@@ -57,7 +57,7 @@ namespace
     ValuePattern(const std::string& pattern, Token t) : regex(pattern), type(t)
     {}
 
-    RE2 regex;
+    TRegex regex;
     Token type;
   };
 
@@ -1031,7 +1031,7 @@ namespace
             Node value = Value ^ loc;
             for (auto& pattern : patterns)
             {
-              if (RE2::FullMatch(view, pattern->regex))
+              if (TRegex::FullMatch(view, pattern->regex))
               {
                 value = (pattern->type ^ loc);
                 break;
@@ -1079,7 +1079,7 @@ namespace
             auto view = _(Value)->location().view();
             for (auto& pattern : patterns)
             {
-              if (RE2::FullMatch(view, pattern->regex))
+              if (TRegex::FullMatch(view, pattern->regex))
               {
                 return pattern->type ^ _(Value);
               }

@@ -1,5 +1,8 @@
 # Parsers
 
+Note: regex dialect policy (strict iregexp compatibility versus extended
+behavior) is documented in [`notes/regex-syntax-policy.md`](../notes/regex-syntax-policy.md).
+
 In addition to providing the Trieste library, we have also provided reference parsers for JSON and YAML as practical examples. You (the language implementer) can use these language implementions as templates and guides for how to implement your own language toolchain using Trieste. In this document we will highlight the key features we believe a language implementation should have. You can learn more about implementing helper classes in the [`infix` tutorial](../samples/infix/README.md).
 
 ## WF Definition

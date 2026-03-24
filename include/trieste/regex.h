@@ -2,60 +2,584 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "logging.h"
 #include "ast.h"
+#include "logging.h"
+#include "regex_engine.h"
 
-#include <re2/re2.h>
+#include <cctype>
+#include <cerrno>
+#include <charconv>
+#include <cstdlib>
+#include <limits>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <vector>
 
 namespace trieste
 {
-  class REMatch
+  // Compiled regular expression for pattern matching.
+  // Wraps RegexEngine with a high-level API providing FullMatch (entire
+  // string), PartialMatch (substring), and GlobalReplace operations.
+  // Regex objects are immutable after construction and safe to share
+  // across threads.  Matching uses a thread-local MatchContext.
+  //
+  // Usage:
+  //   TRegex re("(\\d+)-(\\d+)");
+  //   std::string a, b;
+  //   TRegex::FullMatch("12-34", re, &a, &b);
+  class TRegex
   {
-    friend class REIterator;
+    friend class TRegexMatch;
+
+  public:
+    TRegex() : pattern_(), num_captures_(0)
+    {
+      init();
+    }
+
+    explicit TRegex(const std::string& pattern) : pattern_(pattern)
+    {
+      init();
+    }
+
+    explicit TRegex(std::string_view pattern) : pattern_(pattern)
+    {
+      init();
+    }
+
+    explicit TRegex(const char* pattern)
+    : pattern_(pattern == nullptr ? "" : pattern)
+    {
+      init();
+    }
+
+    TRegex(const TRegex&) = default;
+    TRegex(TRegex&&) = default;
+    TRegex& operator=(const TRegex&) = default;
+    TRegex& operator=(TRegex&&) = default;
+
+    bool ok() const
+    {
+      return engine_ != nullptr && engine_->ok();
+    }
+
+    int NumberOfCapturingGroups() const
+    {
+      return static_cast<int>(num_captures_);
+    }
+
+    const std::string& pattern() const
+    {
+      return pattern_;
+    }
+
+    // Type-erased wrapper for output parameter pointers.
+    // Supports: string, string_view, all integral types (except bool),
+    // character types (char, signed char, unsigned char), float, and double.
+    class Arg
+    {
+    public:
+      Arg() : Arg(nullptr) {}
+      Arg(std::nullptr_t)
+      : arg_(nullptr), parser_(DoNothing), defaulter_(DefaultNothing)
+      {}
+
+      Arg(std::string* p)
+      : arg_(p), parser_(ParseString), defaulter_(DefaultString)
+      {}
+      Arg(std::string_view* p)
+      : arg_(p), parser_(ParseStringView), defaulter_(DefaultStringView)
+      {}
+
+      Arg(char* p)
+      : arg_(p), parser_(ParseChar<char>), defaulter_(DefaultZero<char>)
+      {}
+      Arg(signed char* p)
+      : arg_(p),
+        parser_(ParseChar<signed char>),
+        defaulter_(DefaultZero<signed char>)
+      {}
+      Arg(unsigned char* p)
+      : arg_(p),
+        parser_(ParseChar<unsigned char>),
+        defaulter_(DefaultZero<unsigned char>)
+      {}
+
+      Arg(float* p)
+      : arg_(p), parser_(ParseFloat<float>), defaulter_(DefaultZero<float>)
+      {}
+      Arg(double* p)
+      : arg_(p), parser_(ParseFloat<double>), defaulter_(DefaultZero<double>)
+      {}
+
+      template<
+        typename T,
+        std::enable_if_t<
+          std::is_integral_v<T> && !std::is_same_v<T, char> &&
+            !std::is_same_v<T, signed char> &&
+            !std::is_same_v<T, unsigned char> && !std::is_same_v<T, bool>,
+          int> = 0>
+      Arg(T* p) : arg_(p), parser_(ParseIntegral<T>), defaulter_(DefaultZero<T>)
+      {}
+
+      bool Parse(const char* str, size_t n) const
+      {
+        return parser_(str, n, arg_);
+      }
+
+      // Reset the output argument to its type's default value.
+      // Used for unmatched capture groups.
+      void SetDefault() const
+      {
+        defaulter_(arg_);
+      }
+
+    private:
+      using Parser = bool (*)(const char*, size_t, void*);
+      using Defaulter = void (*)(void*);
+
+      static bool DoNothing(const char*, size_t, void*)
+      {
+        return true;
+      }
+
+      static void DefaultNothing(void*) {}
+
+      static void DefaultString(void* dest)
+      {
+        if (dest)
+          reinterpret_cast<std::string*>(dest)->clear();
+      }
+
+      static void DefaultStringView(void* dest)
+      {
+        if (dest)
+          *reinterpret_cast<std::string_view*>(dest) = std::string_view();
+      }
+
+      template<typename T>
+      static void DefaultZero(void* dest)
+      {
+        if (dest)
+          *reinterpret_cast<T*>(dest) = T();
+      }
+
+      static bool ParseString(const char* str, size_t n, void* dest)
+      {
+        if (dest == nullptr)
+          return true;
+        reinterpret_cast<std::string*>(dest)->assign(str, n);
+        return true;
+      }
+
+      // Output string_view points into the original input text.
+      // Valid only while the input is alive.
+      static bool ParseStringView(const char* str, size_t n, void* dest)
+      {
+        if (dest == nullptr)
+          return true;
+        *reinterpret_cast<std::string_view*>(dest) = std::string_view(str, n);
+        return true;
+      }
+
+      template<typename T>
+      static bool ParseChar(const char* str, size_t n, void* dest)
+      {
+        if (dest == nullptr)
+          return true;
+        if (n != 1)
+          return false;
+        *reinterpret_cast<T*>(dest) = static_cast<T>(str[0]);
+        return true;
+      }
+
+      template<typename T>
+      static bool ParseIntegral(const char* str, size_t n, void* dest)
+      {
+        if (dest == nullptr)
+          return true;
+        T value = 0;
+        auto res = std::from_chars(str, str + n, value, 10);
+        if (res.ec != std::errc() || res.ptr != str + n)
+          return false;
+        *reinterpret_cast<T*>(dest) = value;
+        return true;
+      }
+
+      template<typename T>
+      static bool ParseFloat(const char* str, size_t n, void* dest)
+      {
+        if (dest == nullptr)
+          return true;
+        if (n == 0 || std::isspace(static_cast<unsigned char>(str[0])))
+          return false;
+        // Use strtod/strtof for C++17 compatibility.
+        std::string tmp(str, n);
+        char* end = nullptr;
+        errno = 0;
+        T value;
+        if constexpr (std::is_same_v<T, float>)
+          value = std::strtof(tmp.c_str(), &end);
+        else
+          value = static_cast<T>(std::strtod(tmp.c_str(), &end));
+        if (end != tmp.c_str() + tmp.size() || errno == ERANGE)
+          return false;
+        *reinterpret_cast<T*>(dest) = value;
+        return true;
+      }
+
+      void* arg_;
+      Parser parser_;
+      Defaulter defaulter_;
+    };
+
+    static bool FullMatch(const std::string_view& text, const TRegex& regex)
+    {
+      if (regex.engine_ == nullptr || !regex.engine_->ok())
+        return false;
+      auto& ctx = thread_local_context();
+      return regex.engine_->match(text, ctx);
+    }
+
+    // Variadic FullMatch: extracts capture groups into typed out-params.
+    template<typename... A>
+    static bool
+    FullMatch(const std::string_view& text, const TRegex& re, A&&... a)
+    {
+      return Apply(FullMatchN, text, re, Arg(std::forward<A>(a))...);
+    }
+
+    // Returns true if regex matches any substring of text.
+    static bool PartialMatch(const std::string_view& text, const TRegex& regex)
+    {
+      if (regex.engine_ == nullptr || !regex.engine_->ok())
+        return false;
+      return regex.engine_->search(text).found();
+    }
+
+    // Variadic PartialMatch: finds first substring match and extracts captures.
+    template<typename... A>
+    static bool
+    PartialMatch(const std::string_view& text, const TRegex& re, A&&... a)
+    {
+      return Apply(PartialMatchN, text, re, Arg(std::forward<A>(a))...);
+    }
+
+    static int GlobalReplace(
+      std::string* text,
+      const std::string_view& pattern,
+      const std::string_view& rewrite)
+    {
+      if (text == nullptr)
+        return 0;
+
+      TRegex regex(pattern);
+      if (!regex.ok())
+        return 0;
+
+      std::string input = std::move(*text);
+      std::string output;
+      output.reserve(input.size());
+
+      auto append_rewrite =
+        [&](
+          std::string& out,
+          const std::string_view& src,
+          size_t match_start,
+          size_t match_len,
+          const std::vector<regex::RegexEngine::Capture>& captures) {
+          for (size_t i = 0; i < rewrite.size(); i++)
+          {
+            char ch = rewrite[i];
+            if ((ch == '\\') && (i + 1 < rewrite.size()))
+            {
+              char next = rewrite[i + 1];
+              if (std::isdigit(static_cast<unsigned char>(next)) != 0)
+              {
+                // Parse all consecutive digits as a decimal capture index.
+                size_t idx = 0;
+                size_t j = i + 1;
+                while (j < rewrite.size() &&
+                       std::isdigit(static_cast<unsigned char>(rewrite[j])) !=
+                         0)
+                {
+                  size_t next_idx =
+                    idx * 10 + static_cast<size_t>(rewrite[j] - '0');
+                  if (next_idx > regex::MaxCaptures)
+                  {
+                    idx = next_idx;
+                    j++;
+                    break;
+                  }
+                  idx = next_idx;
+                  j++;
+                }
+                if (idx == 0)
+                {
+                  out.append(src.substr(match_start, match_len));
+                }
+                else if (idx <= captures.size())
+                {
+                  auto cap = captures[idx - 1];
+                  if (cap.matched() && cap.end >= cap.start)
+                  {
+                    out.append(src.substr(cap.start, cap.end - cap.start));
+                  }
+                }
+                i = j - 1;
+                continue;
+              }
+
+              out.push_back(next);
+              i++;
+              continue;
+            }
+
+            out.push_back(ch);
+          }
+        };
+
+      size_t replacements = 0;
+      size_t pos = 0;
+      auto& ctx = thread_local_context();
+      std::vector<regex::RegexEngine::Capture> captures;
+      std::string_view input_view(input);
+      while (pos <= input.size())
+      {
+        auto result = regex.engine_->search(input_view, captures, ctx, pos);
+        if (!result.found())
+        {
+          output.append(input.substr(pos));
+          break;
+        }
+
+        size_t match_start = result.match_start;
+        size_t match_len = result.match_len;
+
+        output.append(input.substr(pos, match_start - pos));
+        append_rewrite(output, input, match_start, match_len, captures);
+        replacements++;
+
+        if (match_len == 0)
+        {
+          if (match_start >= input.size())
+            break;
+
+          // Advance past one full UTF-8 codepoint so we never split a
+          // multi-byte sequence and always make forward progress.
+          auto [r, n] = regex::decode_rune(input_view, match_start);
+          output.append(input.substr(match_start, n));
+          pos = match_start + n;
+        }
+        else
+        {
+          pos = match_start + match_len;
+        }
+      }
+
+      *text = std::move(output);
+      static_assert(
+        sizeof(size_t) >= sizeof(int),
+        "narrowing size_t to int in GlobalReplace return");
+      if (replacements > static_cast<size_t>(std::numeric_limits<int>::max()))
+        return std::numeric_limits<int>::max();
+      return static_cast<int>(replacements);
+    }
 
   private:
-    std::vector<re2::StringPiece> match;
+    static regex::RegexEngine::MatchContext& thread_local_context()
+    {
+      thread_local regex::RegexEngine::MatchContext ctx;
+      return ctx;
+    }
+
+    // Bridges variadic Arg... to an Arg* array for FullMatchN/PartialMatchN.
+    template<typename F, typename SP>
+    static bool Apply(F f, SP sp, const TRegex& re)
+    {
+      return f(sp, re, nullptr, 0);
+    }
+
+    template<typename F, typename SP, typename... A>
+    static bool Apply(F f, SP sp, const TRegex& re, const A&... a)
+    {
+      const Arg* const args[] = {&a...};
+      return f(sp, re, args, static_cast<int>(sizeof...(a)));
+    }
+
+    static bool FullMatchN(
+      const std::string_view& text,
+      const TRegex& re,
+      const Arg* const args[],
+      int n)
+    {
+      if (re.engine_ == nullptr || !re.engine_->ok())
+        return false;
+      if (n > re.NumberOfCapturingGroups())
+        return false;
+
+      auto& ctx = thread_local_context();
+      if (n == 0)
+        return re.engine_->match(text, ctx);
+      std::vector<regex::RegexEngine::Capture> captures;
+      size_t len = re.engine_->find_prefix(text, captures, ctx, true);
+      if (len != text.size())
+        return false;
+
+      int num_caps = std::min(n, static_cast<int>(captures.size()));
+      for (int i = 0; i < num_caps; i++)
+      {
+        if (!captures[i].matched())
+        {
+          args[i]->SetDefault();
+          continue;
+        }
+        const char* cap_str = text.data() + captures[i].start;
+        size_t cap_len = captures[i].end - captures[i].start;
+        if (!args[i]->Parse(cap_str, cap_len))
+          return false;
+      }
+      return true;
+    }
+
+    static bool PartialMatchN(
+      const std::string_view& text,
+      const TRegex& re,
+      const Arg* const args[],
+      int n)
+    {
+      if (re.engine_ == nullptr || !re.engine_->ok())
+        return false;
+      if (n > re.NumberOfCapturingGroups())
+        return false;
+
+      std::vector<regex::RegexEngine::Capture> captures;
+      auto& ctx = thread_local_context();
+
+      auto result = re.engine_->search(text, captures, ctx);
+      if (!result.found())
+        return false;
+
+      int num_caps = std::min(n, static_cast<int>(captures.size()));
+      for (int i = 0; i < num_caps; i++)
+      {
+        if (!captures[i].matched())
+        {
+          args[i]->SetDefault();
+          continue;
+        }
+        const char* cap_str = text.data() + captures[i].start;
+        size_t cap_len = captures[i].end - captures[i].start;
+        if (!args[i]->Parse(cap_str, cap_len))
+          return false;
+      }
+      return true;
+    }
+
+    void init()
+    {
+      engine_ = std::make_shared<regex::RegexEngine>(pattern_);
+      num_captures_ = engine_->num_captures();
+    }
+
+    size_t find_prefix(const std::string_view& text, bool at_start = true) const
+    {
+      if (engine_ == nullptr || !engine_->ok())
+        return regex::RegexEngine::npos;
+      auto& ctx = thread_local_context();
+      size_t len = engine_->find_prefix(text, ctx, at_start);
+      return len;
+    }
+
+    size_t find_prefix(
+      const std::string_view& text,
+      std::vector<regex::RegexEngine::Capture>& captures,
+      bool at_start = true) const
+    {
+      auto& ctx = thread_local_context();
+      return find_prefix(text, captures, ctx, at_start);
+    }
+
+    size_t find_prefix(
+      const std::string_view& text,
+      std::vector<regex::RegexEngine::Capture>& captures,
+      regex::RegexEngine::MatchContext& ctx,
+      bool at_start = true) const
+    {
+      if (engine_ == nullptr || !engine_->ok())
+        return regex::RegexEngine::npos;
+      size_t len = engine_->find_prefix(text, captures, ctx, at_start);
+      return len;
+    }
+
+    std::string pattern_;
+    std::shared_ptr<regex::RegexEngine> engine_;
+    size_t num_captures_ = 0;
+  };
+
+  // Result of a single regex match against a Source.
+  // Stores Location spans for the overall match (index 0) and each
+  // capture group (indices 1..N).  Use at(i) to retrieve a Location
+  // and parse<T>(i) to convert a captured span to a typed value.
+  class TRegexMatch
+  {
+    friend class TRegexIterator;
+
+  private:
     std::vector<Location> locations;
     size_t matches = 0;
+    regex::RegexEngine::MatchContext ctx_;
+    std::vector<regex::RegexEngine::Capture> captures_;
 
-    bool match_regexp(const RE2& regex, re2::StringPiece& sp, Source& source)
+    bool match_regexp(
+      const TRegex& regex,
+      const std::string_view& view,
+      Source& source,
+      size_t offset)
     {
       matches = regex.NumberOfCapturingGroups() + 1;
-
-      if (match.size() < matches)
-        match.resize(matches);
 
       if (locations.size() < matches)
         locations.resize(matches);
 
-      auto matched = regex.Match(
-        sp,
-        0,
-        sp.length(),
-        re2::RE2::ANCHOR_START,
-        match.data(),
-        static_cast<int>(matches));
+      size_t matched_len = regex.find_prefix(view, captures_, ctx_);
 
-      if (!matched)
+      if (matched_len == regex::RegexEngine::npos)
       {
         return false;
       }
 
-      for (size_t i = 0; i < matches; i++)
+      locations[0] = Location(source, offset, matched_len);
+
+      size_t capture_count =
+        std::min(captures_.size(), matches > 0 ? matches - 1 : 0);
+      for (size_t i = 0; i < capture_count; i++)
       {
-        locations[i] = {
+        if (!captures_[i].matched() || (captures_[i].end < captures_[i].start))
+        {
+          locations[i + 1] = Location(source, offset + matched_len, 0);
+          continue;
+        }
+
+        locations[i + 1] = {
           source,
-          static_cast<size_t>(match.at(i).data() - source->view().data()),
-          match.at(i).size()};
+          offset + captures_[i].start,
+          captures_[i].end - captures_[i].start};
+      }
+
+      for (size_t i = capture_count + 1; i < matches; i++)
+      {
+        locations[i] = Location(source, offset, 0);
       }
 
       return true;
     }
 
   public:
-    REMatch(size_t max_capture = 0)
+    TRegexMatch(size_t max_capture = 0)
     {
-      match.resize(max_capture + 1);
       locations.resize(max_capture + 1);
     }
 
@@ -73,58 +597,114 @@ namespace trieste
       if (index >= matches)
         return T();
 
-      T t;
-      RE2::Arg arg(&t);
-      auto& m = match.at(index);
-      arg.Parse(m.data(), m.size());
-      return t;
+      auto text = at(index).view();
+      if constexpr (std::is_same_v<T, std::string>)
+      {
+        return std::string(text);
+      }
+      else if constexpr (std::is_same_v<T, std::string_view>)
+      {
+        return text;
+      }
+      else if constexpr (
+        std::is_same_v<T, char> || std::is_same_v<T, signed char> ||
+        std::is_same_v<T, unsigned char>)
+      {
+        if (text.size() != 1)
+          return T();
+        return static_cast<T>(text[0]);
+      }
+      else if constexpr (std::is_integral_v<T>)
+      {
+        T value = 0;
+        auto res =
+          std::from_chars(text.data(), text.data() + text.size(), value, 10);
+        if (res.ec == std::errc() && res.ptr == text.data() + text.size())
+          return value;
+        return T();
+      }
+      else if constexpr (std::is_floating_point_v<T>)
+      {
+        if (text.empty() || std::isspace(static_cast<unsigned char>(text[0])))
+          return T();
+
+        std::string tmp(text);
+        char* end = nullptr;
+        errno = 0;
+        T value;
+        if constexpr (std::is_same_v<T, float>)
+          value = std::strtof(tmp.c_str(), &end);
+        else
+          value = static_cast<T>(std::strtod(tmp.c_str(), &end));
+
+        if (end == tmp.c_str() + tmp.size() && errno != ERANGE)
+          return value;
+
+        return T();
+      }
+      else
+      {
+        return T();
+      }
     }
   };
 
-  class REIterator
+  // Sequential scanner that consumes prefix matches from a Source.
+  // Tracks a byte position and advances it after each successful
+  // consume() call.  Used by the Parse DSL to tokenise input.
+  class TRegexIterator
   {
   private:
     Source source;
-    re2::StringPiece sp;
+    size_t pos_ = 0;
 
   public:
-    REIterator(Source source_) : source(source_), sp(source_->view()) {}
+    TRegexIterator(Source source_) : source(source_) {}
 
     bool empty()
     {
-      return sp.empty();
+      return pos_ >= source->view().size();
     }
 
-    bool consume(const RE2& regex, REMatch& m)
+    bool consume(const TRegex& regex, TRegexMatch& m)
     {
-      if (!m.match_regexp(regex, sp, source))
+      std::string_view remainder = source->view().substr(pos_);
+      if (!m.match_regexp(regex, remainder, source, pos_))
         return false;
 
-      sp.remove_prefix(m.at(0).len);
+      pos_ += m.at(0).len;
       return true;
     }
 
     Location current() const
     {
-      return {
-        source, static_cast<size_t>(sp.data() - source->view().data()), 1};
+      return {source, pos_, 1};
     }
 
     void skip(size_t count = 1)
     {
-      sp.remove_prefix(count);
+      auto len = source->view().size();
+      pos_ = (len - pos_ < count) ? len : pos_ + count;
     }
   };
 
+  // Backwards-compatibility aliases for code written against the old
+  // RE2-based API.  These will be removed in a future release.
+  using RE2 [[deprecated("Use TRegex instead of RE2")]] = TRegex;
+  using REMatch [[deprecated("Use TRegexMatch instead of REMatch")]] =
+    TRegexMatch;
+  using REIterator [[deprecated("Use TRegexIterator instead of REIterator")]] =
+    TRegexIterator;
+
   inline Node build_ast(Source source, size_t pos)
   {
-    auto hd = RE2("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
-    auto st = RE2("[[:space:]]*\\{[^\\}]*\\}");
-    auto id = RE2("[[:space:]]*([[:digit:]]+):");
-    auto tl = RE2("[[:space:]]*\\)");
+    auto hd = TRegex("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
+    auto st = TRegex("[[:space:]]*\\{[^\\}]*\\}");
+    auto id = TRegex("[[:space:]]*([[:digit:]]+):");
+    auto tl = TRegex("[[:space:]]*\\)");
 
-    REMatch re_match(2);
-    REIterator re_iterator(source);
+    TRegexMatch re_match(2);
+    TRegexIterator re_iterator(source);
     re_iterator.skip(pos);
 
     Node top;

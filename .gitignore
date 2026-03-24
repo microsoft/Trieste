@@ -6,3 +6,5 @@ build*/
 compile_commands.json
 notes/
 .cache
+.copilot
+benchmarks
