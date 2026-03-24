@@ -912,20 +912,21 @@ namespace trieste
 
     size_t tree_height()
     {
-      if (children.size() == 0)
-      {
-        return 0;
-      }
-      else // If not a leaf node
-      {
-        size_t max_height = 0;
-        for (Node& child : children)
-        {
-          size_t child_height = child->tree_height();
-          max_height = std::max(max_height, child_height + 1);
-        }
-        return max_height;
-      }
+      size_t curr_depth = 0;
+      size_t max_depth = 0;
+
+      traverse(
+        [&](Node&) {
+          curr_depth++;
+          return true;
+        },
+        [&](Node&) {
+          if (curr_depth > max_depth)
+            max_depth = curr_depth;
+          curr_depth--;
+        });
+
+        return max_depth;
     }
 
   private:
