@@ -68,7 +68,7 @@ namespace trieste
         {
           info << "  " << error_count << " stopped by errors." << std::endl;
 
-          for (auto [msg, count] : error_msgs)
+          for (const auto& [msg, count] : error_msgs)
           {
             info << "    \"" << msg << "\": " << count << std::endl;
           }
@@ -420,16 +420,16 @@ namespace trieste
       return entropy;
     }
 
-    static size_t sum(std::vector<size_t>& v) {
+    static size_t sum(const std::vector<size_t>& v) {
       return std::accumulate(v.begin(), v.end(), (size_t) 0);
     }
 
-    static size_t avg(std::vector<size_t>& v) {
+    static size_t avg(const std::vector<size_t>& v) {
       if (v.empty()) return 0;
       return sum(v) / v.size();
     }
 
-    static size_t max(std::vector<size_t>& v) {
+    static size_t max(const std::vector<size_t>& v) {
       if (v.empty()) return 0;
       return *std::max_element(v.begin(), v.end());
     }
@@ -655,8 +655,8 @@ namespace trieste
           logging::Info() << "Skipping pass: " << pass->name() << std::endl;
           if (test_sequence_)
           {
-            auto pass_stats = test_pass_with_survivors(pass, survivors);
-            survivors = pass_stats.survivors;
+            // Still need to update survivors for next pass
+            survivors = test_pass_with_survivors(pass, survivors).survivors;
           }
           continue;
         }

@@ -63,7 +63,7 @@ int main(int argc, char** argv)
   return fuzzer.start_seed(seed)
     .seed_count(count)
     .failfast(failfast)
-    .max_retries(count * 2)
+    .max_retries(static_cast<size_t>(count) * 2)
     .test_sequence(sequence)
     .test();
 }

@@ -123,7 +123,7 @@ namespace trieste
       test->add_flag("--size_stats", test_size_stats, "Collect size statistics for ASTs (defaults to log level Info)");
 
       test->callback([&]() {
-        if (test_size_stats && logging::detail::default_report_level == logging::detail::LogLevel::Uninitialized)
+        if (test_size_stats && log_level.empty())
         {
           logging::set_log_level_from_string("Info");
         }
