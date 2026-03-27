@@ -32,7 +32,9 @@ set(JSON_TEST_SUITE_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../JSONTestSuite/test_parsi
 set(JSON_PATCH_TEST_SUITE_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../json-patch-tests/)
 
 add_test(NAME json_fuzz_reader COMMAND json_fuzzer reader -f WORKING_DIRECTORY $<TARGET_FILE_DIR:json_fuzzer>)
+add_test(NAME json_fuzz_reader_sequence COMMAND json_fuzzer reader -f --sequence WORKING_DIRECTORY $<TARGET_FILE_DIR:json_fuzzer>)
 add_test(NAME json_fuzz_writer COMMAND json_fuzzer writer -f WORKING_DIRECTORY $<TARGET_FILE_DIR:json_fuzzer>)
+add_test(NAME json_fuzz_writer_sequence COMMAND json_fuzzer writer -f --sequence WORKING_DIRECTORY $<TARGET_FILE_DIR:json_fuzzer>)
 add_test(NAME json_check_patterns COMMAND json_pattern_checker -w -i json-value WORKING_DIRECTORY $<TARGET_FILE_DIR:json_pattern_checker>)
 add_test(NAME json_test COMMAND json_test -wf ${JSON_TEST_SUITE_ROOT} WORKING_DIRECTORY $<TARGET_FILE_DIR:json_test>)
 add_test(NAME json_test_manual COMMAND json_test -wf -n manual WORKING_DIRECTORY $<TARGET_FILE_DIR:json_test>)
@@ -67,8 +69,11 @@ target_link_libraries(yaml_test
 set(YAML_TEST_SUITE_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../yaml-test-suite)
 
 add_test(NAME yaml_fuzz_reader COMMAND yaml_fuzzer reader -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
+add_test(NAME yaml_fuzz_reader_sequence COMMAND yaml_fuzzer reader -f --sequence WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
 add_test(NAME yaml_fuzz_writer COMMAND yaml_fuzzer writer -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
+add_test(NAME yaml_fuzz_writer_sequence COMMAND yaml_fuzzer writer -f --sequence WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
 add_test(NAME yaml_fuzz_event_writer COMMAND yaml_fuzzer event_writer -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
+add_test(NAME yaml_fuzz_event_writer_sequence COMMAND yaml_fuzzer event_writer -f --sequence WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
 add_test(NAME yaml_fuzz_to_json COMMAND yaml_fuzzer to_json -f WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_fuzzer>)
 add_test(NAME yaml_check_patterns COMMAND yaml_pattern_checker WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_pattern_checker>)
 add_test(NAME yaml_test COMMAND yaml_test -wf ${YAML_TEST_SUITE_ROOT} WORKING_DIRECTORY $<TARGET_FILE_DIR:yaml_test>)

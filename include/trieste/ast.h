@@ -900,6 +900,35 @@ namespace trieste
       return result;
     }
 
+    size_t tree_size()
+    {
+      size_t size = 0;
+      traverse([&](Node&) {
+        size++;
+        return true;
+      });
+      return size;
+    }
+
+    size_t tree_height()
+    {
+      size_t curr_depth = 0;
+      size_t max_depth = 0;
+
+      traverse(
+        [&](Node&) {
+          curr_depth++;
+          return true;
+        },
+        [&](Node&) {
+          if (curr_depth > max_depth)
+            max_depth = curr_depth;
+          curr_depth--;
+        });
+
+        return max_depth;
+    }
+
   private:
     std::pair<NodeDef*, NodeDef*> same_parent(NodeDef* q)
     {
