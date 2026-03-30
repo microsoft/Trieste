@@ -78,7 +78,7 @@ for compile+match and match-only timings.
 
 ## Regex Syntax Modes
 
-Regex syntax policy for strict iregexp compatibility versus extended Trieste
+Regex syntax policy for strict iregexp ([RFC9485](https://www.rfc-editor.org/rfc/rfc9485)) compatibility versus extended Trieste
 behavior is defined in [`notes/regex-syntax-policy.md`](notes/regex-syntax-policy.md).
 
 ## Using Trieste in Your Project

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "rune.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
@@ -38,8 +40,6 @@ namespace trieste
     const uint8_t Value2 = 0b00011111;
     const uint8_t Value3 = 0b00001111;
     const uint8_t Value4 = 0b00000111;
-
-    typedef uint32_t rune_t;
 
     const rune_t Max1 = 0x007F;
     const rune_t Max2 = 0x07FF;

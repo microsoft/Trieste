@@ -64,6 +64,36 @@ namespace
     });
   }
 
+  void test_empty_alternatives()
+  {
+    std::cout << "  empty alternatives" << std::endl;
+    // The engine does not currently support empty alternatives.
+    // Verify they are rejected cleanly (not a crash or hang).
+    auto check_rejected = [](const char* pattern) {
+      RegexEngine re(pattern);
+      if (re.ok())
+      {
+        std::cerr << "  FAIL: pattern /" << pattern
+                  << "/ should be rejected (empty alternative)" << std::endl;
+        failures++;
+      }
+      if (re.match(""))
+      {
+        std::cerr << "  FAIL: rejected pattern /" << pattern
+                  << "/ should not match \"\"" << std::endl;
+        failures++;
+      }
+    };
+    check_rejected("(|a)");
+    check_rejected("(a|)");
+    check_rejected("(a||b)");
+    check_rejected("(|)");
+    check_rejected("(||)");
+    check_rejected("a|");
+    check_rejected("|a");
+    check_rejected("|");
+  }
+
   void test_zero_or_one()
   {
     std::cout << "  zero_or_one (?)" << std::endl;
@@ -998,60 +1028,77 @@ namespace
     // ((a)(b)): group 1 = outer "ab", group 2 = "a", group 3 = "b".
     check_cap(
       "outer captures both inner groups",
-      "((a)(b))", "ab", 2, {{0, 2}, {0, 1}, {1, 2}});
+      "((a)(b))",
+      "ab",
+      2,
+      {{0, 2}, {0, 1}, {1, 2}});
 
     // Triple nesting: (((a))).
     check_cap(
-      "triple nesting same span",
-      "(((a)))", "a", 1, {{0, 1}, {0, 1}, {0, 1}});
+      "triple nesting same span", "(((a)))", "a", 1, {{0, 1}, {0, 1}, {0, 1}});
 
     // Nested with surrounding literal: ((a(b))c).
     // group 1 = "abc", group 2 = "ab", group 3 = "b".
     check_cap(
       "nested capture with surrounding literal",
-      "((a(b))c)", "abc", 3, {{0, 3}, {0, 2}, {1, 2}});
+      "((a(b))c)",
+      "abc",
+      3,
+      {{0, 3}, {0, 2}, {1, 2}});
 
     // Non-capturing wrapping capturing: ((?:a)(b)).
     // group 1 = outer "ab", group 2 = "b" only ((?:a) is not captured).
     check_cap(
-      "non-capturing wraps capturing",
-      "((?:a)(b))", "ab", 2, {{0, 2}, {1, 2}});
+      "non-capturing wraps capturing", "((?:a)(b))", "ab", 2, {{0, 2}, {1, 2}});
 
     // Capturing wrapping non-capturing: ((?:ab)).
     // group 1 = "ab".
-    check_cap(
-      "capturing wraps non-capturing",
-      "((?:ab))", "ab", 2, {{0, 2}});
+    check_cap("capturing wraps non-capturing", "((?:ab))", "ab", 2, {{0, 2}});
 
     // Non-capturing between two captures: (a)(?:x)(b).
     // group 1 = "a", group 2 = "b".
     check_cap(
       "non-capturing between two captures",
-      "(a)(?:x)(b)", "axb", 3, {{0, 1}, {2, 3}});
+      "(a)(?:x)(b)",
+      "axb",
+      3,
+      {{0, 1}, {2, 3}});
 
     // Nested non-capturing inside capturing with quantifier.
     // ((?:ab)+): group 1 = "ababab".
     check_cap(
       "quantified non-capturing inside capturing",
-      "((?:ab)+)", "ababab", 6, {{0, 6}});
+      "((?:ab)+)",
+      "ababab",
+      6,
+      {{0, 6}});
 
     // Multiple levels of non-capturing inside capturing.
     // ((?:(?:a)b)c): group 1 = "abc".
     check_cap(
       "double non-capturing inside capturing",
-      "((?:(?:a)b)c)", "abc", 3, {{0, 3}});
+      "((?:(?:a)b)c)",
+      "abc",
+      3,
+      {{0, 3}});
 
     // Alternation inside nested captures.
     // ((a|b)(c|d)): group 1 = "bd", group 2 = "b", group 3 = "d".
     check_cap(
       "alternation inside nested captures",
-      "((a|b)(c|d))", "bd", 2, {{0, 2}, {0, 1}, {1, 2}});
+      "((a|b)(c|d))",
+      "bd",
+      2,
+      {{0, 2}, {0, 1}, {1, 2}});
 
     // Nested capture with quantifier on inner group.
     // ((a)+): group 1 = "aaa", group 2 = last "a" captured.
     check_cap(
       "quantified inner capture takes last match",
-      "((a)+)", "aaa", 3, {{0, 3}, {2, 3}});
+      "((a)+)",
+      "aaa",
+      3,
+      {{0, 3}, {2, 3}});
 
     // --- num_captures with mixed nesting ---
     {
@@ -1095,12 +1142,12 @@ namespace
         }
         std::vector<RegexEngine::Capture> caps;
         size_t len = re.find_prefix("a", caps);
-        if (len != 1 || caps.size() != 1 || caps[0].start != 0 ||
-            caps[0].end != 1)
+        if (
+          len != 1 || caps.size() != 1 || caps[0].start != 0 ||
+          caps[0].end != 1)
         {
-          std::cerr
-            << "  FAIL: deep non-capturing nesting — capture mismatch"
-            << std::endl;
+          std::cerr << "  FAIL: deep non-capturing nesting — capture mismatch"
+                    << std::endl;
           failures++;
         }
       }
@@ -2764,6 +2811,7 @@ int main()
   std::cout << "Running regex engine tests..." << std::endl;
   test_literals();
   test_alternation();
+  test_empty_alternatives();
   test_zero_or_one();
   test_zero_or_more();
   test_one_or_more();

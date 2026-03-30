@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
-#include <list>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -65,17 +64,38 @@ namespace trieste::regex
   inline constexpr rune_t RuneClassBase = 0xBF0000;
   inline constexpr rune_t RuneClassMax = 0xBFFFFF;
 
+  // Validate that sentinel ranges are well-formed and non-overlapping.
+  // Each capture range must fit MaxCaptures entries without reaching
+  // the next range, and the class-ref range must not overlap captures.
+  static_assert(
+    CaptureGroup + MaxCaptures <= CaptureClose,
+    "CaptureGroup overflows into CaptureClose");
+  static_assert(
+    CaptureClose + MaxCaptures <= CaptureOpen,
+    "CaptureClose overflows into CaptureOpen");
+  static_assert(
+    CaptureOpen + MaxCaptures <= Catenation,
+    "CaptureOpen overflows into operator sentinels");
+  static_assert(
+    RuneClassBase <= RuneClassMax,
+    "RuneClassBase must not exceed RuneClassMax");
+  static_assert(
+    RuneClassBase > Match,
+    "RuneClass range must not overlap operator sentinels");
+
   // Resource limits (RFC 9485 §8 and engine-specific bounds).
   //   MaxRepetition  — maximum count in {n,m} quantifiers.
   //   MaxPostfixSize — maximum postfix expression length (after expansion).
   //   MaxStates      — maximum NFA states after Thompson construction.
   //   MaxClosureCacheEntries — maximum precomputed epsilon-closure entries.
   //   MaxGroupNesting — maximum depth of nested parenthesised groups.
+  //   MaxCaptureFrameEntries — maximum capture frame arena entries.
   inline constexpr size_t MaxRepetition = 1000;
   inline constexpr size_t MaxPostfixSize = 100000;
   inline constexpr size_t MaxStates = 100000;
   inline constexpr size_t MaxClosureCacheEntries = 1'000'000;
   inline constexpr size_t MaxGroupNesting = 256;
+  inline constexpr size_t MaxCaptureFrameEntries = 1'000'000;
 
   // Error codes reported when pattern compilation fails.
   // Use error_code_string() to obtain a human-readable message.
@@ -355,6 +375,7 @@ namespace trieste::regex
     //   IregexpStrict — RFC 9485 I-Regexp subset: no anchors, no lazy
     //                   quantifiers, no \b, no \d/\w/\s shorthands, no
     //                   non-capturing groups. Bare ] and } are errors.
+    //                   See https://www.rfc-editor.org/rfc/rfc9485
     enum class SyntaxMode
     {
       Extended,
@@ -449,6 +470,9 @@ namespace trieste::regex
       size_t allocate_capture_frame(size_t fill)
       {
         assert(capture_frame_slots > 0);
+        if (
+          capture_frames.size() + capture_frame_slots > MaxCaptureFrameEntries)
+          return RegexEngine::npos;
         size_t frame = capture_frames.size() / capture_frame_slots;
         capture_frames.resize(
           capture_frames.size() + capture_frame_slots, fill);
@@ -459,6 +483,9 @@ namespace trieste::regex
       {
         assert(capture_frame_slots > 0);
         assert((frame + 1) * capture_frame_slots <= capture_frames.size());
+        if (
+          capture_frames.size() + capture_frame_slots > MaxCaptureFrameEntries)
+          return RegexEngine::npos;
         size_t out = capture_frames.size() / capture_frame_slots;
         size_t src_offset = frame * capture_frame_slots;
         size_t dst_offset = capture_frames.size();
@@ -828,6 +855,8 @@ namespace trieste::regex
       }
 
       size_t init_caps_frame = ctx.allocate_capture_frame(npos);
+      if (init_caps_frame == npos)
+        return npos;
       ctx.advance_epoch(epoch);
       add_state_capturing(
         current_threads,
@@ -1107,6 +1136,8 @@ namespace trieste::regex
         {
           size_t idx = capture_index(s->label);
           size_t next_frame = ctx.clone_capture_frame(frame);
+          if (next_frame == npos)
+            continue;
           ctx.capture_frame_data(next_frame)[idx * 2] = pos;
           stack.push_back({s->next, next_frame});
           continue;
@@ -1116,6 +1147,8 @@ namespace trieste::regex
         {
           size_t idx = capture_index(s->label);
           size_t next_frame = ctx.clone_capture_frame(frame);
+          if (next_frame == npos)
+            continue;
           ctx.capture_frame_data(next_frame)[idx * 2 + 1] = pos;
           stack.push_back({s->next, next_frame});
           continue;
@@ -1159,8 +1192,7 @@ namespace trieste::regex
     closure_flags(bool boundary_match, bool at_start, bool at_end)
     {
       return static_cast<uint8_t>(
-        (boundary_match ? FlagBoundary : 0) |
-        (at_start ? FlagAtStart : 0) |
+        (boundary_match ? FlagBoundary : 0) | (at_start ? FlagAtStart : 0) |
         (at_end ? FlagAtEnd : 0));
     }
 
@@ -1628,10 +1660,7 @@ namespace trieste::regex
       // Parse exactly `count` hex digits from pattern at pos.
       // Returns the parsed value in `out`. Sets error on failure.
       bool parse_hex_digits(
-        const std::string_view& pattern,
-        size_t& pos,
-        size_t count,
-        rune_t& out)
+        const std::string_view& pattern, size_t& pos, size_t count, rune_t& out)
       {
         out = 0;
         for (size_t i = 0; i < count; i++)
@@ -1714,8 +1743,8 @@ namespace trieste::regex
         const std::string_view& pattern, size_t& pos, RuneClass& rc)
       {
         size_t name_start = pos;
-        while (
-          pos < pattern.size() && pattern[pos] != ':' && pattern[pos] != ']')
+        while (pos < pattern.size() && pattern[pos] != ':' &&
+               pattern[pos] != ']')
           pos++;
 
         if (
@@ -2002,8 +2031,7 @@ namespace trieste::regex
       {
         return need_concat && allow_standalone_closer_literals() &&
           !is_ascii_digit_at(pattern, pos) && atom_start < postfix.size() &&
-          postfix.size() == atom_start + 1 &&
-          postfix[atom_start] == Backslash;
+          postfix.size() == atom_start + 1 && postfix[atom_start] == Backslash;
       }
 
       // True when the preceding concat can be undone (used by {0}).
@@ -2028,8 +2056,8 @@ namespace trieste::regex
 
       // True when the pattern has a non-capturing group prefix (?:
       // at the current position.
-      static bool is_noncapturing_group_prefix(
-        const std::string_view& pattern, size_t pos)
+      static bool
+      is_noncapturing_group_prefix(const std::string_view& pattern, size_t pos)
       {
         return pos + 1 < pattern.size() && pattern[pos] == '?' &&
           pattern[pos + 1] == ':';
@@ -2109,10 +2137,8 @@ namespace trieste::regex
       // -- Per-case handler methods --
       // Each returns true on success, false on error (caller returns {}).
 
-      bool on_escape(
-        rune_t rune_value,
-        const std::string_view& pattern,
-        size_t& pos)
+      bool
+      on_escape(rune_t rune_value, const std::string_view& pattern, size_t& pos)
       {
         escaped = false;
 
@@ -2346,8 +2372,7 @@ namespace trieste::regex
         }
 
         // Extract the atom from postfix.
-        std::vector<rune_t> atom(
-          postfix.begin() + atom_start, postfix.end());
+        std::vector<rune_t> atom(postfix.begin() + atom_start, postfix.end());
         postfix.resize(atom_start);
 
         // Check expansion size upfront to avoid large intermediate

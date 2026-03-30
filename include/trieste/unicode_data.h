@@ -5,14 +5,15 @@
 // Auto-generated from UnicodeData.txt — do not edit by hand.
 #pragma once
 
+#include "rune.h"
+
 #include <cstddef>
-#include <cstdint>
 #include <string_view>
 #include <utility>
 
 namespace trieste::unicode
 {
-  using range_t = std::pair<uint32_t, uint32_t>;
+  using range_t = std::pair<rune_t, rune_t>;
 
   // clang-format off
   inline constexpr range_t cat_Lu[] = {

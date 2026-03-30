@@ -39,11 +39,6 @@ namespace trieste
       init();
     }
 
-    explicit TRegex(const std::string& pattern) : pattern_(pattern)
-    {
-      init();
-    }
-
     explicit TRegex(std::string_view pattern) : pattern_(pattern)
     {
       init();
@@ -63,6 +58,20 @@ namespace trieste
     bool ok() const
     {
       return engine_ != nullptr && engine_->ok();
+    }
+
+    regex::ErrorCode error_code() const
+    {
+      if (engine_ == nullptr)
+        return regex::ErrorCode::ErrorInternalError;
+      return engine_->error_code();
+    }
+
+    const char* error() const
+    {
+      if (engine_ == nullptr)
+        return regex::error_code_string(regex::ErrorCode::ErrorInternalError);
+      return engine_->error();
     }
 
     int NumberOfCapturingGroups() const

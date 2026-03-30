@@ -235,11 +235,11 @@ When asked to complete a task, follow this process:
 
 ### Multi-perspective Planning Process
 
-When planning a code change to the library, use four sub-planners running in parallel to generate competing plans, then synthesise the best elements into a final plan.
+When planning a code change to the library, use five sub-planners running in parallel to generate competing plans and attack scenarios, then synthesise the best elements into a final plan.
 
 #### Step 1 — Gather sub-plans
 
-Spawn **four fresh subagents**, each prompted to use one of the following skills. Each subagent receives the same task description and context but plans through a different lens:
+Spawn **five fresh subagents**, each prompted to use one of the following skills. Each subagent receives the same task description and context but plans through a different lens:
 
 | Subagent | Skill | Focus |
 |----------|-------|-------|
@@ -247,28 +247,31 @@ Spawn **four fresh subagents**, each prompted to use one of the following skills
 | Security Planner | `/plan-security` | Defence in depth, safe error handling, bounded resources, fuzz coverage |
 | Usability Planner | `/plan-usability` | Clarity, readability, correctness, consistent naming, one-concept-per-pass |
 | Conservative Planner | `/plan-conservative` | Smallest diff, maximum reuse, no speculative generality, backwards compat |
+| Adversarial Planner | `/plan-adversarial` | Attack scenarios, edge cases, invariant violations, regression vectors |
 
 Prompt each subagent with:
 > You are planning a change to the Trieste library. Use the `/[skill-name]` skill to guide your planning. Here is the task: [task description and relevant context]. Produce a numbered plan following the output format defined in the skill.
 
-#### Step 2 — Evaluate the four plans
+#### Step 2 — Evaluate the five plans
 
-Review the four plans yourself and produce a short evaluation covering:
+Review the four constructive plans and the adversarial attack scenarios yourself and produce a short evaluation covering:
 
 - **Convergence**: where two or more plans agree on the same approach. High convergence suggests a clearly correct design.
 - **Unique insights**: ideas that appear in only one plan and are worth incorporating.
 - **Conflicts**: where plans disagree. For each conflict, state which perspective you favour and why.
-- **Gaps**: anything none of the four plans addressed.
+- **Gaps**: anything none of the four constructive plans addressed.
+- **Adversarial findings**: which attack scenarios are valid threats that the final plan must address, and which are theoretical or out of scope.
 
 #### Step 3 — Synthesise the final plan
 
-Spawn a **fifth subagent** (the synthesiser). Provide it with:
+Spawn a **sixth subagent** (the synthesiser). Provide it with:
 - The original task description.
-- All four sub-plans (labelled by perspective).
+- All four constructive sub-plans (labelled by perspective).
+- The adversarial attack scenarios.
 - Your evaluation from Step 2.
 
 Prompt the synthesiser with:
-> You are producing the final plan for a change to the Trieste library. You have received four sub-plans from different perspectives (Speed, Security, Usability, Conservative) and an evaluation of those plans. Synthesise them into a single coherent, numbered plan that balances all four concerns. Where the evaluation favours one perspective, follow it. Where the evaluation is neutral, prefer the Conservative approach. Output the final plan in the standard format: Goal, Steps (with file paths and descriptions balancing all four perspectives), Rationale (explaining the synthesis), and Trade-offs (any conflicts between perspectives and how they were resolved).
+> You are producing the final plan for a change to the Trieste library. You have received four sub-plans from different perspectives (Speed, Security, Usability, Conservative), a set of adversarial attack scenarios, and an evaluation of all five. Synthesise them into a single coherent, numbered plan that balances all four constructive concerns and defends against the accepted adversarial findings. Where the evaluation favours one perspective, follow it. Where the evaluation is neutral, prefer the Conservative approach. For each accepted adversarial finding, include a specific defence (test case, bounds check, or design constraint) in the relevant step. Output the final plan in the standard format: Goal, Steps (with file paths and descriptions balancing all four perspectives), Rationale (explaining the synthesis), Trade-offs (any conflicts between perspectives and how they were resolved), and Defences (adversarial findings addressed and how).
 
 #### Step 4 — Review the synthesised plan
 
