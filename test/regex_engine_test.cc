@@ -991,6 +991,258 @@ namespace
     check_cap("(a)b no match", "(a)b", "cd", npos, {});
     // Pattern from parse.h: parenthesized group with capture.
     check_cap("paren capture", "(\\()[[:blank:]]*", "( ", 2, {{0, 1}});
+
+    // --- Nested captures and mixed group types ---
+
+    // Multi-level nested captures with distinct spans.
+    // ((a)(b)): group 1 = outer "ab", group 2 = "a", group 3 = "b".
+    check_cap(
+      "outer captures both inner groups",
+      "((a)(b))", "ab", 2, {{0, 2}, {0, 1}, {1, 2}});
+
+    // Triple nesting: (((a))).
+    check_cap(
+      "triple nesting same span",
+      "(((a)))", "a", 1, {{0, 1}, {0, 1}, {0, 1}});
+
+    // Nested with surrounding literal: ((a(b))c).
+    // group 1 = "abc", group 2 = "ab", group 3 = "b".
+    check_cap(
+      "nested capture with surrounding literal",
+      "((a(b))c)", "abc", 3, {{0, 3}, {0, 2}, {1, 2}});
+
+    // Non-capturing wrapping capturing: ((?:a)(b)).
+    // group 1 = outer "ab", group 2 = "b" only ((?:a) is not captured).
+    check_cap(
+      "non-capturing wraps capturing",
+      "((?:a)(b))", "ab", 2, {{0, 2}, {1, 2}});
+
+    // Capturing wrapping non-capturing: ((?:ab)).
+    // group 1 = "ab".
+    check_cap(
+      "capturing wraps non-capturing",
+      "((?:ab))", "ab", 2, {{0, 2}});
+
+    // Non-capturing between two captures: (a)(?:x)(b).
+    // group 1 = "a", group 2 = "b".
+    check_cap(
+      "non-capturing between two captures",
+      "(a)(?:x)(b)", "axb", 3, {{0, 1}, {2, 3}});
+
+    // Nested non-capturing inside capturing with quantifier.
+    // ((?:ab)+): group 1 = "ababab".
+    check_cap(
+      "quantified non-capturing inside capturing",
+      "((?:ab)+)", "ababab", 6, {{0, 6}});
+
+    // Multiple levels of non-capturing inside capturing.
+    // ((?:(?:a)b)c): group 1 = "abc".
+    check_cap(
+      "double non-capturing inside capturing",
+      "((?:(?:a)b)c)", "abc", 3, {{0, 3}});
+
+    // Alternation inside nested captures.
+    // ((a|b)(c|d)): group 1 = "bd", group 2 = "b", group 3 = "d".
+    check_cap(
+      "alternation inside nested captures",
+      "((a|b)(c|d))", "bd", 2, {{0, 2}, {0, 1}, {1, 2}});
+
+    // Nested capture with quantifier on inner group.
+    // ((a)+): group 1 = "aaa", group 2 = last "a" captured.
+    check_cap(
+      "quantified inner capture takes last match",
+      "((a)+)", "aaa", 3, {{0, 3}, {2, 3}});
+
+    // --- num_captures with mixed nesting ---
+    {
+      // 3 capturing groups nested among non-capturing.
+      RegexEngine re("(a)(?:(b)(?:c)(d))");
+      if (re.num_captures() != 3)
+      {
+        std::cerr << "  FAIL: mixed nesting num_captures expected 3, got "
+                  << re.num_captures() << std::endl;
+        failures++;
+      }
+    }
+
+    // --- Depth and limit tests ---
+
+    // Deep non-capturing nesting with a capture inside (100 levels of (?:)).
+    {
+      std::string pattern;
+      for (size_t i = 0; i < 100; i++)
+        pattern += "(?:";
+      pattern += "(a)";
+      for (size_t i = 0; i < 100; i++)
+        pattern += ")";
+
+      RegexEngine re(pattern);
+      if (!re.ok())
+      {
+        std::cerr << "  FAIL: deep non-capturing nesting — malformed: "
+                  << re.error() << std::endl;
+        failures++;
+      }
+      else
+      {
+        if (re.num_captures() != 1)
+        {
+          std::cerr
+            << "  FAIL: deep non-capturing nesting — num_captures expected 1, "
+               "got "
+            << re.num_captures() << std::endl;
+          failures++;
+        }
+        std::vector<RegexEngine::Capture> caps;
+        size_t len = re.find_prefix("a", caps);
+        if (len != 1 || caps.size() != 1 || caps[0].start != 0 ||
+            caps[0].end != 1)
+        {
+          std::cerr
+            << "  FAIL: deep non-capturing nesting — capture mismatch"
+            << std::endl;
+          failures++;
+        }
+      }
+    }
+
+    // 256 levels of nesting (at the limit) — all non-capturing except one.
+    {
+      std::string pattern;
+      for (size_t i = 0; i < 255; i++)
+        pattern += "(?:";
+      pattern += "(a)";
+      for (size_t i = 0; i < 255; i++)
+        pattern += ")";
+
+      RegexEngine re(pattern);
+      if (!re.ok())
+      {
+        std::cerr << "  FAIL: 256-level nesting — malformed: " << re.error()
+                  << std::endl;
+        failures++;
+      }
+      else if (!re.match("a"))
+      {
+        std::cerr << "  FAIL: 256-level nesting — should match 'a'"
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 257 levels should be rejected.
+    {
+      std::string pattern;
+      for (size_t i = 0; i < 257; i++)
+        pattern += "(?:";
+      pattern += "a";
+      for (size_t i = 0; i < 257; i++)
+        pattern += ")";
+
+      RegexEngine re(pattern);
+      if (re.ok())
+      {
+        std::cerr << "  FAIL: 257-level nesting — should be rejected"
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // Exactly 64 capturing groups (at MaxCaptures limit).
+    {
+      std::string pattern;
+      for (size_t i = 0; i < 64; i++)
+        pattern += "(";
+      pattern += "a";
+      for (size_t i = 0; i < 64; i++)
+        pattern += ")";
+
+      RegexEngine re(pattern);
+      if (!re.ok())
+      {
+        std::cerr << "  FAIL: 64 captures — malformed: " << re.error()
+                  << std::endl;
+        failures++;
+      }
+      else
+      {
+        if (re.num_captures() != 64)
+        {
+          std::cerr << "  FAIL: 64 captures — num_captures expected 64, got "
+                    << re.num_captures() << std::endl;
+          failures++;
+        }
+        if (!re.match("a"))
+        {
+          std::cerr << "  FAIL: 64 captures — should match 'a'" << std::endl;
+          failures++;
+        }
+      }
+    }
+
+    // 65 capturing groups should be rejected (exceeds MaxCaptures).
+    {
+      std::string pattern;
+      for (size_t i = 0; i < 65; i++)
+        pattern += "(";
+      pattern += "a";
+      for (size_t i = 0; i < 65; i++)
+        pattern += ")";
+
+      RegexEngine re(pattern);
+      if (re.ok())
+      {
+        std::cerr << "  FAIL: 65 captures — should be rejected" << std::endl;
+        failures++;
+      }
+      if (re.error_code() != ErrorCode::ErrorTooManyCaptures)
+      {
+        std::cerr << "  FAIL: 65 captures — expected ErrorTooManyCaptures, got "
+                  << re.error() << std::endl;
+        failures++;
+      }
+    }
+
+    // Non-capturing groups pushing total nesting above 64 while captures
+    // stay below 64.
+    {
+      std::string pattern;
+      // 10 capturing groups...
+      for (size_t i = 0; i < 10; i++)
+        pattern += "(";
+      // ...wrapped in 90 non-capturing groups (total 100 nesting levels).
+      for (size_t i = 0; i < 90; i++)
+        pattern += "(?:";
+      pattern += "a";
+      for (size_t i = 0; i < 90; i++)
+        pattern += ")";
+      for (size_t i = 0; i < 10; i++)
+        pattern += ")";
+
+      RegexEngine re(pattern);
+      if (!re.ok())
+      {
+        std::cerr << "  FAIL: 10 caps + 90 non-cap nesting — malformed: "
+                  << re.error() << std::endl;
+        failures++;
+      }
+      else
+      {
+        if (re.num_captures() != 10)
+        {
+          std::cerr
+            << "  FAIL: 10 caps + 90 non-cap — num_captures expected 10, got "
+            << re.num_captures() << std::endl;
+          failures++;
+        }
+        if (!re.match("a"))
+        {
+          std::cerr << "  FAIL: 10 caps + 90 non-cap — should match 'a'"
+                    << std::endl;
+          failures++;
+        }
+      }
+    }
   }
 
   void test_word_boundary()
