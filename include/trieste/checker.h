@@ -180,9 +180,9 @@ namespace trieste
         for (auto& child : *pattern)
         {
           auto child_mult = multiplicity(child);
-          sum = sum        == Multiplicity::Zero? child_mult:
-                child_mult == Multiplicity::Zero? sum:
-                Multiplicity::Unknown;
+          sum = sum == Multiplicity::Zero    ? child_mult :
+            child_mult == Multiplicity::Zero ? sum :
+                                               Multiplicity::Unknown;
         }
         return sum;
       }
@@ -313,7 +313,8 @@ namespace trieste
     }
 
     // This is used to traverse a pattern tree in a depth-first manner.
-    struct StackedIterator {
+    struct StackedIterator
+    {
       std::vector<std::tuple<Node, NodeIt>> stack;
 
       StackedIterator(Node root)
@@ -344,7 +345,8 @@ namespace trieste
       void operator++()
       {
         bool repeat;
-        do {
+        do
+        {
           repeat = false;
           auto& [node_group, it] = stack.back();
           ++it;
@@ -353,7 +355,7 @@ namespace trieste
             pop();
             repeat = true;
           }
-         } while (!empty() && repeat);
+        } while (!empty() && repeat);
       }
     };
 

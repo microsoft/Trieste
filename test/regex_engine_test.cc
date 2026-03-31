@@ -31,9 +31,8 @@ namespace
       if (result != tc.expected)
       {
         std::cerr << "  FAIL: " << tc.name << " — pattern /" << tc.pattern
-                  << "/ vs \"" << tc.input << "\""
-                  << " expected " << tc.expected << " got " << result
-                  << std::endl;
+                  << "/ vs \"" << tc.input << "\"" << " expected "
+                  << tc.expected << " got " << result << std::endl;
         failures++;
       }
     }
@@ -885,8 +884,8 @@ namespace
       if (result != expected)
       {
         std::cerr << "  FAIL: " << name << " — pattern /" << pattern
-                  << "/ vs \"" << input << "\""
-                  << " expected " << expected << " got " << result << std::endl;
+                  << "/ vs \"" << input << "\"" << " expected " << expected
+                  << " got " << result << std::endl;
         failures++;
       }
     };

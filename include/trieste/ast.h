@@ -926,7 +926,7 @@ namespace trieste
           curr_depth--;
         });
 
-        return max_depth;
+      return max_depth;
     }
 
   private:

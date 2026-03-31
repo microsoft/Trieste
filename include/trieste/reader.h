@@ -125,7 +125,8 @@ namespace trieste
       summary << "---------" << std::endl;
       summary << "Parse time (us): "
               << std::chrono::duration_cast<std::chrono::microseconds>(
-                   parse_end - parse_start).count()
+                   parse_end - parse_start)
+                   .count()
               << std::endl;
 
       auto result =
@@ -271,7 +272,8 @@ namespace trieste
       return *this;
     }
 
-    Reader& synthetic(const std::string& contents, const std::string& origin="")
+    Reader&
+    synthetic(const std::string& contents, const std::string& origin = "")
     {
       input_ = SourceDef::synthetic(contents, origin);
       return *this;
