@@ -91,8 +91,27 @@ jobs:
   
   all-checks:
     # Join of all build-test jobs
-    needs: [build-test]
+    needs: [build-test, format-check]
     runs-on: ubuntu-22.04
     steps:
     - name: Check all jobs
       run: echo "All jobs passed"
+
+  format-check:
+    runs-on: ubuntu-24.04
+    name: Format Check
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: sudo apt install ninja-build clang-format-18
+
+    - name: Configure CMake
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_C_COMPILER=clang-18 -G Ninja
+
+    - name: Run clang-format check
+      working-directory: ${{github.workspace}}/build
+      run: |
+        set -eo pipefail
+        ninja clangformat
+        git diff --exit-code
