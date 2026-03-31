@@ -46,6 +46,41 @@ ninja install
 ./dist/infix/infix test
 ```
 
+## Regex Benchmark (Opt-In)
+
+Trieste includes an opt-in benchmark that compares the internal regex engine
+against RE2.
+
+- Option: `TRIESTE_BUILD_REGEX_BENCHMARK`
+- Default: `OFF`
+- RE2 is fetched and built only when this option is enabled.
+- The benchmark target is not added to `ctest`.
+
+Default behavior (no benchmark, no RE2 fetch/build):
+
+```sh
+cmake -S . -B build-default
+cmake --build build-default
+```
+
+Benchmark-enabled behavior:
+
+```sh
+cmake -S . -B build-bench \
+  -DTRIESTE_ENABLE_TESTING=ON \
+  -DTRIESTE_BUILD_REGEX_BENCHMARK=ON
+cmake --build build-bench --target trieste_regex_engine_benchmark
+./build-bench/test/trieste_regex_engine_benchmark
+```
+
+The benchmark output includes deterministic workload metadata and summary ratios
+for compile+match and match-only timings.
+
+## Regex Syntax Modes
+
+Regex syntax policy for strict iregexp ([RFC9485](https://www.rfc-editor.org/rfc/rfc9485)) compatibility versus extended Trieste
+behavior is defined in [`notes/regex-syntax-policy.md`](notes/regex-syntax-policy.md).
+
 ## Using Trieste in Your Project
 
 You can use Trieste via FetchContent by including the following lines

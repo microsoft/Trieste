@@ -74,7 +74,7 @@ $$
 
 which results in programs that look like this:
 
-### [simple.infix](./examples/simple.infix)
+### [simple.infix](./testsuite/examples/simple.infix)
 ``` typescript
 x = 5;
 print "x" x;
@@ -82,7 +82,7 @@ y = 2 - 1;
 print "1 + 10" 1 + 10;
 ```
 
-### [mixed.infix](./examples/mixed.infix)
+### [mixed.infix](./testsuite/examples/mixed.infix)
 ``` typescript
 x = 1 + 2 * 3 + 5.3 - 4 - 2 / 0.1;
 y = 3.2 * x + 5;
@@ -90,7 +90,7 @@ print "x" x;
 print "y" y;
 ```
 
-### [multi_ident.infix](./examples/multi_ident.infix)
+### [multi_ident.infix](./testsuite/examples/multi_ident.infix)
 ``` typescript
 x = 5 + 10;
 y = 1 - 9 + x;

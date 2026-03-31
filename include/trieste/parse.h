@@ -28,7 +28,7 @@ namespace trieste
       friend class trieste::Parse;
 
     private:
-      RE2 regex;
+      TRegex regex;
       ParseEffect effect;
       DebugLocation dl;
 
@@ -52,8 +52,8 @@ namespace trieste
       Node top;
       Node node;
       std::string mode_;
-      REMatch re_match;
-      REIterator re_iterator;
+      TRegexMatch re_match;
+      TRegexIterator re_iterator;
       size_t error_count_;
 
     public:
