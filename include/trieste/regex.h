@@ -6,6 +6,8 @@
 #include "logging.h"
 #include "regex_engine.h"
 
+#include <array>
+#include <cassert>
 #include <cctype>
 #include <cerrno>
 #include <charconv>
@@ -82,6 +84,20 @@ namespace trieste
     const std::string& pattern() const
     {
       return pattern_;
+    }
+
+    regex::RegexEngine::FirstCharInfo first_char_info() const
+    {
+      if (engine_ == nullptr || !engine_->ok())
+      {
+        regex::RegexEngine::FirstCharInfo info;
+        info.bitmap[0] = ~uint64_t(0);
+        info.bitmap[1] = ~uint64_t(0);
+        info.can_match_empty = true;
+        info.can_match_nonascii = true;
+        return info;
+      }
+      return engine_->first_char_info();
     }
 
     // Type-erased wrapper for output parameter pointers.
@@ -592,6 +608,15 @@ namespace trieste
       locations.resize(max_capture + 1);
     }
 
+    bool try_match(
+      const TRegex& regex,
+      const std::string_view& view,
+      Source& source,
+      size_t offset)
+    {
+      return match_regexp(regex, view, source, offset);
+    }
+
     const Location& at(size_t index = 0) const
     {
       if (index >= matches)
@@ -658,6 +683,8 @@ namespace trieste
     }
   };
 
+  class TRegexSet;
+
   // Sequential scanner that consumes prefix matches from a Source.
   // Tracks a byte position and advances it after each successful
   // consume() call.  Used by the Parse DSL to tokenise input.
@@ -695,6 +722,128 @@ namespace trieste
       auto len = source->view().size();
       pos_ = (len - pos_ < count) ? len : pos_ + count;
     }
+
+    int consume_first_match(TRegexMatch& m, const TRegexSet& set);
+  };
+
+  // Precomputed dispatch table for multi-regex matching.  For each
+  // possible first byte (0-255), stores the sorted list of regex indices
+  // that could match input starting with that byte.  A separate list
+  // stores indices of regexes that can match the empty string (used when
+  // the input is empty).  All candidate lists are stored in a single flat
+  // vector for cache efficiency; the offset table provides O(1) lookup.
+  class TRegexSet
+  {
+  public:
+    TRegexSet(const TRegex* regexes, size_t count)
+    : regexes_(regexes, regexes + count)
+    {
+      build_dispatch_table();
+    }
+
+    explicit TRegexSet(std::initializer_list<TRegex> regexes)
+    : regexes_(regexes)
+    {
+      build_dispatch_table();
+    }
+
+    template<typename Iter>
+    TRegexSet(Iter first, Iter last)
+    : regexes_(first, last)
+    {
+      build_dispatch_table();
+    }
+
+    template<typename Iter, typename Proj>
+    TRegexSet(Iter first, Iter last, Proj proj)
+    {
+      regexes_.reserve(std::distance(first, last));
+      for (auto it = first; it != last; ++it)
+        regexes_.push_back(proj(*it));
+      build_dispatch_table();
+    }
+
+    int match(
+      TRegexMatch& m,
+      const std::string_view& view,
+      Source& source,
+      size_t offset) const
+    {
+      if (view.empty())
+      {
+        if (empty_match_index_ >= 0)
+          m.try_match(regexes_[empty_match_index_], view, source, offset);
+        return empty_match_index_;
+      }
+
+      uint8_t first = static_cast<uint8_t>(view[0]);
+      auto& candidates =
+        (first < 128) ? ascii_candidates_[first] : nonascii_candidates_;
+
+      for (auto idx : candidates)
+      {
+        if (m.try_match(regexes_[idx], view, source, offset))
+          return static_cast<int>(idx);
+      }
+      return -1;
+    }
+
+    size_t size() const
+    {
+      return regexes_.size();
+    }
+
+    const TRegex& operator[](size_t i) const
+    {
+      return regexes_[i];
+    }
+
+  private:
+    void build_dispatch_table()
+    {
+      assert(
+        regexes_.size() <= std::numeric_limits<uint16_t>::max() &&
+        "TRegexSet supports at most 65535 regexes");
+
+      for (size_t i = 0; i < regexes_.size(); ++i)
+      {
+        auto info = regexes_[i].first_char_info();
+        auto idx = static_cast<uint16_t>(i);
+
+        if (info.can_match_empty)
+        {
+          if (empty_match_index_ < 0)
+            empty_match_index_ = static_cast<int>(i);
+
+          // Empty-matchable regexes are candidates for every first byte.
+          for (size_t b = 0; b < 128; ++b)
+            ascii_candidates_[b].push_back(idx);
+          nonascii_candidates_.push_back(idx);
+          continue;
+        }
+
+        // ASCII bytes: check bitmap.
+        for (size_t b = 0; b < 128; ++b)
+        {
+          if ((info.bitmap[b >> 6] >> (b & 63)) & 1)
+            ascii_candidates_[b].push_back(idx);
+        }
+
+        // Non-ASCII first bytes share a single candidate list.
+        if (info.can_match_nonascii)
+        {
+          nonascii_candidates_.push_back(idx);
+        }
+      }
+    }
+
+    std::vector<TRegex> regexes_;
+    // Per-ASCII-byte candidate lists (0-127).
+    std::array<std::vector<uint16_t>, 128> ascii_candidates_;
+    // Shared candidate list for all non-ASCII first bytes (128-255).
+    std::vector<uint16_t> nonascii_candidates_;
+    // Precomputed index of the first empty-matchable regex, or -1.
+    int empty_match_index_ = -1;
   };
 
   // Backwards-compatibility aliases for code written against the old
@@ -704,6 +853,16 @@ namespace trieste
     TRegexMatch;
   using REIterator [[deprecated("Use TRegexIterator instead of REIterator")]] =
     TRegexIterator;
+
+  inline int TRegexIterator::consume_first_match(
+    TRegexMatch& m, const TRegexSet& set)
+  {
+    std::string_view remainder = source->view().substr(pos_);
+    int idx = set.match(m, remainder, source, pos_);
+    if (idx >= 0)
+      pos_ += m.at(0).len;
+    return idx;
+  }
 
   inline Node build_ast(Source source, size_t pos)
   {

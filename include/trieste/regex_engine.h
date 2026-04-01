@@ -604,6 +604,7 @@ namespace trieste::regex
       detect_conditional_states();
       precompute_epsilon_closures();
       finalize_states();
+      first_char_info_ = compute_first_char_info();
     }
 
     RegexEngine(const RegexEngine&) = delete;
@@ -639,6 +640,25 @@ namespace trieste::regex
     SyntaxMode syntax_mode() const
     {
       return syntax_mode_;
+    }
+
+    struct FirstCharInfo
+    {
+      uint64_t bitmap[2] = {};
+      bool can_match_empty = false;
+      bool can_match_nonascii = false;
+
+      bool test(uint8_t byte) const
+      {
+        if (byte >= 128)
+          return can_match_nonascii;
+        return (bitmap[byte >> 6] >> (byte & 63)) & 1;
+      }
+    };
+
+    FirstCharInfo first_char_info() const
+    {
+      return first_char_info_;
     }
 
     bool match(const std::string_view& utf8_str) const
@@ -3054,6 +3074,73 @@ namespace trieste::regex
     std::vector<RuneClass> rune_classes_; // Indexed by class-ref label offset.
     std::vector<State> closure_cache_flat_;
     std::vector<uint32_t> closure_cache_offsets_;
+    FirstCharInfo first_char_info_;
+
+    FirstCharInfo compute_first_char_info() const
+    {
+      if (!ok())
+      {
+        FirstCharInfo info;
+        info.bitmap[0] = ~uint64_t(0);
+        info.bitmap[1] = ~uint64_t(0);
+        info.can_match_empty = true;
+        info.can_match_nonascii = true;
+        return info;
+      }
+
+      FirstCharInfo info;
+
+      // Collect all closure states. If has_conditionals_, OR all 8 flag
+      // combinations to produce a conservative superset.
+      size_t num_combos = has_conditionals_ ? ClosureFlagCombinations : 1;
+
+      for (size_t combo = 0; combo < num_combos; ++combo)
+      {
+        bool boundary = has_conditionals_ && (combo & FlagBoundary);
+        bool at_start = has_conditionals_ ? ((combo & FlagAtStart) != 0) : true;
+        bool at_end = has_conditionals_ && (combo & FlagAtEnd);
+
+        auto closure =
+          epsilon_closure_cached(start_state_, boundary, at_start, at_end);
+
+        for (auto it = closure.begin(); it != closure.end(); ++it)
+        {
+          auto s = *it;
+
+          // Accept state: marks empty-matchable, but skip its label
+          // (0xAFFFFF) to avoid poisoning can_match_nonascii.
+          if (s == accept_state_)
+          {
+            info.can_match_empty = true;
+            continue;
+          }
+
+          // OR the ASCII acceptance bitmap.
+          info.bitmap[0] |= s->ascii_accept[0];
+          info.bitmap[1] |= s->ascii_accept[1];
+
+          // Check for non-ASCII acceptance.
+          if (is_class_ref(s->label))
+          {
+            auto& rc = rune_classes_[class_ref_index(s->label)];
+            for (auto& range : rc.ranges)
+            {
+              if (range.second >= 128)
+              {
+                info.can_match_nonascii = true;
+                break;
+              }
+            }
+          }
+          else if (s->label >= 128 && s->label != Match)
+          {
+            info.can_match_nonascii = true;
+          }
+        }
+      }
+
+      return info;
+    }
   };
 
 }

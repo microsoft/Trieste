@@ -2803,6 +2803,1070 @@ namespace
       }
     }
   }
+
+  void test_find_first_match()
+  {
+    using trieste::TRegex;
+    using trieste::TRegexMatch;
+    using trieste::TRegexSet;
+    std::cout << "  find_first_match" << std::endl;
+
+    auto make_source = [](const std::string& data) {
+      return trieste::SourceDef::synthetic(data);
+    };
+
+    // Helper: run TRegexSet::match against raw string
+    auto run = [&](const std::string& input,
+                   const TRegex* regexes,
+                   size_t count) -> int {
+      TRegexSet set(regexes, count);
+      auto src = make_source(input);
+      auto view = src->view();
+      TRegexMatch m(4);
+      return set.match(m, view, src, 0);
+    };
+
+    // 1. Single regex, matches
+    {
+      TRegex re("abc");
+      int idx = run("abcdef", &re, 1);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: single match expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 2. Single regex, no match
+    {
+      TRegex re("abc");
+      int idx = run("xyz", &re, 1);
+      if (idx != -1)
+      {
+        std::cerr << "  FAIL: single no-match expected -1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 3. Multiple regexes, first matches
+    {
+      TRegex regexes[] = {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")};
+      int idx = run("123abc", regexes, 2);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: first-matches expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 4. Multiple regexes, second matches
+    {
+      TRegex regexes[] = {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")};
+      int idx = run("abc123", regexes, 2);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: second-matches expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 5. First-wins priority: overlapping regexes
+    {
+      TRegex regexes[] = {TRegex("[[:alpha:]]+"), TRegex("[a-z]+")};
+      int idx = run("hello", regexes, 2);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: priority expected 0 got " << idx << std::endl;
+        failures++;
+      }
+    }
+
+    // 6. No match from any
+    {
+      TRegex regexes[] = {TRegex("[[:digit:]]+"), TRegex("[[:upper:]]+")};
+      int idx = run("hello", regexes, 2);
+      if (idx != -1)
+      {
+        std::cerr << "  FAIL: no-match expected -1 got " << idx << std::endl;
+        failures++;
+      }
+    }
+
+    // 7. Empty input with empty-matching regex
+    {
+      TRegex regexes[] = {TRegex("a?"), TRegex("b")};
+      int idx = run("", regexes, 2);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: empty-input-empty-match expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 8. Empty input with no empty-matching regex
+    {
+      TRegex regexes[] = {TRegex("a"), TRegex("b")};
+      int idx = run("", regexes, 2);
+      if (idx != -1)
+      {
+        std::cerr << "  FAIL: empty-input-no-match expected -1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 9. Non-ASCII first byte
+    {
+      TRegex regexes[] = {TRegex("\\p{L}+"), TRegex("[[:digit:]]+")};
+      std::string input = "\xC3\xA9llo"; // éllo
+      int idx = run(input, regexes, 2);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: non-ascii expected 0 got " << idx << std::endl;
+        failures++;
+      }
+    }
+
+    // 10. Captures: correct locations for winning regex
+    {
+      TRegex regexes[] = {
+        TRegex("[[:digit:]]+"), TRegex("([[:alpha:]]+)(\\d+)")};
+      TRegexSet set(regexes, 2);
+      auto src_data = std::string("hello42");
+      auto src = make_source(src_data);
+      auto view = src->view();
+      TRegexMatch m(4);
+      int idx = set.match(m, view, src, 0);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: captures expected idx 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+      else
+      {
+        if (m.at(0).len != 7)
+        {
+          std::cerr << "  FAIL: captures overall len expected 7 got "
+                    << m.at(0).len << std::endl;
+          failures++;
+        }
+        if (m.at(1).view() != "hello")
+        {
+          std::cerr << "  FAIL: capture(1) expected 'hello' got '"
+                    << m.at(1).view() << "'" << std::endl;
+          failures++;
+        }
+        if (m.at(2).view() != "42")
+        {
+          std::cerr << "  FAIL: capture(2) expected '42' got '"
+                    << m.at(2).view() << "'" << std::endl;
+          failures++;
+        }
+      }
+    }
+
+    // 11. Anchored regex
+    {
+      TRegex regexes[] = {TRegex("^abc"), TRegex("abc")};
+      int idx = run("abcdef", regexes, 2);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: anchored expected 0 got " << idx << std::endl;
+        failures++;
+      }
+    }
+
+    // 12. Word boundary
+    {
+      TRegex regexes[] = {TRegex("[[:digit:]]+"), TRegex("\\bword")};
+      int idx = run("word", regexes, 2);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: word-boundary expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 13. Zero-length match (a? on "b" matches empty prefix)
+    {
+      TRegex regexes[] = {TRegex("a?")};
+      TRegexSet set(regexes, 1);
+      auto src_data = std::string("b");
+      auto src = make_source(src_data);
+      auto view = src->view();
+      TRegexMatch m(2);
+      int idx = set.match(m, view, src, 0);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: zero-len match expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+      else if (m.at(0).len != 0)
+      {
+        std::cerr << "  FAIL: zero-len match len expected 0 got "
+                  << m.at(0).len << std::endl;
+        failures++;
+      }
+    }
+
+    // 14. initializer_list constructor
+    {
+      TRegexSet set({TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")});
+      auto src_data = std::string("abc");
+      auto src = make_source(src_data);
+      auto view = src->view();
+      TRegexMatch m(2);
+      int idx = set.match(m, view, src, 0);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: initializer_list expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+  }
+
+  void test_consume_first_match()
+  {
+    using trieste::TRegex;
+    using trieste::TRegexIterator;
+    using trieste::TRegexMatch;
+    using trieste::TRegexSet;
+    std::cout << "  consume_first_match" << std::endl;
+
+    auto make_source = [](const std::string& data) {
+      return trieste::SourceDef::synthetic(data);
+    };
+
+    // 1. Basic: consumes first match and advances iterator
+    {
+      auto src = make_source("abc123def");
+      TRegexIterator it(src);
+      TRegexMatch m(4);
+      TRegexSet set({TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")});
+
+      int idx = it.consume_first_match(m, set);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: consume basic expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+      else if (m.at(0).len != 3)
+      {
+        std::cerr << "  FAIL: consume basic len expected 3 got " << m.at(0).len
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 2. Sequential consumption: multiple tokens
+    {
+      auto src = make_source("abc123");
+      TRegexIterator it(src);
+      TRegexMatch m(4);
+      TRegexSet set({TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")});
+
+      int idx1 = it.consume_first_match(m, set);
+      if (idx1 != 1)
+      {
+        std::cerr << "  FAIL: seq consume(1) expected 1 got " << idx1
+                  << std::endl;
+        failures++;
+      }
+
+      int idx2 = it.consume_first_match(m, set);
+      if (idx2 != 0)
+      {
+        std::cerr << "  FAIL: seq consume(2) expected 0 got " << idx2
+                  << std::endl;
+        failures++;
+      }
+
+      if (!it.empty())
+      {
+        std::cerr << "  FAIL: iterator should be empty after consuming all"
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 3. No match: iterator does not advance
+    {
+      auto src = make_source("!!!");
+      TRegexIterator it(src);
+      TRegexMatch m(4);
+      TRegexSet set({TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")});
+
+      int idx = it.consume_first_match(m, set);
+      if (idx != -1)
+      {
+        std::cerr << "  FAIL: consume no-match expected -1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+      if (it.empty())
+      {
+        std::cerr << "  FAIL: iterator should not be empty after no-match"
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 4. Priority preserved on consume
+    {
+      auto src = make_source("hello");
+      TRegexIterator it(src);
+      TRegexMatch m(4);
+      TRegexSet set({TRegex("[[:alpha:]]+"), TRegex("[a-z]+")});
+
+      int idx = it.consume_first_match(m, set);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: consume priority expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 5. Captures are correct after consume
+    {
+      auto src = make_source("hello42world");
+      TRegexIterator it(src);
+      TRegexMatch m(4);
+      TRegexSet set(
+        {TRegex("[[:digit:]]+"), TRegex("([[:alpha:]]+)(\\d+)")});
+
+      int idx = it.consume_first_match(m, set);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: consume captures idx expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+      else
+      {
+        if (m.at(1).view() != "hello")
+        {
+          std::cerr << "  FAIL: consume capture(1) expected 'hello' got '"
+                    << m.at(1).view() << "'" << std::endl;
+          failures++;
+        }
+        if (m.at(2).view() != "42")
+        {
+          std::cerr << "  FAIL: consume capture(2) expected '42' got '"
+                    << m.at(2).view() << "'" << std::endl;
+          failures++;
+        }
+      }
+
+      if (it.empty())
+      {
+        std::cerr << "  FAIL: iterator should not be empty after partial"
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 6. Interleave with regular consume
+    {
+      auto src = make_source("abc 123");
+      TRegexIterator it(src);
+      TRegexMatch m(4);
+      TRegexSet set({TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")});
+      TRegex ws("[[:blank:]]+");
+
+      int idx = it.consume_first_match(m, set);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: interleave(1) expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+
+      if (!it.consume(ws, m))
+      {
+        std::cerr << "  FAIL: interleave whitespace consume failed"
+                  << std::endl;
+        failures++;
+      }
+
+      int idx2 = it.consume_first_match(m, set);
+      if (idx2 != 0)
+      {
+        std::cerr << "  FAIL: interleave(2) expected 0 got " << idx2
+                  << std::endl;
+        failures++;
+      }
+
+      if (!it.empty())
+      {
+        std::cerr << "  FAIL: interleave should be empty at end" << std::endl;
+        failures++;
+      }
+    }
+  }
+
+  void test_tregex_set()
+  {
+    using trieste::TRegex;
+    using trieste::TRegexIterator;
+    using trieste::TRegexMatch;
+    using trieste::TRegexSet;
+    std::cout << "  TRegexSet" << std::endl;
+
+    auto make_source = [](const std::string& data) {
+      return trieste::SourceDef::synthetic(data);
+    };
+
+    // 1. Basic match via TRegexSet::match
+    {
+      TRegex regexes[] = {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")};
+      TRegexSet set(regexes, 2);
+
+      auto src = make_source("hello");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: set basic match expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 2. First-wins priority
+    {
+      TRegex regexes[] = {TRegex("[[:alpha:]]+"), TRegex("[a-z]+")};
+      TRegexSet set(regexes, 2);
+
+      auto src = make_source("hello");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: set priority expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 3. No match
+    {
+      TRegex regexes[] = {TRegex("[[:digit:]]+"), TRegex("[[:upper:]]+")};
+      TRegexSet set(regexes, 2);
+
+      auto src = make_source("hello");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != -1)
+      {
+        std::cerr << "  FAIL: set no-match expected -1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 4. Empty input with empty-matchable regex
+    {
+      TRegex regexes[] = {TRegex("a"), TRegex("b?")};
+      TRegexSet set(regexes, 2);
+
+      auto src = make_source("");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: set empty-input expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 5. Empty-matchable regex with non-matching first byte
+    {
+      TRegex regexes[] = {TRegex("b?")};
+      TRegexSet set(regexes, 1);
+
+      auto src = make_source("xyz");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: set empty-match-nonbyte expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 6. Non-ASCII first byte
+    {
+      TRegex regexes[] = {TRegex("[[:digit:]]+"), TRegex("\\p{L}+")};
+      TRegexSet set(regexes, 2);
+
+      std::string input = "\xC3\xA9llo"; // éllo
+      auto src = make_source(input);
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: set non-ascii expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 7. consume_first_match with TRegexSet — sequential consumption
+    {
+      TRegexSet set({
+        TRegex("[[:blank:]]+"),
+        TRegex("[[:alpha:]]+"),
+        TRegex("[[:digit:]]+"),
+        TRegex("[=+;]"),
+      });
+
+      auto src = make_source("let x = 42;");
+      TRegexIterator it(src);
+      TRegexMatch m(4);
+
+      // "let" -> alpha (idx 1)
+      int idx = it.consume_first_match(m, set);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: set consume(1) expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+
+      // " " -> blank (idx 0)
+      idx = it.consume_first_match(m, set);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: set consume(2) expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+
+      // "x" -> alpha (idx 1)
+      idx = it.consume_first_match(m, set);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: set consume(3) expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+
+      // " " -> blank (idx 0)
+      idx = it.consume_first_match(m, set);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: set consume(4) expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+
+      // "=" -> punct (idx 3)
+      idx = it.consume_first_match(m, set);
+      if (idx != 3)
+      {
+        std::cerr << "  FAIL: set consume(5) expected 3 got " << idx
+                  << std::endl;
+        failures++;
+      }
+
+      // " " -> blank (idx 0)
+      idx = it.consume_first_match(m, set);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: set consume(6) expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+
+      // "42" -> digit (idx 2)
+      idx = it.consume_first_match(m, set);
+      if (idx != 2)
+      {
+        std::cerr << "  FAIL: set consume(7) expected 2 got " << idx
+                  << std::endl;
+        failures++;
+      }
+
+      // ";" -> punct (idx 3)
+      idx = it.consume_first_match(m, set);
+      if (idx != 3)
+      {
+        std::cerr << "  FAIL: set consume(8) expected 3 got " << idx
+                  << std::endl;
+        failures++;
+      }
+
+      if (!it.empty())
+      {
+        std::cerr << "  FAIL: set consume should be empty at end" << std::endl;
+        failures++;
+      }
+    }
+
+    // 8. initializer_list constructor
+    {
+      TRegexSet set({TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")});
+      auto src = make_source("abc");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: set init-list expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 9. size() and operator[]
+    {
+      TRegexSet set({TRegex("a"), TRegex("b"), TRegex("c")});
+      if (set.size() != 3)
+      {
+        std::cerr << "  FAIL: set size expected 3 got " << set.size()
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // --- Overlapping first-character tests ---
+
+    // 10. Both regexes start with same char, first wins
+    {
+      // "abc" and "axyz" both start with 'a', first should win
+      TRegexSet set({TRegex("abc"), TRegex("axyz")});
+      auto src = make_source("abcdef");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: overlap same-char first-wins expected 0 got "
+                  << idx << std::endl;
+        failures++;
+      }
+    }
+
+    // 11. Both start with same char, first fails, second matches
+    {
+      // "abc" doesn't match "axyz", but "a[[:alpha:]]+" does
+      TRegexSet set({TRegex("abc"), TRegex("a[[:alpha:]]+")});
+      auto src = make_source("axyz");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 1)
+      {
+        std::cerr
+          << "  FAIL: overlap first-fails-second-wins expected 1 got " << idx
+          << std::endl;
+        failures++;
+      }
+    }
+
+    // 12. Overlapping character classes: [a-z] and [a-f]
+    {
+      // Input 'c' matches both; first should win
+      TRegexSet set({TRegex("[a-z]+"), TRegex("[a-f]+")});
+      auto src = make_source("cd");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: overlap classes first-wins expected 0 got "
+                  << idx << std::endl;
+        failures++;
+      }
+    }
+
+    // 13. Overlapping classes: only second matches after first char
+    {
+      // [a-f][0-9] requires digit after letter, [a-z]+ doesn't
+      // Input "g5": [a-f][0-9] fails (g not in a-f), [a-z]+ matches
+      TRegexSet set({TRegex("[a-f][0-9]"), TRegex("[a-z]+")});
+      auto src = make_source("g5");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 1)
+      {
+        std::cerr
+          << "  FAIL: overlap class-mismatch expected 1 got " << idx
+          << std::endl;
+        failures++;
+      }
+    }
+
+    // 14. Three overlapping regexes: keyword vs identifier vs catch-all
+    {
+      // "if" keyword, identifier [a-z]+, catch-all .+
+      // Input "if" should match keyword (idx 0)
+      TRegexSet set({TRegex("if"), TRegex("[a-z]+"), TRegex(".+")});
+      auto src = make_source("if");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: overlap keyword-wins expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 15. Three overlapping: keyword doesn't match, identifier wins over
+    // catch-all
+    {
+      // Input "int": "if" doesn't match, "[a-z]+" matches
+      TRegexSet set({TRegex("if"), TRegex("[a-z]+"), TRegex(".+")});
+      auto src = make_source("int");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: overlap ident-wins expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 16. Three overlapping: only catch-all matches
+    {
+      // Input "123": "if" and "[a-z]+" fail, ".+" matches
+      TRegexSet set({TRegex("if"), TRegex("[a-z]+"), TRegex(".+")});
+      auto src = make_source("123");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 2)
+      {
+        std::cerr << "  FAIL: overlap catchall-wins expected 2 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 17. Same first char, different lengths: longer first regex fails
+    {
+      // "abcdef" and "ab" — on input "abXX", first fails, second matches
+      TRegexSet set({TRegex("abcdef"), TRegex("ab")});
+      auto src = make_source("abXX");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: overlap long-fails-short-wins expected 1 got "
+                  << idx << std::endl;
+        failures++;
+      }
+    }
+
+    // 18. Multiple regexes sharing digit first char
+    {
+      // "0x[0-9a-f]+" (hex), "0[0-7]+" (octal), "[0-9]+" (decimal)
+      // Input "0x1f" should match hex (idx 0)
+      TRegexSet set(
+        {TRegex("0x[0-9a-f]+"), TRegex("0[0-7]+"), TRegex("[0-9]+")});
+      auto src = make_source("0x1f");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 0)
+      {
+        std::cerr << "  FAIL: overlap hex-wins expected 0 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 19. Same first char, hex doesn't match, falls to octal
+    {
+      // Input "077": hex fails (no 'x'), octal matches
+      TRegexSet set(
+        {TRegex("0x[0-9a-f]+"), TRegex("0[0-7]+"), TRegex("[0-9]+")});
+      auto src = make_source("077");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 1)
+      {
+        std::cerr << "  FAIL: overlap octal-wins expected 1 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 20. Same first char, hex and octal fail, falls to decimal
+    {
+      // Input "09": hex fails, octal fails (9 not in 0-7), decimal matches
+      TRegexSet set(
+        {TRegex("0x[0-9a-f]+"), TRegex("0[0-7]+"), TRegex("[0-9]+")});
+      auto src = make_source("09");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 2)
+      {
+        std::cerr << "  FAIL: overlap decimal-wins expected 2 got " << idx
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 21. Overlapping with empty-matchable: empty regex is candidate
+    // everywhere but non-empty match should still win by priority
+    {
+      // "a?" matches empty, "[a-z]+" matches "hello"
+      // First regex is empty-matchable and wins (matches empty prefix)
+      TRegexSet set({TRegex("a?"), TRegex("[a-z]+")});
+      auto src = make_source("hello");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 0)
+      {
+        std::cerr
+          << "  FAIL: overlap empty-matchable-first expected 0 got " << idx
+          << std::endl;
+        failures++;
+      }
+    }
+
+    // 22. Non-empty-matchable first, empty-matchable second on non-matching
+    // input
+    {
+      // "[0-9]+" and "x?" — input "hello": digits fails, x? matches empty
+      TRegexSet set({TRegex("[0-9]+"), TRegex("x?")});
+      auto src = make_source("hello");
+      TRegexMatch m(4);
+      int idx = set.match(m, src->view(), src, 0);
+      if (idx != 1)
+      {
+        std::cerr
+          << "  FAIL: overlap non-match-then-empty expected 1 got " << idx
+          << std::endl;
+        failures++;
+      }
+    }
+  }
+
+  void test_first_char_info()
+  {
+    using trieste::TRegex;
+    using trieste::regex::RegexEngine;
+    std::cout << "  first_char_info" << std::endl;
+
+    auto check_bit = [](const RegexEngine::FirstCharInfo& info, char c) {
+      auto byte = static_cast<uint8_t>(c);
+      return (info.bitmap[byte >> 6] >> (byte & 63)) & 1;
+    };
+
+    // 1. Literal: "abc" -> bit 'a' set, 'b' not set
+    {
+      TRegex re("abc");
+      auto info = re.first_char_info();
+      if (!check_bit(info, 'a'))
+      {
+        std::cerr << "  FAIL: literal 'abc' should have bit 'a'" << std::endl;
+        failures++;
+      }
+      if (check_bit(info, 'b'))
+      {
+        std::cerr << "  FAIL: literal 'abc' should not have bit 'b'"
+                  << std::endl;
+        failures++;
+      }
+      if (info.can_match_empty)
+      {
+        std::cerr << "  FAIL: literal 'abc' should not match empty"
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 2. Alternation: "a|b" -> bits 'a' and 'b'
+    {
+      TRegex re("a|b");
+      auto info = re.first_char_info();
+      if (!check_bit(info, 'a') || !check_bit(info, 'b'))
+      {
+        std::cerr << "  FAIL: alternation 'a|b' should have bits a,b"
+                  << std::endl;
+        failures++;
+      }
+      if (check_bit(info, 'c'))
+      {
+        std::cerr << "  FAIL: alternation 'a|b' should not have bit 'c'"
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 3. Character class: "[xyz]" -> bits x, y, z
+    {
+      TRegex re("[xyz]");
+      auto info = re.first_char_info();
+      if (!check_bit(info, 'x') || !check_bit(info, 'y') ||
+          !check_bit(info, 'z'))
+      {
+        std::cerr << "  FAIL: class '[xyz]' should have bits x,y,z"
+                  << std::endl;
+        failures++;
+      }
+      if (check_bit(info, 'a'))
+      {
+        std::cerr << "  FAIL: class '[xyz]' should not have bit 'a'"
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 4. Dot: "." -> all ASCII bits + can_match_nonascii
+    {
+      TRegex re(".");
+      auto info = re.first_char_info();
+      // All printable ASCII should be set
+      if (!check_bit(info, 'a') || !check_bit(info, 'Z') ||
+          !check_bit(info, '0') || !check_bit(info, ' '))
+      {
+        std::cerr << "  FAIL: dot should have all ASCII bits" << std::endl;
+        failures++;
+      }
+      if (!info.can_match_nonascii)
+      {
+        std::cerr << "  FAIL: dot should set can_match_nonascii" << std::endl;
+        failures++;
+      }
+    }
+
+    // 5. Empty-matchable: "a?" -> bit 'a' + can_match_empty
+    {
+      TRegex re("a?");
+      auto info = re.first_char_info();
+      if (!check_bit(info, 'a'))
+      {
+        std::cerr << "  FAIL: 'a?' should have bit 'a'" << std::endl;
+        failures++;
+      }
+      if (!info.can_match_empty)
+      {
+        std::cerr << "  FAIL: 'a?' should have can_match_empty" << std::endl;
+        failures++;
+      }
+    }
+
+    // 6. Star: "a*" -> can_match_empty
+    {
+      TRegex re("a*");
+      auto info = re.first_char_info();
+      if (!info.can_match_empty)
+      {
+        std::cerr << "  FAIL: 'a*' should have can_match_empty" << std::endl;
+        failures++;
+      }
+    }
+
+    // 7. Start anchor: "^abc" -> bit 'a'
+    {
+      TRegex re("^abc");
+      auto info = re.first_char_info();
+      if (!check_bit(info, 'a'))
+      {
+        std::cerr << "  FAIL: '^abc' should have bit 'a'" << std::endl;
+        failures++;
+      }
+      if (info.can_match_empty)
+      {
+        std::cerr << "  FAIL: '^abc' should not match empty" << std::endl;
+        failures++;
+      }
+    }
+
+    // 8. "^$" -> can_match_empty (matches empty string at start+end)
+    {
+      TRegex re("^$");
+      auto info = re.first_char_info();
+      if (!info.can_match_empty)
+      {
+        std::cerr << "  FAIL: '^$' should have can_match_empty" << std::endl;
+        failures++;
+      }
+    }
+
+    // 9. Word boundary: "\\bword" -> bit 'w'
+    {
+      TRegex re("\\bword");
+      auto info = re.first_char_info();
+      if (!check_bit(info, 'w'))
+      {
+        std::cerr << "  FAIL: '\\bword' should have bit 'w'" << std::endl;
+        failures++;
+      }
+    }
+
+    // 10. Non-ASCII pattern: unicode letter category
+    {
+      TRegex re("\\p{L}+");
+      auto info = re.first_char_info();
+      if (!info.can_match_nonascii)
+      {
+        std::cerr << "  FAIL: '\\p{L}+' should set can_match_nonascii"
+                  << std::endl;
+        failures++;
+      }
+      // Should also have ASCII letters
+      if (!check_bit(info, 'a') || !check_bit(info, 'Z'))
+      {
+        std::cerr << "  FAIL: '\\p{L}+' should have ASCII letter bits"
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 11. test() method: ASCII byte
+    {
+      TRegex re("abc");
+      auto info = re.first_char_info();
+      if (!info.test('a'))
+      {
+        std::cerr << "  FAIL: test('a') should return true for 'abc'"
+                  << std::endl;
+        failures++;
+      }
+      if (info.test('b'))
+      {
+        std::cerr << "  FAIL: test('b') should return false for 'abc'"
+                  << std::endl;
+        failures++;
+      }
+    }
+
+    // 12. test() method: non-ASCII byte respects can_match_nonascii
+    {
+      TRegex re_ascii("[a-z]+");
+      auto info_ascii = re_ascii.first_char_info();
+      if (info_ascii.test(0xC3))
+      {
+        std::cerr
+          << "  FAIL: test(0xC3) should return false for ASCII-only regex"
+          << std::endl;
+        failures++;
+      }
+
+      TRegex re_unicode("\\p{L}+");
+      auto info_unicode = re_unicode.first_char_info();
+      if (!info_unicode.test(0xC3))
+      {
+        std::cerr
+          << "  FAIL: test(0xC3) should return true for Unicode-capable regex"
+          << std::endl;
+        failures++;
+      }
+    }
+  }
 }
 
 int main()
@@ -2849,6 +3913,10 @@ int main()
   test_unmatched_capture_reset();
   test_word_boundary_search();
   test_utf8_search();
+  test_find_first_match();
+  test_consume_first_match();
+  test_tregex_set();
+  test_first_char_info();
 
   if (failures > 0)
   {
