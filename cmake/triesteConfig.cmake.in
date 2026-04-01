@@ -1,4 +1,13 @@
 @PACKAGE_INIT@
 
+include(CMakeFindDependencyMacro)
+if(@TRIESTE_USE_FETCH_CONTENT@)
+  # Dependencies were fetched at build time and are bundled in the export targets
+else()
+  # Dependencies are resolved via find_package; caller must have them installed
+  find_dependency(snmalloc CONFIG)
+  find_dependency(CLI11 CONFIG)
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
 check_required_components("@PROJECT_NAME@")
