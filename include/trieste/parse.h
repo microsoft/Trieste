@@ -10,6 +10,7 @@
 #include "trieste/intrusive_ptr.h"
 #include "wf.h"
 
+#include <cassert>
 #include <filesystem>
 #include <functional>
 #include <random>
@@ -309,7 +310,8 @@ namespace trieste
     PostF postdir_;
     PostF postparse_;
     detail::ParseEffect done_;
-    std::map<std::string, std::vector<detail::Rule>> rules;
+    std::map<std::string, std::vector<detail::Rule>> rules_;
+    std::map<std::string, TRegexSet> rule_sets_;
     std::map<Token, GenLocationF> gens;
 
   public:
@@ -338,7 +340,13 @@ namespace trieste
     Parse& operator()(
       const std::string& mode, const std::initializer_list<detail::Rule> r)
     {
-      rules[mode].insert(rules[mode].end(), r.begin(), r.end());
+      auto& rules = rules_[mode];
+      rules.insert(rules.end(), r.begin(), r.end());
+      rule_sets_.insert_or_assign(
+        mode,
+        TRegexSet(rules.begin(), rules.end(), [](const detail::Rule& rule) {
+          return rule->regex;
+        }));
       return *this;
     }
 
@@ -465,33 +473,33 @@ namespace trieste
       auto make = detail::Make(name, token, source);
 
       // Find the start rules.
-      auto find = rules.find("start");
-      if (find == rules.end())
+      auto find = rules_.find("start");
+      if (find == rules_.end())
         throw std::runtime_error("unknown mode: start");
 
+      auto set_find = rule_sets_.find("start");
       auto mode = make.mode_ = find->first;
 
       while (!make.re_iterator.empty() && make.error_count() < max_errors_)
       {
         bool matched = false;
 
-        for (auto& rule : find->second)
+        auto idx =
+          make.re_iterator.consume_first_match(make.re_match, set_find->second);
+
+        if (idx)
         {
-          matched = make.re_iterator.consume(rule->regex, make.re_match);
+          matched = true;
+          find->second[*idx]->effect(make);
 
-          if (matched)
+          if (make.mode_ != mode)
           {
-            rule->effect(make);
+            find = rules_.find(make.mode_);
+            if (find == rules_.end())
+              throw std::runtime_error("unknown mode: " + make.mode_);
 
-            if (make.mode_ != mode)
-            {
-              find = rules.find(make.mode_);
-              if (find == rules.end())
-                throw std::runtime_error("unknown mode: " + make.mode_);
-
-              mode = find->first;
-            }
-            break;
+            set_find = rule_sets_.find(make.mode_);
+            mode = find->first;
           }
         }
 

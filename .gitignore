@@ -7,4 +7,5 @@ compile_commands.json
 notes/
 .cache
 .copilot
+vscode-extension/
 benchmarks

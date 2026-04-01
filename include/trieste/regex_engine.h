@@ -193,13 +193,18 @@ namespace trieste::regex
       (r >= 'a' && r <= 'z') || r == '_';
   }
 
+  inline bool is_ascii(rune_t r)
+  {
+    return r < 128;
+  }
+
   // Decode one rune from utf8_str at byte offset pos.
   // Returns {rune_value, bytes_consumed}. Fast path for ASCII.
   inline std::pair<rune_t, size_t>
   decode_rune(const std::string_view& utf8_str, size_t pos)
   {
     auto byte = static_cast<unsigned char>(utf8_str[pos]);
-    if (byte < 128)
+    if (is_ascii(byte))
       return {static_cast<rune_t>(byte), 1};
     auto [r, consumed] = utf8_to_rune(utf8_str.substr(pos), false);
     return {r.value, consumed.size()};
@@ -219,7 +224,7 @@ namespace trieste::regex
 
     bool contains(rune_t r) const
     {
-      if (r < 128)
+      if (is_ascii(r))
         return (ascii_bitmap[r >> 6] >> (r & 63)) & 1;
 
       if (ranges.empty())
@@ -604,6 +609,7 @@ namespace trieste::regex
       detect_conditional_states();
       precompute_epsilon_closures();
       finalize_states();
+      first_char_info_ = compute_first_char_info();
     }
 
     RegexEngine(const RegexEngine&) = delete;
@@ -639,6 +645,35 @@ namespace trieste::regex
     SyntaxMode syntax_mode() const
     {
       return syntax_mode_;
+    }
+
+    struct FirstCharInfo
+    {
+      uint64_t bitmap[2];
+      bool can_match_empty;
+      bool can_match_nonascii;
+
+      bool test(uint8_t byte) const
+      {
+        if (!regex::is_ascii(byte))
+          return can_match_nonascii;
+        return (bitmap[byte >> 6] >> (byte & 63)) & 1;
+      }
+
+      static FirstCharInfo minimal()
+      {
+        return {{0, 0}, false, false};
+      }
+
+      static FirstCharInfo maximal()
+      {
+        return {{~uint64_t(0), ~uint64_t(0)}, true, true};
+      }
+    };
+
+    FirstCharInfo first_char_info() const
+    {
+      return first_char_info_;
     }
 
     bool match(const std::string_view& utf8_str) const
@@ -3054,6 +3089,68 @@ namespace trieste::regex
     std::vector<RuneClass> rune_classes_; // Indexed by class-ref label offset.
     std::vector<State> closure_cache_flat_;
     std::vector<uint32_t> closure_cache_offsets_;
+    FirstCharInfo first_char_info_;
+
+    FirstCharInfo compute_first_char_info() const
+    {
+      if (!ok())
+      {
+        return FirstCharInfo::maximal();
+      }
+
+      FirstCharInfo info = FirstCharInfo::minimal();
+
+      // Collect all closure states. If has_conditionals_, OR all 8 flag
+      // combinations to produce a conservative superset.
+      size_t num_combos = has_conditionals_ ? ClosureFlagCombinations : 1;
+
+      for (size_t combo = 0; combo < num_combos; ++combo)
+      {
+        bool boundary = has_conditionals_ && (combo & FlagBoundary);
+        bool at_start = has_conditionals_ ? ((combo & FlagAtStart) != 0) : true;
+        bool at_end = has_conditionals_ && (combo & FlagAtEnd);
+
+        auto closure =
+          epsilon_closure_cached(start_state_, boundary, at_start, at_end);
+
+        for (auto it = closure.begin(); it != closure.end(); ++it)
+        {
+          auto s = *it;
+
+          // Accept state: marks empty-matchable, but skip its label
+          // (0xAFFFFF) to avoid poisoning can_match_nonascii.
+          if (s == accept_state_)
+          {
+            info.can_match_empty = true;
+            continue;
+          }
+
+          // OR the ASCII acceptance bitmap.
+          info.bitmap[0] |= s->ascii_accept[0];
+          info.bitmap[1] |= s->ascii_accept[1];
+
+          // Check for non-ASCII acceptance.
+          if (is_class_ref(s->label))
+          {
+            auto& rc = rune_classes_[class_ref_index(s->label)];
+            for (auto& range : rc.ranges)
+            {
+              if (range.second >= 128)
+              {
+                info.can_match_nonascii = true;
+                break;
+              }
+            }
+          }
+          else if (s->label >= 128 && s->label != Match)
+          {
+            info.can_match_nonascii = true;
+          }
+        }
+      }
+
+      return info;
+    }
   };
 
 }
