@@ -2816,9 +2816,9 @@ namespace
     };
 
     // Helper: run TRegexSet::match against raw string
-    auto run = [&](const std::string& input,
-                   const TRegex* regexes,
-                   size_t count) -> int {
+    auto run =
+      [&](
+        const std::string& input, const TRegex* regexes, size_t count) -> int {
       TRegexSet set(regexes, count);
       auto src = make_source(input);
       auto view = src->view();
@@ -2832,8 +2832,7 @@ namespace
       int idx = run("abcdef", &re, 1);
       if (idx != 0)
       {
-        std::cerr << "  FAIL: single match expected 0 got " << idx
-                  << std::endl;
+        std::cerr << "  FAIL: single match expected 0 got " << idx << std::endl;
         failures++;
       }
     }
@@ -2944,8 +2943,7 @@ namespace
       int idx = set.match(m, view, src, 0);
       if (idx != 1)
       {
-        std::cerr << "  FAIL: captures expected idx 1 got " << idx
-                  << std::endl;
+        std::cerr << "  FAIL: captures expected idx 1 got " << idx << std::endl;
         failures++;
       }
       else
@@ -3011,8 +3009,8 @@ namespace
       }
       else if (m.at(0).len != 0)
       {
-        std::cerr << "  FAIL: zero-len match len expected 0 got "
-                  << m.at(0).len << std::endl;
+        std::cerr << "  FAIL: zero-len match len expected 0 got " << m.at(0).len
+                  << std::endl;
         failures++;
       }
     }
@@ -3142,8 +3140,7 @@ namespace
       auto src = make_source("hello42world");
       TRegexIterator it(src);
       TRegexMatch m(4);
-      TRegexSet set(
-        {TRegex("[[:digit:]]+"), TRegex("([[:alpha:]]+)(\\d+)")});
+      TRegexSet set({TRegex("[[:digit:]]+"), TRegex("([[:alpha:]]+)(\\d+)")});
 
       int idx = it.consume_first_match(m, set);
       if (idx != 1)
@@ -3253,8 +3250,7 @@ namespace
       int idx = set.match(m, src->view(), src, 0);
       if (idx != 0)
       {
-        std::cerr << "  FAIL: set priority expected 0 got " << idx
-                  << std::endl;
+        std::cerr << "  FAIL: set priority expected 0 got " << idx << std::endl;
         failures++;
       }
     }
@@ -3467,9 +3463,8 @@ namespace
       int idx = set.match(m, src->view(), src, 0);
       if (idx != 1)
       {
-        std::cerr
-          << "  FAIL: overlap first-fails-second-wins expected 1 got " << idx
-          << std::endl;
+        std::cerr << "  FAIL: overlap first-fails-second-wins expected 1 got "
+                  << idx << std::endl;
         failures++;
       }
     }
@@ -3483,8 +3478,8 @@ namespace
       int idx = set.match(m, src->view(), src, 0);
       if (idx != 0)
       {
-        std::cerr << "  FAIL: overlap classes first-wins expected 0 got "
-                  << idx << std::endl;
+        std::cerr << "  FAIL: overlap classes first-wins expected 0 got " << idx
+                  << std::endl;
         failures++;
       }
     }
@@ -3499,9 +3494,8 @@ namespace
       int idx = set.match(m, src->view(), src, 0);
       if (idx != 1)
       {
-        std::cerr
-          << "  FAIL: overlap class-mismatch expected 1 got " << idx
-          << std::endl;
+        std::cerr << "  FAIL: overlap class-mismatch expected 1 got " << idx
+                  << std::endl;
         failures++;
       }
     }
@@ -3628,9 +3622,8 @@ namespace
       int idx = set.match(m, src->view(), src, 0);
       if (idx != 0)
       {
-        std::cerr
-          << "  FAIL: overlap empty-matchable-first expected 0 got " << idx
-          << std::endl;
+        std::cerr << "  FAIL: overlap empty-matchable-first expected 0 got "
+                  << idx << std::endl;
         failures++;
       }
     }
@@ -3645,9 +3638,8 @@ namespace
       int idx = set.match(m, src->view(), src, 0);
       if (idx != 1)
       {
-        std::cerr
-          << "  FAIL: overlap non-match-then-empty expected 1 got " << idx
-          << std::endl;
+        std::cerr << "  FAIL: overlap non-match-then-empty expected 1 got "
+                  << idx << std::endl;
         failures++;
       }
     }
@@ -3709,8 +3701,8 @@ namespace
     {
       TRegex re("[xyz]");
       auto info = re.first_char_info();
-      if (!check_bit(info, 'x') || !check_bit(info, 'y') ||
-          !check_bit(info, 'z'))
+      if (
+        !check_bit(info, 'x') || !check_bit(info, 'y') || !check_bit(info, 'z'))
       {
         std::cerr << "  FAIL: class '[xyz]' should have bits x,y,z"
                   << std::endl;
@@ -3729,8 +3721,9 @@ namespace
       TRegex re(".");
       auto info = re.first_char_info();
       // All printable ASCII should be set
-      if (!check_bit(info, 'a') || !check_bit(info, 'Z') ||
-          !check_bit(info, '0') || !check_bit(info, ' '))
+      if (
+        !check_bit(info, 'a') || !check_bit(info, 'Z') ||
+        !check_bit(info, '0') || !check_bit(info, ' '))
       {
         std::cerr << "  FAIL: dot should have all ASCII bits" << std::endl;
         failures++;

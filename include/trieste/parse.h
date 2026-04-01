@@ -344,10 +344,9 @@ namespace trieste
       rules.insert(rules.end(), r.begin(), r.end());
       rule_sets_.insert_or_assign(
         mode,
-        TRegexSet(
-          rules.begin(),
-          rules.end(),
-          [](const detail::Rule& rule) { return rule->regex; }));
+        TRegexSet(rules.begin(), rules.end(), [](const detail::Rule& rule) {
+          return rule->regex;
+        }));
       return *this;
     }
 
@@ -485,13 +484,13 @@ namespace trieste
       {
         bool matched = false;
 
-        int idx = make.re_iterator.consume_first_match(
-          make.re_match, set_find->second);
+        auto idx =
+          make.re_iterator.consume_first_match(make.re_match, set_find->second);
 
-        if (idx >= 0)
+        if (idx)
         {
           matched = true;
-          find->second[idx]->effect(make);
+          find->second[*idx]->effect(make);
 
           if (make.mode_ != mode)
           {

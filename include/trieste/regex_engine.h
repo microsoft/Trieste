@@ -193,13 +193,18 @@ namespace trieste::regex
       (r >= 'a' && r <= 'z') || r == '_';
   }
 
+  inline bool is_ascii(rune_t r)
+  {
+    return r < 128;
+  }
+
   // Decode one rune from utf8_str at byte offset pos.
   // Returns {rune_value, bytes_consumed}. Fast path for ASCII.
   inline std::pair<rune_t, size_t>
   decode_rune(const std::string_view& utf8_str, size_t pos)
   {
     auto byte = static_cast<unsigned char>(utf8_str[pos]);
-    if (byte < 128)
+    if (is_ascii(byte))
       return {static_cast<rune_t>(byte), 1};
     auto [r, consumed] = utf8_to_rune(utf8_str.substr(pos), false);
     return {r.value, consumed.size()};
@@ -219,7 +224,7 @@ namespace trieste::regex
 
     bool contains(rune_t r) const
     {
-      if (r < 128)
+      if (is_ascii(r))
         return (ascii_bitmap[r >> 6] >> (r & 63)) & 1;
 
       if (ranges.empty())
@@ -644,15 +649,25 @@ namespace trieste::regex
 
     struct FirstCharInfo
     {
-      uint64_t bitmap[2] = {};
-      bool can_match_empty = false;
-      bool can_match_nonascii = false;
+      uint64_t bitmap[2];
+      bool can_match_empty;
+      bool can_match_nonascii;
 
       bool test(uint8_t byte) const
       {
-        if (byte >= 128)
+        if (!regex::is_ascii(byte))
           return can_match_nonascii;
         return (bitmap[byte >> 6] >> (byte & 63)) & 1;
+      }
+
+      static FirstCharInfo minimal()
+      {
+        return {{0, 0}, false, false};
+      }
+
+      static FirstCharInfo maximal()
+      {
+        return {{~uint64_t(0), ~uint64_t(0)}, true, true};
       }
     };
 
@@ -3080,15 +3095,10 @@ namespace trieste::regex
     {
       if (!ok())
       {
-        FirstCharInfo info;
-        info.bitmap[0] = ~uint64_t(0);
-        info.bitmap[1] = ~uint64_t(0);
-        info.can_match_empty = true;
-        info.can_match_nonascii = true;
-        return info;
+        return FirstCharInfo::maximal();
       }
 
-      FirstCharInfo info;
+      FirstCharInfo info = FirstCharInfo::minimal();
 
       // Collect all closure states. If has_conditionals_, OR all 8 flag
       // combinations to produce a conservative superset.

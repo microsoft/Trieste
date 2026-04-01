@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -89,14 +90,7 @@ namespace trieste
     regex::RegexEngine::FirstCharInfo first_char_info() const
     {
       if (engine_ == nullptr || !engine_->ok())
-      {
-        regex::RegexEngine::FirstCharInfo info;
-        info.bitmap[0] = ~uint64_t(0);
-        info.bitmap[1] = ~uint64_t(0);
-        info.can_match_empty = true;
-        info.can_match_nonascii = true;
-        return info;
-      }
+        return regex::RegexEngine::FirstCharInfo::maximal();
       return engine_->first_char_info();
     }
 
@@ -723,7 +717,8 @@ namespace trieste
       pos_ = (len - pos_ < count) ? len : pos_ + count;
     }
 
-    int consume_first_match(TRegexMatch& m, const TRegexSet& set);
+    std::optional<int>
+    consume_first_match(TRegexMatch& m, const TRegexSet& set);
   };
 
   // Precomputed dispatch table for multi-regex matching.  For each
@@ -748,8 +743,7 @@ namespace trieste
     }
 
     template<typename Iter>
-    TRegexSet(Iter first, Iter last)
-    : regexes_(first, last)
+    TRegexSet(Iter first, Iter last) : regexes_(first, last)
     {
       build_dispatch_table();
     }
@@ -763,7 +757,7 @@ namespace trieste
       build_dispatch_table();
     }
 
-    int match(
+    std::optional<int> match(
       TRegexMatch& m,
       const std::string_view& view,
       Source& source,
@@ -771,21 +765,21 @@ namespace trieste
     {
       if (view.empty())
       {
-        if (empty_match_index_ >= 0)
-          m.try_match(regexes_[empty_match_index_], view, source, offset);
+        if (empty_match_index_)
+          m.try_match(regexes_[*empty_match_index_], view, source, offset);
         return empty_match_index_;
       }
 
       uint8_t first = static_cast<uint8_t>(view[0]);
-      auto& candidates =
-        (first < 128) ? ascii_candidates_[first] : nonascii_candidates_;
+      auto& candidates = regex::is_ascii(first) ? ascii_candidates_[first] :
+                                                  nonascii_candidates_;
 
       for (auto idx : candidates)
       {
         if (m.try_match(regexes_[idx], view, source, offset))
           return static_cast<int>(idx);
       }
-      return -1;
+      return std::nullopt;
     }
 
     size_t size() const
@@ -812,7 +806,7 @@ namespace trieste
 
         if (info.can_match_empty)
         {
-          if (empty_match_index_ < 0)
+          if (!empty_match_index_)
             empty_match_index_ = static_cast<int>(i);
 
           // Empty-matchable regexes are candidates for every first byte.
@@ -842,8 +836,8 @@ namespace trieste
     std::array<std::vector<uint16_t>, 128> ascii_candidates_;
     // Shared candidate list for all non-ASCII first bytes (128-255).
     std::vector<uint16_t> nonascii_candidates_;
-    // Precomputed index of the first empty-matchable regex, or -1.
-    int empty_match_index_ = -1;
+    // Precomputed index of the first empty-matchable regex.
+    std::optional<int> empty_match_index_;
   };
 
   // Backwards-compatibility aliases for code written against the old
@@ -854,12 +848,12 @@ namespace trieste
   using REIterator [[deprecated("Use TRegexIterator instead of REIterator")]] =
     TRegexIterator;
 
-  inline int TRegexIterator::consume_first_match(
-    TRegexMatch& m, const TRegexSet& set)
+  inline std::optional<int>
+  TRegexIterator::consume_first_match(TRegexMatch& m, const TRegexSet& set)
   {
     std::string_view remainder = source->view().substr(pos_);
-    int idx = set.match(m, remainder, source, pos_);
-    if (idx >= 0)
+    auto idx = set.match(m, remainder, source, pos_);
+    if (idx)
       pos_ += m.at(0).len;
     return idx;
   }
