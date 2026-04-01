@@ -2815,10 +2815,11 @@ namespace
       return trieste::SourceDef::synthetic(data);
     };
 
-    auto check_run = [&](const std::string& label,
-                         const std::string& input,
-                         std::initializer_list<TRegex> regexes,
-                         std::optional<int> expected) {
+    auto check_run = [&](
+                       const std::string& label,
+                       const std::string& input,
+                       std::initializer_list<TRegex> regexes,
+                       std::optional<int> expected) {
       TRegexSet set(regexes);
       auto src = make_source(input);
       auto view = src->view();
@@ -2828,8 +2829,7 @@ namespace
       {
         std::cerr << "  FAIL: " << label << " expected "
                   << (expected ? std::to_string(*expected) : "nullopt")
-                  << " got "
-                  << (idx ? std::to_string(*idx) : "nullopt")
+                  << " got " << (idx ? std::to_string(*idx) : "nullopt")
                   << std::endl;
         failures++;
       }
@@ -2843,38 +2843,42 @@ namespace
 
     // 3. Multiple regexes, first matches
     check_run(
-      "first-matches", "123abc",
-      {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")}, 0);
+      "first-matches",
+      "123abc",
+      {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")},
+      0);
 
     // 4. Multiple regexes, second matches
     check_run(
-      "second-matches", "abc123",
-      {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")}, 1);
+      "second-matches",
+      "abc123",
+      {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")},
+      1);
 
     // 5. First-wins priority: overlapping regexes
     check_run(
-      "priority", "hello",
-      {TRegex("[[:alpha:]]+"), TRegex("[a-z]+")}, 0);
+      "priority", "hello", {TRegex("[[:alpha:]]+"), TRegex("[a-z]+")}, 0);
 
     // 6. No match from any
     check_run(
-      "no-match", "hello",
-      {TRegex("[[:digit:]]+"), TRegex("[[:upper:]]+")}, std::nullopt);
+      "no-match",
+      "hello",
+      {TRegex("[[:digit:]]+"), TRegex("[[:upper:]]+")},
+      std::nullopt);
 
     // 7. Empty input with empty-matching regex
-    check_run(
-      "empty-input-empty-match", "",
-      {TRegex("a?"), TRegex("b")}, 0);
+    check_run("empty-input-empty-match", "", {TRegex("a?"), TRegex("b")}, 0);
 
     // 8. Empty input with no empty-matching regex
     check_run(
-      "empty-input-no-match", "",
-      {TRegex("a"), TRegex("b")}, std::nullopt);
+      "empty-input-no-match", "", {TRegex("a"), TRegex("b")}, std::nullopt);
 
     // 9. Non-ASCII first byte
     check_run(
-      "non-ascii", "\xC3\xA9llo",
-      {TRegex("\\p{L}+"), TRegex("[[:digit:]]+")}, 0);
+      "non-ascii",
+      "\xC3\xA9llo",
+      {TRegex("\\p{L}+"), TRegex("[[:digit:]]+")},
+      0);
 
     // 10. Captures: correct locations for winning regex
     {
@@ -2885,8 +2889,8 @@ namespace
       auto idx = set.match(m, view, src, 0);
       if (idx != 1)
       {
-        std::cerr << "  FAIL: captures expected idx 1 got "
-                  << idx.value_or(-1) << std::endl;
+        std::cerr << "  FAIL: captures expected idx 1 got " << idx.value_or(-1)
+                  << std::endl;
         failures++;
       }
       else
@@ -2913,14 +2917,11 @@ namespace
     }
 
     // 11. Anchored regex
-    check_run(
-      "anchored", "abcdef",
-      {TRegex("^abc"), TRegex("abc")}, 0);
+    check_run("anchored", "abcdef", {TRegex("^abc"), TRegex("abc")}, 0);
 
     // 12. Word boundary
     check_run(
-      "word-boundary", "word",
-      {TRegex("[[:digit:]]+"), TRegex("\\bword")}, 1);
+      "word-boundary", "word", {TRegex("[[:digit:]]+"), TRegex("\\bword")}, 1);
 
     // 13. Zero-length match (a? on "b" matches empty prefix)
     {
@@ -2937,16 +2938,18 @@ namespace
       }
       else if (m.at(0).len != 0)
       {
-        std::cerr << "  FAIL: zero-len match len expected 0 got "
-                  << m.at(0).len << std::endl;
+        std::cerr << "  FAIL: zero-len match len expected 0 got " << m.at(0).len
+                  << std::endl;
         failures++;
       }
     }
 
     // 14. initializer_list constructor
     check_run(
-      "initializer_list", "abc",
-      {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")}, 1);
+      "initializer_list",
+      "abc",
+      {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")},
+      1);
   }
 
   void test_consume_first_match()
@@ -2993,16 +2996,16 @@ namespace
       auto idx1 = it.consume_first_match(m, set);
       if (idx1 != 1)
       {
-        std::cerr << "  FAIL: seq consume(1) expected 1 got " << idx1.value_or(-1)
-                  << std::endl;
+        std::cerr << "  FAIL: seq consume(1) expected 1 got "
+                  << idx1.value_or(-1) << std::endl;
         failures++;
       }
 
       auto idx2 = it.consume_first_match(m, set);
       if (idx2 != 0)
       {
-        std::cerr << "  FAIL: seq consume(2) expected 0 got " << idx2.value_or(-1)
-                  << std::endl;
+        std::cerr << "  FAIL: seq consume(2) expected 0 got "
+                  << idx2.value_or(-1) << std::endl;
         failures++;
       }
 
@@ -3046,8 +3049,8 @@ namespace
       auto idx = it.consume_first_match(m, set);
       if (idx != 0)
       {
-        std::cerr << "  FAIL: consume priority expected 0 got " << idx.value_or(-1)
-                  << std::endl;
+        std::cerr << "  FAIL: consume priority expected 0 got "
+                  << idx.value_or(-1) << std::endl;
         failures++;
       }
     }
@@ -3062,8 +3065,8 @@ namespace
       auto idx = it.consume_first_match(m, set);
       if (idx != 1)
       {
-        std::cerr << "  FAIL: consume captures idx expected 1 got " << idx.value_or(-1)
-                  << std::endl;
+        std::cerr << "  FAIL: consume captures idx expected 1 got "
+                  << idx.value_or(-1) << std::endl;
         failures++;
       }
       else
@@ -3116,8 +3119,8 @@ namespace
       auto idx2 = it.consume_first_match(m, set);
       if (idx2 != 0)
       {
-        std::cerr << "  FAIL: interleave(2) expected 0 got " << idx2.value_or(-1)
-                  << std::endl;
+        std::cerr << "  FAIL: interleave(2) expected 0 got "
+                  << idx2.value_or(-1) << std::endl;
         failures++;
       }
 
@@ -3141,10 +3144,11 @@ namespace
       return trieste::SourceDef::synthetic(data);
     };
 
-    auto check_set = [&](const std::string& label,
-                         const std::string& input,
-                         std::initializer_list<TRegex> regexes,
-                         std::optional<int> expected) {
+    auto check_set = [&](
+                       const std::string& label,
+                       const std::string& input,
+                       std::initializer_list<TRegex> regexes,
+                       std::optional<int> expected) {
       TRegexSet set(regexes);
       auto src = make_source(input);
       TRegexMatch m(4);
@@ -3153,8 +3157,7 @@ namespace
       {
         std::cerr << "  FAIL: " << label << " expected "
                   << (expected ? std::to_string(*expected) : "nullopt")
-                  << " got "
-                  << (idx ? std::to_string(*idx) : "nullopt")
+                  << " got " << (idx ? std::to_string(*idx) : "nullopt")
                   << std::endl;
         failures++;
       }
@@ -3163,32 +3166,32 @@ namespace
     // --- Basic tests ---
 
     check_set(
-      "basic match", "hello",
-      {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")}, 1);
+      "basic match",
+      "hello",
+      {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")},
+      1);
 
     check_set(
-      "priority", "hello",
-      {TRegex("[[:alpha:]]+"), TRegex("[a-z]+")}, 0);
+      "priority", "hello", {TRegex("[[:alpha:]]+"), TRegex("[a-z]+")}, 0);
 
     check_set(
-      "no-match", "hello",
-      {TRegex("[[:digit:]]+"), TRegex("[[:upper:]]+")}, std::nullopt);
+      "no-match",
+      "hello",
+      {TRegex("[[:digit:]]+"), TRegex("[[:upper:]]+")},
+      std::nullopt);
+
+    check_set("empty-input", "", {TRegex("a"), TRegex("b?")}, 1);
+
+    check_set("empty-match-nonbyte", "xyz", {TRegex("b?")}, 0);
 
     check_set(
-      "empty-input", "",
-      {TRegex("a"), TRegex("b?")}, 1);
+      "non-ascii",
+      "\xC3\xA9llo",
+      {TRegex("[[:digit:]]+"), TRegex("\\p{L}+")},
+      1);
 
     check_set(
-      "empty-match-nonbyte", "xyz",
-      {TRegex("b?")}, 0);
-
-    check_set(
-      "non-ascii", "\xC3\xA9llo",
-      {TRegex("[[:digit:]]+"), TRegex("\\p{L}+")}, 1);
-
-    check_set(
-      "init-list", "abc",
-      {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")}, 1);
+      "init-list", "abc", {TRegex("[[:digit:]]+"), TRegex("[[:alpha:]]+")}, 1);
 
     // 7. consume_first_match with TRegexSet — sequential consumption
     {
@@ -3204,8 +3207,14 @@ namespace
       TRegexMatch m(4);
 
       std::vector<std::pair<const char*, int>> expected_tokens = {
-        {"let", 1}, {" ", 0}, {"x", 1}, {" ", 0},
-        {"=", 3}, {" ", 0}, {"42", 2}, {";", 3},
+        {"let", 1},
+        {" ", 0},
+        {"x", 1},
+        {" ", 0},
+        {"=", 3},
+        {" ", 0},
+        {"42", 2},
+        {";", 3},
       };
 
       for (size_t i = 0; i < expected_tokens.size(); ++i)
@@ -3214,8 +3223,8 @@ namespace
         if (idx != expected_tokens[i].second)
         {
           std::cerr << "  FAIL: set consume(" << i + 1 << ") expected "
-                    << expected_tokens[i].second << " got "
-                    << idx.value_or(-1) << std::endl;
+                    << expected_tokens[i].second << " got " << idx.value_or(-1)
+                    << std::endl;
           failures++;
         }
       }
@@ -3241,59 +3250,85 @@ namespace
     // --- Overlapping first-character tests ---
 
     check_set(
-      "overlap same-char first-wins", "abcdef",
-      {TRegex("abc"), TRegex("axyz")}, 0);
+      "overlap same-char first-wins",
+      "abcdef",
+      {TRegex("abc"), TRegex("axyz")},
+      0);
 
     check_set(
-      "overlap first-fails-second-wins", "axyz",
-      {TRegex("abc"), TRegex("a[[:alpha:]]+")}, 1);
+      "overlap first-fails-second-wins",
+      "axyz",
+      {TRegex("abc"), TRegex("a[[:alpha:]]+")},
+      1);
 
     check_set(
-      "overlap classes first-wins", "cd",
-      {TRegex("[a-z]+"), TRegex("[a-f]+")}, 0);
+      "overlap classes first-wins",
+      "cd",
+      {TRegex("[a-z]+"), TRegex("[a-f]+")},
+      0);
 
     check_set(
-      "overlap class-mismatch", "g5",
-      {TRegex("[a-f][0-9]"), TRegex("[a-z]+")}, 1);
+      "overlap class-mismatch",
+      "g5",
+      {TRegex("[a-f][0-9]"), TRegex("[a-z]+")},
+      1);
 
     // keyword vs identifier vs catch-all
     check_set(
-      "overlap keyword-wins", "if",
-      {TRegex("if"), TRegex("[a-z]+"), TRegex(".+")}, 0);
+      "overlap keyword-wins",
+      "if",
+      {TRegex("if"), TRegex("[a-z]+"), TRegex(".+")},
+      0);
 
     check_set(
-      "overlap ident-wins", "int",
-      {TRegex("if"), TRegex("[a-z]+"), TRegex(".+")}, 1);
+      "overlap ident-wins",
+      "int",
+      {TRegex("if"), TRegex("[a-z]+"), TRegex(".+")},
+      1);
 
     check_set(
-      "overlap catchall-wins", "123",
-      {TRegex("if"), TRegex("[a-z]+"), TRegex(".+")}, 2);
+      "overlap catchall-wins",
+      "123",
+      {TRegex("if"), TRegex("[a-z]+"), TRegex(".+")},
+      2);
 
     check_set(
-      "overlap long-fails-short-wins", "abXX",
-      {TRegex("abcdef"), TRegex("ab")}, 1);
+      "overlap long-fails-short-wins",
+      "abXX",
+      {TRegex("abcdef"), TRegex("ab")},
+      1);
 
     // hex / octal / decimal
     check_set(
-      "overlap hex-wins", "0x1f",
-      {TRegex("0x[0-9a-f]+"), TRegex("0[0-7]+"), TRegex("[0-9]+")}, 0);
+      "overlap hex-wins",
+      "0x1f",
+      {TRegex("0x[0-9a-f]+"), TRegex("0[0-7]+"), TRegex("[0-9]+")},
+      0);
 
     check_set(
-      "overlap octal-wins", "077",
-      {TRegex("0x[0-9a-f]+"), TRegex("0[0-7]+"), TRegex("[0-9]+")}, 1);
+      "overlap octal-wins",
+      "077",
+      {TRegex("0x[0-9a-f]+"), TRegex("0[0-7]+"), TRegex("[0-9]+")},
+      1);
 
     check_set(
-      "overlap decimal-wins", "09",
-      {TRegex("0x[0-9a-f]+"), TRegex("0[0-7]+"), TRegex("[0-9]+")}, 2);
+      "overlap decimal-wins",
+      "09",
+      {TRegex("0x[0-9a-f]+"), TRegex("0[0-7]+"), TRegex("[0-9]+")},
+      2);
 
     // empty-matchable interactions
     check_set(
-      "overlap empty-matchable-first", "hello",
-      {TRegex("a?"), TRegex("[a-z]+")}, 0);
+      "overlap empty-matchable-first",
+      "hello",
+      {TRegex("a?"), TRegex("[a-z]+")},
+      0);
 
     check_set(
-      "overlap non-match-then-empty", "hello",
-      {TRegex("[0-9]+"), TRegex("x?")}, 1);
+      "overlap non-match-then-empty",
+      "hello",
+      {TRegex("[0-9]+"), TRegex("x?")},
+      1);
   }
 
   void test_first_char_info()
