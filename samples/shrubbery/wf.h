@@ -6,8 +6,7 @@ namespace shrubbery
 {
   using namespace wf::ops;
 
-  inline const auto wf_term = Paren | Bracket | Brace |
-                              Block | Alt | Op | Atom;
+  inline const auto wf_term = Paren | Bracket | Brace | Block | Alt | Op | Atom;
 
   inline const auto wf_grouping_construct = Comma | Semi | Group;
 

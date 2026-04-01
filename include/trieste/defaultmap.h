@@ -1,9 +1,9 @@
 #pragma once
 
+#include "token.h"
+
 #include <array>
 #include <cstddef>
-
-#include "token.h"
 
 namespace trieste::detail
 {
