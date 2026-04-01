@@ -1,0 +1,27 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+#pragma once
+
+#define TRIESTE_VERSION_MAJOR @TRIESTE_VERSION_MAJOR@
+#define TRIESTE_VERSION_MINOR @TRIESTE_VERSION_MINOR@
+#define TRIESTE_VERSION_REVISION @TRIESTE_VERSION_REVISION@
+#define TRIESTE_VERSION "@TRIESTE_VERSION@"
+#define TRIESTE_GIT_HASH "@TRIESTE_GIT_HASH@"
+#define TRIESTE_BUILD_NAME "@TRIESTE_GIT_BRANCH@:@TRIESTE_GIT_SHORT_HASH@"
+#define TRIESTE_BUILD_DATE "@TRIESTE_BUILD_DATE@"
+#define TRIESTE_BUILD_TOOLCHAIN "@TRIESTE_BUILD_TOOLCHAIN@"
+
+#if defined(_WIN32)
+#  define TRIESTE_PLATFORM "windows"
+#elif defined(__APPLE__)
+#  define TRIESTE_PLATFORM "macos"
+#elif defined(__linux__)
+#  define TRIESTE_PLATFORM "linux"
+#else
+#  define TRIESTE_PLATFORM "other"
+#endif
+
+#define TRIESTE_BUILD_INFO \
+  (TRIESTE_VERSION " (" TRIESTE_BUILD_NAME ", " TRIESTE_BUILD_DATE \
+                   ") " TRIESTE_BUILD_TOOLCHAIN " on " TRIESTE_PLATFORM)

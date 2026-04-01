@@ -74,7 +74,7 @@ jobs:
     name: ${{matrix.platform}} ${{matrix.build-type}} ${{matrix.standard}} ${{matrix.compiler}} ${{matrix.variant}}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
     
     - name: Install build dependencies
       run: ${{matrix.dependencies}}
@@ -89,9 +89,102 @@ jobs:
       working-directory: ${{github.workspace}}/build
       run: ctest -C ${{matrix.build-type}} --output-on-failure --timeout 400 --interactive-debug-mode 0 
   
+  vcpkg-integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-22.04, macos-latest, windows-latest ]
+        features: [ "core" ]
+        include:
+          - os: ubuntu-22.04
+            features: "parsers"
+    runs-on: ${{ matrix.os }}
+    name: vcpkg - ${{ matrix.os }} ${{ matrix.features }}
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Check version consistency
+      shell: bash
+      run: |
+        file_ver=$(head -1 VERSION | tr -d '[:space:]')
+        vcpkg_ver=$(grep '"version"' ports/trieste/vcpkg.json | sed 's/.*: *"\(.*\)".*/\1/')
+        if [ "$file_ver" != "$vcpkg_ver" ]; then
+          echo "::error::VERSION ($file_ver) and ports/trieste/vcpkg.json ($vcpkg_ver) are out of sync."
+          exit 1
+        fi
+        echo "Version consistent: $file_ver"
+
+    - name: Bootstrap vcpkg
+      shell: bash
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git "${{ runner.temp }}/vcpkg" --depth 1
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
+        else
+          "${{ runner.temp }}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+        fi
+
+    - name: Create overlay port pointing at local source
+      shell: bash
+      run: |
+        overlay="${{ runner.temp }}/overlay/trieste"
+        mkdir -p "$overlay"
+        # Copy the real port files
+        cp ports/trieste/vcpkg.json "$overlay/"
+        cp ports/trieste/usage "$overlay/"
+        # Normalize workspace path to forward slashes for CMake (Windows compat)
+        ws_path=$(echo "${{ github.workspace }}" | sed 's|\\|/|g')
+        # Rewrite portfile to use local source instead of vcpkg_from_github
+        {
+          echo "set(SOURCE_PATH \"${ws_path}\")"
+          echo ''
+          # Keep everything from the feature block onwards (see NOTE comment in
+          # ports/trieste/portfile.cmake documenting this coupling)
+          sed -n '/^if("parsers"/,$ p' ports/trieste/portfile.cmake
+        } > "$overlay/portfile.cmake"
+        # Validate that the sed extraction actually matched
+        if ! grep -q 'vcpkg_cmake_configure' "$overlay/portfile.cmake"; then
+          echo "::error::Overlay portfile extraction failed — 'vcpkg_cmake_configure' not found."
+          echo "The sed pattern in this workflow is coupled to ports/trieste/portfile.cmake."
+          echo "See the NOTE comment in that file."
+          exit 1
+        fi
+
+    - name: Install trieste via vcpkg
+      shell: bash
+      # Run from runner.temp to avoid the workspace triggering manifest mode.
+      working-directory: ${{ runner.temp }}
+      run: |
+        if [ "${{ matrix.features }}" = "parsers" ]; then
+          "${{ runner.temp }}/vcpkg/vcpkg" install "trieste[parsers]" \
+            --overlay-ports="${{ runner.temp }}/overlay"
+        else
+          "${{ runner.temp }}/vcpkg/vcpkg" install trieste \
+            --overlay-ports="${{ runner.temp }}/overlay"
+        fi
+
+    - name: Build consumer project
+      shell: bash
+      run: |
+        extra_flags=""
+        if [ "${{ matrix.features }}" = "parsers" ]; then
+          extra_flags="-DTEST_PARSERS=ON"
+        fi
+        cmake -B "${{ runner.temp }}/consumer-build" \
+          -S test/vcpkg-consumer \
+          -DCMAKE_TOOLCHAIN_FILE="${{ runner.temp }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+          $extra_flags
+        cmake --build "${{ runner.temp }}/consumer-build" --config Release
+
+    - name: Run tests
+      shell: bash
+      run: |
+        ctest --test-dir "${{ runner.temp }}/consumer-build" \
+          --build-config Release --output-on-failure
+
   all-checks:
     # Join of all build-test jobs
-    needs: [build-test, format-check]
+    needs: [build-test, format-check, vcpkg-integration]
     runs-on: ubuntu-22.04
     steps:
     - name: Check all jobs
@@ -101,7 +194,7 @@ jobs:
     runs-on: ubuntu-24.04
     name: Format Check
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Install dependencies
       run: sudo apt install ninja-build clang-format-18

@@ -1,0 +1,42 @@
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO microsoft/Trieste
+    REF "${VERSION}"
+    SHA512 0  # Update with actual hash when tagging a release
+    HEAD_REF main
+)
+
+# NOTE: The CI overlay port (see .github/workflows/buildtest.yml,
+# vcpkg-integration) uses sed to extract from the "if" line below onwards to
+# build a portfile that points at the local checkout. If you reorder code above
+# this line, update the sed pattern there.
+if("parsers" IN_LIST FEATURES)
+  set(BUILD_PARSERS ON)
+else()
+  set(BUILD_PARSERS OFF)
+  # Without parsers, this is a header-only library.
+  set(VCPKG_BUILD_TYPE release)
+endif()
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -DTRIESTE_USE_FETCH_CONTENT=OFF
+        -DTRIESTE_BUILD_SAMPLES=OFF
+        -DTRIESTE_BUILD_PARSERS=${BUILD_PARSERS}
+        -DTRIESTE_ENABLE_TESTING=OFF
+        -DTRIESTE_USE_SNMALLOC=OFF
+)
+
+vcpkg_cmake_install()
+
+vcpkg_cmake_config_fixup(PACKAGE_NAME trieste CONFIG_PATH share/trieste/cmake)
+
+if(NOT "parsers" IN_LIST FEATURES)
+  file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug")
+endif()
+
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")
+
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage"
+    DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
