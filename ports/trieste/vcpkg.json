@@ -4,6 +4,7 @@
   "description": "A header-only C++20 term rewriting system for rapidly prototyping programming languages",
   "homepage": "https://github.com/microsoft/Trieste",
   "license": "MIT",
+  "supports": "!x86",
   "dependencies": [
     "cli11",
     "snmalloc",

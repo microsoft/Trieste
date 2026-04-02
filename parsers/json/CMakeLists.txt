@@ -12,6 +12,13 @@ else()
 endif()
 enable_warnings(json)
 
+include(GenerateExportHeader)
+generate_export_header(json EXPORT_FILE_NAME json_export.h)
+
+if(NOT BUILD_SHARED_LIBS)
+  target_compile_definitions(json PUBLIC JSON_STATIC_DEFINE)
+endif()
+
 add_library(trieste::json ALIAS json)
 
 target_link_libraries(json
@@ -48,4 +55,9 @@ install(TARGETS json
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include/trieste/json.h DESTINATION include/trieste)
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+  install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/trieste/json.h
+    ${CMAKE_CURRENT_BINARY_DIR}/json_export.h
+    DESTINATION include/trieste)
+endif()

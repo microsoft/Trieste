@@ -35,6 +35,11 @@ jobs:
           variant:  "build-parser-tests"
           build-type: "Release"
           cmake-options: "-DTRIESTE_BUILD_PARSER_TESTS=1"
+
+        - platform: "windows-latest"
+          variant: "shared-libs"
+          build-type: "Release"
+          cmake-options: "-DBUILD_SHARED_LIBS=ON"
         
         - platform: "macos-latest"
           variant:  "build-parser-tests"

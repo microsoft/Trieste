@@ -14,6 +14,13 @@ else()
 endif()
 enable_warnings(yaml)
 
+include(GenerateExportHeader)
+generate_export_header(yaml EXPORT_FILE_NAME yaml_export.h)
+
+if(NOT BUILD_SHARED_LIBS)
+  target_compile_definitions(yaml PUBLIC YAML_STATIC_DEFINE)
+endif()
+
 add_library(trieste::yaml ALIAS yaml)
 
 target_link_libraries(yaml
@@ -27,9 +34,9 @@ if(MSVC)
   target_compile_definitions(yaml PUBLIC "_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING")
 endif()
 
-if(YAML_USE_CXX17)
+if(TRIESTE_USE_CXX17)
   target_compile_features(yaml PUBLIC cxx_std_17)
-  target_compile_definitions(yaml PUBLIC YAML_USE_CXX17)
+  target_compile_definitions(yaml PUBLIC TRIESTE_USE_CXX17)
 else()
   target_compile_features(yaml PUBLIC cxx_std_20)
 endif()
@@ -51,7 +58,12 @@ install(TARGETS yaml
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include/trieste/yaml.h DESTINATION include/trieste)
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+  install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/trieste/yaml.h
+    ${CMAKE_CURRENT_BINARY_DIR}/yaml_export.h
+    DESTINATION include/trieste)
+endif()
 
 if( TRIESTE_BUILD_PARSER_TOOLS )
   add_executable(yamlc yamlc.cc)

@@ -34,6 +34,8 @@ vcpkg_cmake_config_fixup(PACKAGE_NAME trieste CONFIG_PATH share/trieste/cmake)
 
 if(NOT "parsers" IN_LIST FEATURES)
   file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug")
+else()
+  file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 endif()
 
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")
