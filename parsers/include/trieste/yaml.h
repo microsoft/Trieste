@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "yaml_export.h"
 #include "trieste/trieste.h"
+#include "yaml_export.h"
 
 namespace trieste
 {
