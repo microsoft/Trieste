@@ -14,7 +14,7 @@
 #     a non-integer value indicates a crash that must not become a golden file.
 
 if(NOT DEFINED OUTPUT_DIR)
-  message(FATAL_ERROR "validate_golden.cmake: OUTPUT_DIR is required")
+  message(FATAL_ERROR "validate_golden: OUTPUT_DIR is required")
 endif()
 
 # --- Built-in crash detection -------------------------------------------

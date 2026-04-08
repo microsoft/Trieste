@@ -96,7 +96,7 @@ function(testsuite name)
         COMMAND ${test_output_cmd}
         COMMAND ${_validate_cmd}
       )
-      set_source_files_properties("${output_dir_relative}_fake" PROPERTIES SYMBOLIC "true")
+      set_source_files_properties("${output_dir_relative}_fake" PROPERTIES SYMBOLIC TRUE)
       list(APPEND test_set "${output_dir_relative}_fake")
 
       # Make json for debugging.

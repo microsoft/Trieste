@@ -4,7 +4,7 @@ macro(toolinvoke ARGS testfile outputdir)
 endmacro()
 
 # Regular expression to match test files
-set(TESTSUITE_REGEX ".*\\.shrubbery")
+set(TESTSUITE_REGEX ".*\\.shrubbery$")
 
 set(TESTSUITE_EXE "$<TARGET_FILE:shrubbery>")
 
