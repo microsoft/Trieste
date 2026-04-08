@@ -83,12 +83,12 @@ function(testsuite name)
       # Build the validation command for this test.
       set(_validate_cmd
         ${CMAKE_COMMAND}
-          -DOUTPUT_DIR=${output_dir}
+          "-DOUTPUT_DIR:PATH=${output_dir}"
       )
       if(DEFINED TESTSUITE_VALIDATOR AND NOT TESTSUITE_VALIDATOR STREQUAL "")
-        list(APPEND _validate_cmd -DVALIDATOR=${TESTSUITE_VALIDATOR})
+        list(APPEND _validate_cmd "-DVALIDATOR:PATH=${TESTSUITE_VALIDATOR}")
       endif()
-      list(APPEND _validate_cmd -P ${DIR_OF_TESTSUITE_CMAKE}/validate_golden.cmake)
+      list(APPEND _validate_cmd -P "${DIR_OF_TESTSUITE_CMAKE}/validate_golden.cmake")
 
       # Add command that rebuilds the compiler output for updating golden files,
       # followed by validation to reject crashes before copying to golden.
