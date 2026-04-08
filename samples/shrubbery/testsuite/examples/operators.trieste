@@ -1,0 +1,30 @@
+shrubbery
+group structure
+(top
+  {}
+  (file
+    (group
+      (shrub-terms
+        (shrub-atom 1:x)
+        (shrub-op 1:+)
+        (shrub-atom 1:y)
+        (shrub-op 1:*)
+        (shrub-atom 1:z))
+      (shrub-none)
+      (shrub-none))
+    (group
+      (shrub-terms
+        (shrub-atom 1:a))
+      (shrub-none)
+      (shrub-alt
+        (shrub-block
+          (group
+            (shrub-terms
+              (shrub-atom 1:b))
+            (shrub-none)
+            (shrub-none))
+          (group
+            (shrub-terms
+              (shrub-atom 1:c))
+            (shrub-none)
+            (shrub-none)))))))

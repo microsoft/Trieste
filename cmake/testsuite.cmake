@@ -27,8 +27,17 @@ endif()
 #  *  A function test_output_dir which takes the output directory out and the test file test.
 #     This function should set out to the output directory for the test. This is relative to
 #
+#  Optional:
+#  *  A variable TESTSUITE_VALIDATOR, which is the path to a CMake script for additional
+#     validation of test output before it is accepted into golden files. The script is
+#     invoked with OUTPUT_DIR set. It should call message(FATAL_ERROR ...) to reject.
+#
 # An example of this is in samples/infix/testsuite/infix.cmake.
 function(testsuite name)
+  if(TARGET "${name}-update-dump")
+    message(FATAL_ERROR "testsuite(${name}) called more than once. "
+                        "Remove duplicate or use a different name.")
+  endif()
   message(STATUS "Building test suite: ${name}")
   # Iterate each tool
   set(UPDATE_DUMPS_TARGETS)
@@ -71,9 +80,21 @@ function(testsuite name)
         COMMAND ${test_output_cmd}
       )
 
-      # Add command that rebuilts the compiler output for updating golden files.
+      # Build the validation command for this test.
+      set(_validate_cmd
+        ${CMAKE_COMMAND}
+          -DOUTPUT_DIR=${output_dir}
+      )
+      if(DEFINED TESTSUITE_VALIDATOR AND NOT TESTSUITE_VALIDATOR STREQUAL "")
+        list(APPEND _validate_cmd -DVALIDATOR=${TESTSUITE_VALIDATOR})
+      endif()
+      list(APPEND _validate_cmd -P ${DIR_OF_TESTSUITE_CMAKE}/validate_golden.cmake)
+
+      # Add command that rebuilds the compiler output for updating golden files,
+      # followed by validation to reject crashes before copying to golden.
       add_custom_command(OUTPUT "${output_dir_relative}_fake"
         COMMAND ${test_output_cmd}
+        COMMAND ${_validate_cmd}
       )
       set_source_files_properties("${output_dir_relative}_fake" PROPERTIES SYMBOLIC "true")
       list(APPEND test_set "${output_dir_relative}_fake")
@@ -153,8 +174,8 @@ function(testsuite name)
 
       endif()
     endforeach()
-    add_custom_target("update-dump-${test_collection}" DEPENDS ${test_set})
-    list(APPEND UPDATE_DUMPS_TARGETS "update-dump-${test_collection}")
+    add_custom_target("${name}-update-dump-${test_collection}" DEPENDS ${test_set})
+    list(APPEND UPDATE_DUMPS_TARGETS "${name}-update-dump-${test_collection}")
   endforeach()
 
   list(REMOVE_DUPLICATES GOLDEN_DIRS)
@@ -173,22 +194,33 @@ function(testsuite name)
   endif()
 
 
-  if (TARGET update-dump)
-    add_dependencies(update-dump ${UPDATE_DUMPS_TARGETS})
+  # --- Per-suite target: ${name}-update-dump ---
+  add_custom_target("${name}-update-dump" DEPENDS ${UPDATE_DUMPS_TARGETS})
+
+  # --- Per-suite target: ${name}-update-dump-clean ---
+  if(GOLDEN_DIRS)
+    add_custom_target("${name}-update-dump-clean"
+      COMMAND ${CMAKE_COMMAND} -E remove_directory ${GOLDEN_DIRS}
+      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${name}-update-dump
+      USES_TERMINAL
+    )
   else()
-    add_custom_target(update-dump DEPENDS ${UPDATE_DUMPS_TARGETS})
+    add_custom_target("${name}-update-dump-clean"
+      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target ${name}-update-dump
+      USES_TERMINAL
+    )
   endif()
 
-  if(GOLDEN_DIRS)
-    add_custom_target(update-dump-clean
-      COMMAND ${CMAKE_COMMAND} -E remove_directory ${GOLDEN_DIRS}
-      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target update-dump
-      USES_TERMINAL
-    )
+  # --- Global aggregate targets ---
+  if (TARGET update-dump)
+    add_dependencies(update-dump "${name}-update-dump")
   else()
-    add_custom_target(update-dump-clean
-      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target update-dump
-      USES_TERMINAL
-    )
+    add_custom_target(update-dump DEPENDS "${name}-update-dump")
+  endif()
+
+  if (TARGET update-dump-clean)
+    add_dependencies(update-dump-clean "${name}-update-dump-clean")
+  else()
+    add_custom_target(update-dump-clean DEPENDS "${name}-update-dump-clean")
   endif()
 endfunction()

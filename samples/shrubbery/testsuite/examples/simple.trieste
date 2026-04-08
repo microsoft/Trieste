@@ -1,0 +1,25 @@
+shrubbery
+group structure
+(top
+  {}
+  (file
+    (group
+      (shrub-terms
+        (shrub-atom 5:hello))
+      (shrub-block
+        (group
+          (shrub-terms
+            (shrub-atom 5:world))
+          (shrub-none)
+          (shrub-none))
+        (group
+          (shrub-terms
+            (shrub-atom 3:foo))
+          (shrub-block
+            (group
+              (shrub-terms
+                (shrub-atom 3:bar))
+              (shrub-none)
+              (shrub-none)))
+          (shrub-none)))
+      (shrub-none))))
