@@ -13,4 +13,6 @@ add_test(NAME shrubbery COMMAND shrubbery test -f)
 add_test(NAME shrubbery_check COMMAND shrubbery check -w)
 add_test(NAME shrubbery_sequence COMMAND shrubbery test -f --sequence)
 
+add_subdirectory(testsuite)
+
 install(TARGETS shrubbery RUNTIME DESTINATION shrubbery)
