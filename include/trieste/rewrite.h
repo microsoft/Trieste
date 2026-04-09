@@ -11,7 +11,7 @@
 #include <array>
 #include <cassert>
 #include <functional>
-#include <snmalloc/ds_core/defines.h>
+#include <trieste/compiler.h>
 
 namespace trieste
 {
@@ -85,10 +85,10 @@ namespace trieste
       return nullptr;
     }
 
-    SNMALLOC_FAST_PATH size_t add_frame()
+    TRIESTE_FAST_PATH size_t add_frame()
     {
       index++;
-      if (SNMALLOC_UNLIKELY(captures.size() == (size_t)index))
+      if (TRIESTE_UNLIKELY(captures.size() == (size_t)index))
       {
         captures.resize(index * 2);
       }
@@ -99,12 +99,12 @@ namespace trieste
       return index - 1;
     }
 
-    SNMALLOC_FAST_PATH void return_to_frame(size_t new_index)
+    TRIESTE_FAST_PATH void return_to_frame(size_t new_index)
     {
       index = new_index;
     }
 
-    SNMALLOC_FAST_PATH void reset()
+    TRIESTE_FAST_PATH void reset()
     {
       index = 0;
       captures[0].first = false;
@@ -163,33 +163,33 @@ namespace trieste
 
     public:
       // don't inline 2 std::set copies on every copy
-      SNMALLOC_SLOW_PATH FastPattern(const FastPattern&) = default;
-      SNMALLOC_SLOW_PATH FastPattern(FastPattern&&) = default;
-      SNMALLOC_SLOW_PATH FastPattern& operator=(const FastPattern&) = default;
-      SNMALLOC_SLOW_PATH FastPattern& operator=(FastPattern&&) = default;
-      SNMALLOC_SLOW_PATH ~FastPattern() = default;
+      TRIESTE_SLOW_PATH FastPattern(const FastPattern&) = default;
+      TRIESTE_SLOW_PATH FastPattern(FastPattern&&) = default;
+      TRIESTE_SLOW_PATH FastPattern& operator=(const FastPattern&) = default;
+      TRIESTE_SLOW_PATH FastPattern& operator=(FastPattern&&) = default;
+      TRIESTE_SLOW_PATH ~FastPattern() = default;
 
-      static SNMALLOC_SLOW_PATH FastPattern match_any()
+      static TRIESTE_SLOW_PATH FastPattern match_any()
       {
         return FastPattern({}, {}, false);
       }
 
-      static SNMALLOC_SLOW_PATH FastPattern match_pred()
+      static TRIESTE_SLOW_PATH FastPattern match_pred()
       {
         return FastPattern({}, {}, true);
       }
 
-      static SNMALLOC_SLOW_PATH FastPattern match_token(std::set<Token> token)
+      static TRIESTE_SLOW_PATH FastPattern match_token(std::set<Token> token)
       {
         return FastPattern(token, {}, false);
       }
 
-      static SNMALLOC_SLOW_PATH FastPattern match_parent(std::set<Token> token)
+      static TRIESTE_SLOW_PATH FastPattern match_parent(std::set<Token> token)
       {
         return FastPattern({}, token, true);
       }
 
-      static SNMALLOC_SLOW_PATH FastPattern
+      static TRIESTE_SLOW_PATH FastPattern
       match_choice(const FastPattern& lhs, const FastPattern& rhs)
       {
         bool new_pass_through = lhs.pass_through || rhs.pass_through;
@@ -220,7 +220,7 @@ namespace trieste
         return FastPattern(new_first, new_parent, new_pass_through);
       }
 
-      static SNMALLOC_SLOW_PATH FastPattern
+      static TRIESTE_SLOW_PATH FastPattern
       match_seq(const FastPattern& lhs, const FastPattern& rhs)
       {
         std::set<Token> new_first;
@@ -277,8 +277,7 @@ namespace trieste
         return FastPattern(new_first, new_parent, new_pass_through);
       }
 
-      static FastPattern SNMALLOC_SLOW_PATH
-      match_opt(const FastPattern& pattern)
+      static FastPattern TRIESTE_SLOW_PATH match_opt(const FastPattern& pattern)
       {
         if (pattern.any_first())
           return pattern;
@@ -349,7 +348,7 @@ namespace trieste
         }
       }
 
-      SNMALLOC_FAST_PATH bool
+      TRIESTE_FAST_PATH bool
       match_continuation(NodeIt& it, const Node& parent, Match& match) const&
       {
         if (!continuation)
@@ -724,7 +723,7 @@ namespace trieste
         if constexpr (CapturesLeft)
           match.return_to_frame(backtrack_frame);
         else
-          snmalloc::UNUSED(backtrack_frame);
+          UNUSED(backtrack_frame);
 
         return second->match(it, parent, match) &&
           match_continuation(it, parent, match);
@@ -1084,11 +1083,11 @@ namespace trieste
       Pattern(PatternPtr pattern_, FastPattern fast_pattern_)
       : pattern(pattern_), fast_pattern(fast_pattern_)
       {}
-      SNMALLOC_SLOW_PATH Pattern(const Pattern&) = default;
-      SNMALLOC_SLOW_PATH Pattern(Pattern&&) = default;
-      SNMALLOC_SLOW_PATH Pattern& operator=(const Pattern&) = default;
-      SNMALLOC_SLOW_PATH Pattern& operator=(Pattern&&) = default;
-      SNMALLOC_SLOW_PATH ~Pattern() = default;
+      TRIESTE_SLOW_PATH Pattern(const Pattern&) = default;
+      TRIESTE_SLOW_PATH Pattern(Pattern&&) = default;
+      TRIESTE_SLOW_PATH Pattern& operator=(const Pattern&) = default;
+      TRIESTE_SLOW_PATH Pattern& operator=(Pattern&&) = default;
+      TRIESTE_SLOW_PATH ~Pattern() = default;
 
       bool match(NodeIt& it, const Node& parent, Match& match) const
       {

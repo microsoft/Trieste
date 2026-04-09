@@ -604,7 +604,7 @@ namespace
 
   Token find_nearest(NodeDef* node, const std::set<Token>& tokens)
   {
-    if (tokens.contains(node->type()))
+    if (tokens.find(node->type()) != tokens.end())
     {
       return node->type();
     }

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "trieste/trieste.h"
+#include "yaml_export.h"
 
 namespace trieste
 {
@@ -92,20 +93,20 @@ namespace trieste
       ;
     // clang-format on
 
-    Reader reader();
-    Writer event_writer(
+    YAML_EXPORT Reader reader();
+    YAML_EXPORT Writer event_writer(
       const std::filesystem::path& path, const std::string& newline = "\n");
-    Writer writer(
+    YAML_EXPORT Writer writer(
       const std::filesystem::path& path,
       const std::string& newline = "\n",
       std::size_t indent = 2,
       bool canonical = false);
-    Rewriter to_json();
-    std::ostream& block_to_string(
+    YAML_EXPORT Rewriter to_json();
+    YAML_EXPORT std::ostream& block_to_string(
       std::ostream& os, const Node& node, bool raw_quotes = false);
-    std::ostream& quote_to_string(
+    YAML_EXPORT std::ostream& quote_to_string(
       std::ostream& os, const Node& quote, bool raw_quotes = false);
-    std::string to_string(
+    YAML_EXPORT std::string to_string(
       Node yaml,
       const std::string& newline = "\n",
       std::size_t indent = 2,

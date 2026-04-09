@@ -88,9 +88,9 @@ namespace trieste
       compile_rules();
     }
 
-    SNMALLOC_SLOW_PATH PassDef(const PassDef&) = default;
-    SNMALLOC_SLOW_PATH PassDef(PassDef&&) = default;
-    SNMALLOC_SLOW_PATH ~PassDef() = default;
+    TRIESTE_SLOW_PATH PassDef(const PassDef&) = default;
+    TRIESTE_SLOW_PATH PassDef(PassDef&&) = default;
+    TRIESTE_SLOW_PATH ~PassDef() = default;
 
     operator Pass() const
     {
@@ -258,7 +258,7 @@ namespace trieste
       return (direction_ & f) != 0;
     }
 
-    SNMALLOC_SLOW_PATH ptrdiff_t replace(
+    TRIESTE_SLOW_PATH ptrdiff_t replace(
       Match& match,
       detail::Effect<Node>& rule_replace,
       const NodeIt& start,
@@ -305,14 +305,14 @@ namespace trieste
       return replaced;
     }
 
-    SNMALLOC_FAST_PATH size_t match_children(const Node& node, Match& match)
+    TRIESTE_FAST_PATH size_t match_children(const Node& node, Match& match)
     {
       size_t changes = 0;
 
       auto& rules = rule_map.get(node->type());
 
       // No rules apply under this specific parent, so skip it.
-      if (SNMALLOC_UNLIKELY(rules.empty()))
+      if (TRIESTE_UNLIKELY(rules.empty()))
         return changes;
 
       auto it = node->begin();
@@ -328,8 +328,8 @@ namespace trieste
         {
           match.reset();
           if (
-            SNMALLOC_UNLIKELY(rule.first.value.match(it, node, match)) &&
-            SNMALLOC_LIKELY(!range_contains_error(start, it)))
+            TRIESTE_UNLIKELY(rule.first.value.match(it, node, match)) &&
+            TRIESTE_LIKELY(!range_contains_error(start, it)))
           {
             replaced = replace(match, rule.second, start, it, node);
             if (replaced != NOCHANGE)
@@ -370,7 +370,7 @@ namespace trieste
     {
       size_t changes = 0;
 
-      auto add = [&](Node& node) SNMALLOC_FAST_PATH_LAMBDA {
+      auto add = [&](Node& node) TRIESTE_FAST_PATH_LAMBDA {
         // Don't examine Error or Lift nodes.
         if (node->type() & flag::internal)
           return false;
@@ -387,11 +387,11 @@ namespace trieste
         return true;
       };
 
-      auto remove = [&](Node& node) SNMALLOC_FAST_PATH_LAMBDA {
+      auto remove = [&](Node& node) TRIESTE_FAST_PATH_LAMBDA {
         if constexpr (!Topdown)
           changes += match_children(node, match);
         else
-          snmalloc::UNUSED(node);
+          UNUSED(node);
         if constexpr (Post)
         {
           auto post_f = post_.find(node->type());

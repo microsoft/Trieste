@@ -5,9 +5,9 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
-#include <snmalloc/ds_core/defines.h>
 #include <sstream>
 #include <stdexcept>
+#include <trieste/compiler.h>
 
 namespace trieste::logging
 {
@@ -128,7 +128,7 @@ namespace trieste::logging
      * not going to occur.
      */
 
-    SNMALLOC_SLOW_PATH void start(detail::LogLevel level)
+    TRIESTE_SLOW_PATH void start(detail::LogLevel level)
     {
       if (detail::report_level == detail::LogLevel::Uninitialized)
       {
@@ -165,7 +165,7 @@ namespace trieste::logging
       }
     }
 
-    SNMALLOC_SLOW_PATH void end()
+    TRIESTE_SLOW_PATH void end()
     {
       if (print == Status::Active)
       {
@@ -175,7 +175,7 @@ namespace trieste::logging
       strstream.destruct();
     }
 
-    SNMALLOC_SLOW_PATH void
+    TRIESTE_SLOW_PATH void
     operation(decltype(std::endl<char, std::char_traits<char>>) f)
     {
       auto endl_func = std::endl<char, std::char_traits<char>>;
@@ -186,13 +186,13 @@ namespace trieste::logging
         strstream.get() << f;
     }
 
-    SNMALLOC_SLOW_PATH void indent()
+    TRIESTE_SLOW_PATH void indent()
     {
       ++indent_chars;
       *this << std::endl;
     }
 
-    SNMALLOC_SLOW_PATH void undent()
+    TRIESTE_SLOW_PATH void undent()
     {
       if (indent_chars == 0)
         throw std::runtime_error("Undent called too many times");
@@ -226,13 +226,13 @@ namespace trieste::logging
     Log(Log&&) = delete;
     Log& operator=(Log&&) = delete;
 
-    SNMALLOC_FAST_PATH Log(detail::LogLevel level)
+    TRIESTE_FAST_PATH Log(detail::LogLevel level)
     {
-      if (SNMALLOC_UNLIKELY(level <= detail::report_level))
+      if (TRIESTE_UNLIKELY(level <= detail::report_level))
         start(level);
     }
 
-    SNMALLOC_FAST_PATH typename std::stringstream& get_stringstream()
+    TRIESTE_FAST_PATH typename std::stringstream& get_stringstream()
     {
       if (is_active())
         return strstream.get();
@@ -240,69 +240,69 @@ namespace trieste::logging
       throw std::runtime_error("Log should not be printed! Use should_print()");
     }
 
-    SNMALLOC_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &
+    TRIESTE_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &
     {
-      if (SNMALLOC_UNLIKELY(is_active()))
+      if (TRIESTE_UNLIKELY(is_active()))
         operation(f);
 
       return *this;
     }
 
-    SNMALLOC_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &&
+    TRIESTE_FAST_PATH Log& operator<<(std::ostream& (*f)(std::ostream&)) &&
     {
-      if (SNMALLOC_UNLIKELY(is_active()))
+      if (TRIESTE_UNLIKELY(is_active()))
         operation(f);
 
       return *this;
     }
 
-    SNMALLOC_FAST_PATH Log& operator<<(detail::Indent) &
+    TRIESTE_FAST_PATH Log& operator<<(detail::Indent) &
     {
-      if (SNMALLOC_UNLIKELY(is_active()))
+      if (TRIESTE_UNLIKELY(is_active()))
         indent();
       return *this;
     }
 
-    SNMALLOC_FAST_PATH Log& operator<<(detail::Indent) &&
+    TRIESTE_FAST_PATH Log& operator<<(detail::Indent) &&
     {
-      if (SNMALLOC_UNLIKELY(is_active()))
+      if (TRIESTE_UNLIKELY(is_active()))
         indent();
       return *this;
     }
 
-    SNMALLOC_FAST_PATH Log& operator<<(detail::Undent) &
+    TRIESTE_FAST_PATH Log& operator<<(detail::Undent) &
     {
-      if (SNMALLOC_UNLIKELY(is_active()))
+      if (TRIESTE_UNLIKELY(is_active()))
         undent();
       return *this;
     }
 
-    SNMALLOC_FAST_PATH Log& operator<<(detail::Undent) &&
+    TRIESTE_FAST_PATH Log& operator<<(detail::Undent) &&
     {
-      if (SNMALLOC_UNLIKELY(is_active()))
+      if (TRIESTE_UNLIKELY(is_active()))
         undent();
       return *this;
     }
 
     template<typename T>
-    SNMALLOC_FAST_PATH_INLINE Log& operator<<(T&& t) &
+    TRIESTE_FAST_PATH_INLINE Log& operator<<(T&& t) &
     {
-      if (SNMALLOC_UNLIKELY(is_active()))
+      if (TRIESTE_UNLIKELY(is_active()))
         append(*this, t);
       return *this;
     }
 
     template<typename T>
-    SNMALLOC_FAST_PATH_INLINE Log& operator<<(T&& t) &&
+    TRIESTE_FAST_PATH_INLINE Log& operator<<(T&& t) &&
     {
-      if (SNMALLOC_UNLIKELY(is_active()))
+      if (TRIESTE_UNLIKELY(is_active()))
         append(*this, t);
       return *this;
     }
 
-    SNMALLOC_FAST_PATH ~Log()
+    TRIESTE_FAST_PATH ~Log()
     {
-      if (SNMALLOC_UNLIKELY(is_active()))
+      if (TRIESTE_UNLIKELY(is_active()))
         end();
     }
 
@@ -332,7 +332,7 @@ namespace trieste::logging
         return L <= detail::report_level;
       }
 
-      SNMALLOC_FAST_PATH LogImpl() : Log(L) {}
+      TRIESTE_FAST_PATH LogImpl() : Log(L) {}
     };
   } // namespace detail
 
@@ -356,7 +356,7 @@ namespace trieste::logging
   // Append to the string stream.  Defined in global namespace so that it can be
   // overridden by ADL.
   template<typename T>
-  inline SNMALLOC_SLOW_PATH void append(Log& self, const T& t)
+  inline TRIESTE_SLOW_PATH void append(Log& self, const T& t)
   {
     self.get_stringstream() << t;
   }
@@ -373,11 +373,11 @@ namespace trieste::logging
   {
     const T& t;
 
-    SNMALLOC_FAST_PATH Lazy(const T& t_) : t(t_) {}
+    TRIESTE_FAST_PATH Lazy(const T& t_) : t(t_) {}
   };
 
   template<typename T, void(f)(Log&, const T&)>
-  inline SNMALLOC_SLOW_PATH void append(Log& self, const Lazy<T, f>& p)
+  inline TRIESTE_SLOW_PATH void append(Log& self, const Lazy<T, f>& p)
   {
     f(self, p.t);
   }
@@ -404,10 +404,10 @@ namespace trieste::logging
     std::string sep;
     bool first;
 
-    SNMALLOC_FAST_PATH Sep(std::string sep_) : sep(sep_), first(true) {}
+    TRIESTE_FAST_PATH Sep(std::string sep_) : sep(sep_), first(true) {}
   };
 
-  inline SNMALLOC_SLOW_PATH void append(Log& append, Sep& sep)
+  inline TRIESTE_SLOW_PATH void append(Log& append, Sep& sep)
   {
     if (sep.first)
       sep.first = false;
@@ -467,7 +467,7 @@ namespace trieste::logging
 //   logging::Info() << "Hello " << "World" << fib(23);
 // would be required to evaluate fib(23) even if Info is not enabled.
 #  define LOG(param) \
-    if (SNMALLOC_UNLIKELY(trieste::logging::param::active())) \
+    if (TRIESTE_UNLIKELY(trieste::logging::param::active())) \
     trieste::logging::param()
 #endif
 
