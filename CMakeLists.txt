@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.14.0)
+cmake_minimum_required(VERSION 3.28)
+
+# Trieste does not use C++20 modules; disable the scan that requires clang-scan-deps.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 file(STRINGS "VERSION" TRIESTE_VERSION_FILE LIMIT_COUNT 1)
 string(STRIP "${TRIESTE_VERSION_FILE}" TRIESTE_VERSION_FILE)
@@ -34,8 +37,8 @@ if(GIT_FOUND)
     list(GET TRIESTE_GIT_LOG_LIST 2 TRIESTE_BUILD_DATE)
   else()
     set(TRIESTE_GIT_HASH "unknown")
-    set(TRIESTE_GIT_SHORT_HASH "unknown")
-    set(TRIESTE_BUILD_DATE "unknown")
+    set(TRIESTE_GIT_SHORT_HASH "v${TRIESTE_VERSION}")
+    string(TIMESTAMP TRIESTE_BUILD_DATE "%a, %d %b %Y %H:%M:%S %z")
   endif()
   execute_process(
     COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
@@ -48,8 +51,8 @@ else()
   message(STATUS "Git not found; version metadata will be 'unknown'")
   set(TRIESTE_GIT_HASH "unknown")
   set(TRIESTE_GIT_BRANCH "unknown")
-  set(TRIESTE_GIT_SHORT_HASH "unknown")
-  set(TRIESTE_BUILD_DATE "unknown")
+  set(TRIESTE_GIT_SHORT_HASH "v${TRIESTE_VERSION}")
+  string(TIMESTAMP TRIESTE_BUILD_DATE "%a, %d %b %Y %H:%M:%S %z")
 endif()
 
 set(TRIESTE_BUILD_TOOLCHAIN "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
@@ -99,50 +102,50 @@ set(TRIESTE_SANITIZE "" CACHE STRING "Argument to pass to sanitize (disabled by 
 if(TRIESTE_USE_FETCH_CONTENT)
   include(FetchContent)
 
-  set(SNMALLOC_BUILD_TESTING OFF CACHE INTERNAL "Turn off snmalloc tests")
-  set(SNMALLOC_USE_CXX17 ${TRIESTE_USE_CXX17})
+  if(TRIESTE_USE_SNMALLOC)
+    set(SNMALLOC_BUILD_TESTING OFF CACHE INTERNAL "Turn off snmalloc tests")
+    set(SNMALLOC_USE_CXX17 ${TRIESTE_USE_CXX17})
 
-  # Used to provide
-  #  FetchContent_MakeAvailable_ExcludeFromAll
-  FetchContent_Declare(
-      cmake_utils
-      GIT_REPOSITORY https://github.com/mjp41/cmake_utils
-      GIT_TAG 2bf98b5773ea7282197c823e205547d8c2e323c0
-      GIT_SHALLOW FALSE
-  )
+    FetchContent_Declare(
+      snmalloc
+      GIT_REPOSITORY https://github.com/microsoft/snmalloc
+      GIT_TAG 1c7a93aad54198423944a786da9dad3962134f75
+      EXCLUDE_FROM_ALL
+      # per https://gitlab.kitware.com/cmake/cmake/-/issues/17770, do not use GIT_SHALLOW here
+      # or it will silently break new builds days later, once the commit hash above no longer
+      # matches a named branch, like main.
+      # Tracking a named branch with GIT_SHALLOW enabled is ok, however.
+      # GIT_SHALLOW TRUE
+    )
 
-  FetchContent_MakeAvailable(cmake_utils)
+    FetchContent_MakeAvailable(snmalloc)
 
-  FetchContent_Declare(
-    snmalloc
-    GIT_REPOSITORY https://github.com/microsoft/snmalloc
-    GIT_TAG 1c7a93aad54198423944a786da9dad3962134f75
-    # per https://gitlab.kitware.com/cmake/cmake/-/issues/17770, do not use GIT_SHALLOW here
-    # or it will silently break new builds days later, once the commit hash above no longer
-    # matches a named branch, like main.
-    # Tracking a named branch with GIT_SHALLOW enabled is ok, however.
-    # GIT_SHALLOW TRUE
-  )
-
-  FetchContent_MakeAvailable_ExcludeFromAll(snmalloc)
+    set(TRIESTE_SNMALLOC_TARGET snmalloc)
+    set(TRIESTE_SNMALLOC_OVERRIDE_TARGET snmalloc-new-override)
+  else()
+    set(TRIESTE_SNMALLOC_TARGET "")
+    set(TRIESTE_SNMALLOC_OVERRIDE_TARGET "")
+  endif()
 
   FetchContent_Declare(
     cli11
     GIT_REPOSITORY https://github.com/CLIUtils/CLI11
     GIT_TAG 4160d259d961cd393fd8d67590a8c7d210207348
     GIT_SHALLOW TRUE
+    EXCLUDE_FROM_ALL
   )
 
-  FetchContent_MakeAvailable_ExcludeFromAll(cli11)
-
-  set(TRIESTE_SNMALLOC_TARGET snmalloc)
-  set(TRIESTE_SNMALLOC_OVERRIDE_TARGET snmalloc-new-override)
+  FetchContent_MakeAvailable(cli11)
 else()
-  find_package(snmalloc CONFIG REQUIRED)
-  find_package(CLI11 CONFIG REQUIRED)
-
-  set(TRIESTE_SNMALLOC_TARGET snmalloc::snmalloc)
+  if(TRIESTE_USE_SNMALLOC)
+    find_package(snmalloc CONFIG REQUIRED)
+    set(TRIESTE_SNMALLOC_TARGET snmalloc::snmalloc)
+  else()
+    set(TRIESTE_SNMALLOC_TARGET "")
+  endif()
   set(TRIESTE_SNMALLOC_OVERRIDE_TARGET "")
+
+  find_package(CLI11 CONFIG REQUIRED)
 endif()
 
 # #############################################
@@ -162,21 +165,25 @@ target_include_directories(trieste
 target_link_libraries(trieste
   INTERFACE
   CLI11::CLI11
-  ${TRIESTE_SNMALLOC_TARGET}
 )
 
-if(TRIESTE_USE_SNMALLOC AND TRIESTE_SNMALLOC_OVERRIDE_TARGET)
-  if(TRIESTE_SANITIZE)
-    message(WARNING "Sanitizers are not supported with snmalloc, disabling snmalloc.")
-  else()
-    target_link_libraries(trieste INTERFACE ${TRIESTE_SNMALLOC_OVERRIDE_TARGET})
+if(TRIESTE_USE_SNMALLOC)
+  target_link_libraries(trieste INTERFACE ${TRIESTE_SNMALLOC_TARGET})
+
+  if(TRIESTE_SNMALLOC_OVERRIDE_TARGET)
+    if(TRIESTE_SANITIZE)
+      message(WARNING "Sanitizers are not supported with snmalloc, disabling snmalloc.")
+    else()
+      target_link_libraries(trieste INTERFACE ${TRIESTE_SNMALLOC_OVERRIDE_TARGET})
+    endif()
   endif()
 endif()
 
 if(TRIESTE_USE_CXX17)
-  target_compile_definitions(trieste INTERFACE cxx_std_17 TRIESTE_USE_CXX17)
+  target_compile_features(trieste INTERFACE cxx_std_17)
+  target_compile_definitions(trieste INTERFACE TRIESTE_USE_CXX17)
 else()
-  target_compile_definitions(trieste INTERFACE cxx_std_20)
+  target_compile_features(trieste INTERFACE cxx_std_20)
 endif()
 
 if (TRIESTE_SANITIZE)
@@ -212,9 +219,12 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
 endif()
 
 if(TRIESTE_USE_FETCH_CONTENT)
-  set(INSTALL_DEPS ${TRIESTE_SNMALLOC_TARGET} CLI11)
-  if (TRIESTE_USE_SNMALLOC AND TRIESTE_SNMALLOC_OVERRIDE_TARGET)
-    list(APPEND INSTALL_DEPS ${TRIESTE_SNMALLOC_OVERRIDE_TARGET})
+  set(INSTALL_DEPS CLI11)
+  if(TRIESTE_USE_SNMALLOC)
+    list(APPEND INSTALL_DEPS ${TRIESTE_SNMALLOC_TARGET})
+    if(TRIESTE_SNMALLOC_OVERRIDE_TARGET)
+      list(APPEND INSTALL_DEPS ${TRIESTE_SNMALLOC_OVERRIDE_TARGET})
+    endif()
   endif()
 else()
   set(INSTALL_DEPS "")
@@ -267,7 +277,7 @@ export(PACKAGE trieste)
 
 # #############################################
 # # Formatting targets
-if(TRIESTE_USE_FETCH_CONTENT)
+if(TRIESTE_USE_FETCH_CONTENT AND TRIESTE_USE_SNMALLOC)
   clangformat_targets(
     VERSION 18
     INCLUDE_PATTERNS include/*.h include/*.cc parsers/*.cc parsers/*.h samples/*.cc samples/*.h test/*.cc test/*.h

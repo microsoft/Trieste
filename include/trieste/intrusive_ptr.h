@@ -1,6 +1,6 @@
 #pragma once
 
-#include "snmalloc/ds_core/defines.h"
+#include "compiler.h"
 
 #include <atomic>
 #include <cassert>
@@ -265,7 +265,7 @@ namespace trieste
     // It's better to have the non-null case dec_ref code all in one place,
     // because it's long for something that might be pasted over 10x
     // into functions that use intrusive_ptr a lot.
-    SNMALLOC_SLOW_PATH
+    TRIESTE_SLOW_PATH
     void intrusive_dec_ref()
     {
       // Atomically subtract 1 from refcount and get the _old value_.

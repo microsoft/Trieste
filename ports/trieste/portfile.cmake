@@ -1,7 +1,7 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO microsoft/Trieste
-    REF "${VERSION}"
+    REF "v${VERSION}"
     SHA512 0  # Update with actual hash when tagging a release
     HEAD_REF main
 )
@@ -18,6 +18,12 @@ else()
   set(VCPKG_BUILD_TYPE release)
 endif()
 
+if("snmalloc" IN_LIST FEATURES)
+  set(USE_SNMALLOC ON)
+else()
+  set(USE_SNMALLOC OFF)
+endif()
+
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
@@ -25,12 +31,12 @@ vcpkg_cmake_configure(
         -DTRIESTE_BUILD_SAMPLES=OFF
         -DTRIESTE_BUILD_PARSERS=${BUILD_PARSERS}
         -DTRIESTE_ENABLE_TESTING=OFF
-        -DTRIESTE_USE_SNMALLOC=OFF
+        -DTRIESTE_USE_SNMALLOC=${USE_SNMALLOC}
 )
 
 vcpkg_cmake_install()
-
-vcpkg_cmake_config_fixup(PACKAGE_NAME trieste CONFIG_PATH share/trieste/cmake)
+vcpkg_cmake_config_fixup(CONFIG_PATH share/trieste/cmake)
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 
 if(NOT "parsers" IN_LIST FEATURES)
   file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug")

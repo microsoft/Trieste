@@ -778,7 +778,7 @@ namespace trieste
     /*
      * Useful for calling from inside a debugger.
      */
-    std::string SNMALLOC_USED_FUNCTION str()
+    std::string TRIESTE_USED_FUNCTION str()
     {
       std::ostringstream out;
       str(out);
@@ -837,7 +837,7 @@ namespace trieste
      * passed to the action, but not above.
      */
     template<typename Pre, typename Post = NopPost>
-    SNMALLOC_FAST_PATH void traverse(Pre pre, Post post = NopPost())
+    TRIESTE_FAST_PATH void traverse(Pre pre, Post post = NopPost())
     {
       Node root = intrusive_ptr_from_this();
       if (!pre(root))

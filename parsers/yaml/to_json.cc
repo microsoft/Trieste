@@ -26,7 +26,8 @@ namespace
   inline const auto wf_strings_tokens =
     wf_tokens - (Literal | Folded | Plain | DoubleQuote | SingleQuote);
   inline const auto wf_strings_flow_tokens =
-    wf_flow_tokens - (Plain | DoubleQuote | SingleQuote);
+    (wf_flow_tokens | FlowSequence | FlowMapping) -
+    (Plain | DoubleQuote | SingleQuote);
 
   // clang-format off
   inline const auto wf_strings =
@@ -41,7 +42,7 @@ namespace
   // clang-format on
 
   inline const auto wf_lookup_tokens = wf_strings_tokens - Alias;
-  inline const auto wf_lookup_flow_tokens = wf_strings_tokens - Alias;
+  inline const auto wf_lookup_flow_tokens = wf_strings_flow_tokens - Alias;
 
   // clang-format off
   inline const auto wf_lookup =
@@ -154,6 +155,14 @@ namespace
       wf_tags,
       dir::bottomup | dir::once,
       {
+        In(AnchorValue, TagValue) *
+            (T(Literal, Folded, Mapping, Sequence)[TagValue] *
+             In(FlowMappingItem, FlowSequence)++) >>
+          [](Match& _) {
+            return err(
+              _(TagValue), "Invalid anchor or tag value in flow construct");
+          },
+
         T(AnchorValue) << (T(Anchor) * ValueToken[Value]) >>
           [](Match& _) { return _(Value); },
 

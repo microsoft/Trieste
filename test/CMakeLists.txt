@@ -46,9 +46,10 @@ if(TRIESTE_BUILD_REGEX_BENCHMARK)
     GIT_REPOSITORY https://github.com/google/re2
     GIT_TAG 4be240789d5b322df9f02b7e19c8651f3ccbf205
     GIT_SHALLOW TRUE
+    EXCLUDE_FROM_ALL
   )
   set(RE2_BUILD_TESTING OFF CACHE BOOL "Disable RE2 tests for Trieste benchmark builds" FORCE)
-  FetchContent_MakeAvailable_ExcludeFromAll(re2)
+  FetchContent_MakeAvailable(re2)
 
   if(NOT TARGET re2::re2)
     message(FATAL_ERROR "TRIESTE_BUILD_REGEX_BENCHMARK=ON requires RE2 target re2::re2. Configure with network access, or provide a local RE2 source via FetchContent overrides.")

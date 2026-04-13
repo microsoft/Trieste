@@ -5,7 +5,9 @@ if(@TRIESTE_USE_FETCH_CONTENT@)
   # Dependencies were fetched at build time and are bundled in the export targets
 else()
   # Dependencies are resolved via find_package; caller must have them installed
-  find_dependency(snmalloc CONFIG)
+  if(@TRIESTE_USE_SNMALLOC@)
+    find_dependency(snmalloc CONFIG)
+  endif()
   find_dependency(CLI11 CONFIG)
 endif()
 

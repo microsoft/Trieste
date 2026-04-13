@@ -59,7 +59,7 @@ In(Expression) * (T(Ident)[Id] * T(Add) * T(Ident)[Rhs]) >>
 
 Pattern combinators:
 - `T(Token)` — match a node type; `T(A, B, C)` — match any of those types
-- `In(Token)` — parent must be that type
+- `In(Token)` — parent must be that type; `In(Token)++` — any ancestor must be that type
 - `P * Q` — sequence; `P / Q` — choice
 - `P[Name]` — capture node as `Name`; access via `_(Name)` or `_[Name]` (range)
 - `~P` — optional; `P++` — zero or more; `!P` — negation
@@ -235,59 +235,82 @@ When asked to complete a task, follow this process:
 
 ### Multi-perspective Planning Process
 
-When planning a code change to the library, use five sub-planners running in parallel to generate competing plans and attack scenarios, then synthesise the best elements into a final plan.
+When planning a code change to the library, use four constructive lens agents to generate competing plans, synthesise them with explicit rebuttal resolution, then stress-test the result with an adversarial reviewer.
 
-#### Step 1 — Gather sub-plans
+#### Step 1 — Gather context
 
-Spawn **five fresh subagents**, each prompted to use one of the following skills. Each subagent receives the same task description and context but plans through a different lens:
+Read the relevant code and gather enough context to fully describe the task to the lens agents. The lens agents are fresh subagents with no prior context — provide them with everything they need: the task description, relevant file paths and code excerpts, WF specs, token definitions, and any constraints or requirements.
 
-| Subagent | Skill | Focus |
-|----------|-------|-------|
-| Speed Planner | `/plan-speed` | Runtime performance, low allocations, minimal passes, cache efficiency |
-| Security Planner | `/plan-security` | Defence in depth, safe error handling, bounded resources, fuzz coverage |
-| Usability Planner | `/plan-usability` | Clarity, readability, correctness, consistent naming, one-concept-per-pass |
-| Conservative Planner | `/plan-conservative` | Smallest diff, maximum reuse, no speculative generality, backwards compat |
-| Adversarial Planner | `/plan-adversarial` | Attack scenarios, edge cases, invariant violations, regression vectors |
+#### Step 2 — Gather sub-plans
 
-Prompt each subagent with:
-> You are planning a change to the Trieste library. Use the `/[skill-name]` skill to guide your planning. Here is the task: [task description and relevant context]. Produce a numbered plan following the output format defined in the skill.
+Spawn **four subagents in parallel**, one for each constructive lens agent. Each receives the same task description and context but plans through a different lens:
 
-#### Step 2 — Evaluate the five plans
+| Agent | Focus |
+|-------|-------|
+| `speed-lens` | Runtime performance, low allocations, minimal passes, cache efficiency |
+| `security-lens` | Defence in depth, safe error handling, bounded resources, fuzz coverage |
+| `usability-lens` | Clarity, readability, correctness, consistent naming, one-concept-per-pass |
+| `conservative-lens` | Smallest diff, maximum reuse, no speculative generality, backwards compat |
 
-Review the four constructive plans and the adversarial attack scenarios yourself and produce a short evaluation covering:
+Invoke each lens agent with:
+> You are planning a change to the Trieste library. Here is the task: [task description and relevant context]. Produce a numbered plan following the output format defined in your instructions.
 
-- **Convergence**: where two or more plans agree on the same approach. High convergence suggests a clearly correct design.
+#### Step 3 — Identify conflicts and run rebuttals
+
+Read all four lens outputs and identify *substantive design conflicts* — cases where two or more lenses propose incompatible approaches ("use A" vs. "use B" where both cannot coexist). Different emphasis on the same approach is not a conflict.
+
+If conflicts are found:
+- For each conflict, spawn the disagreeing lens agents in parallel (fresh subagents, by name). Each receives: (a) the specific conflict description, (b) its own original recommendation, (c) the opposing recommendation(s), and (d) instructions to make its strongest case for why its approach should be chosen, directly addressing the opponent's arguments.
+- **One rebuttal round only** — no counter-rebuttals. The adversarial review loop (step 5) catches remaining issues.
+- If no substantive conflicts are found, skip this step entirely.
+
+#### Step 4 — Evaluate and synthesise
+
+Review the four sub-plans yourself and produce a short evaluation covering:
+
+- **Convergence**: where two or more plans agree on the same approach.
 - **Unique insights**: ideas that appear in only one plan and are worth incorporating.
-- **Conflicts**: where plans disagree. For each conflict, state which perspective you favour and why.
-- **Gaps**: anything none of the four constructive plans addressed.
-- **Adversarial findings**: which attack scenarios are valid threats that the final plan must address, and which are theoretical or out of scope.
+- **Conflicts**: where plans disagree. For each conflict, summarise the rebuttal arguments from each side (if rebuttals were run) and state which perspective you favour and why.
+- **Gaps**: anything none of the four plans addressed.
 
-#### Step 3 — Synthesise the final plan
-
-Spawn a **sixth subagent** (the synthesiser). Provide it with:
+Then spawn a **fresh `synthesis-lens` subagent**. Provide it with:
 - The original task description.
-- All four constructive sub-plans (labelled by perspective).
-- The adversarial attack scenarios.
-- Your evaluation from Step 2.
+- All four sub-plans (labelled by perspective).
+- Any rebuttal arguments (labelled by conflict and perspective).
+- Your evaluation.
 
-Prompt the synthesiser with:
-> You are producing the final plan for a change to the Trieste library. You have received four sub-plans from different perspectives (Speed, Security, Usability, Conservative), a set of adversarial attack scenarios, and an evaluation of all five. Synthesise them into a single coherent, numbered plan that balances all four constructive concerns and defends against the accepted adversarial findings. Where the evaluation favours one perspective, follow it. Where the evaluation is neutral, prefer the Conservative approach. For each accepted adversarial finding, include a specific defence (test case, bounds check, or design constraint) in the relevant step. Output the final plan in the standard format: Goal, Steps (with file paths and descriptions balancing all four perspectives), Rationale (explaining the synthesis), Trade-offs (any conflicts between perspectives and how they were resolved), and Defences (adversarial findings addressed and how).
+When rebuttals are present, synthesis receives structured arguments for each side rather than inferring them. The synthesis lens must engage with the specific rebuttal arguments made rather than ignoring them.
 
-#### Step 4 — Review the synthesised plan
+#### Step 5 — Adversarial review loop
 
-Before presenting the plan, run an iterative review loop:
+Run the synthesised plan through an iterative adversarial review:
 
-1. Spawn a subagent to review the synthesised plan. Provide it with the original task description, the four sub-plans, your evaluation, and the synthesised plan. Ask it to check for: logical errors in the step ordering, steps that contradict each other, missing error handling or edge cases, violations of Trieste conventions, and anything the synthesis dropped that should have been kept.
-2. If the review finds issues, revise the plan yourself and spawn a **different** subagent to review the revised version.
-3. Repeat until a review comes back clean (no issues found).
+1. Spawn a **fresh `adversarial-lens` subagent**. Provide it with the synthesised plan and full task context. Ask it to attack the plan: find inputs, interactions, and assumptions that would break it.
+2. If the adversarial review finds issues:
+   a. Fix the plan yourself, addressing each accepted finding with a specific defence (test case, bounds check, or design constraint).
+   b. If any finding is unclear or you are unsure how to address it, ask the user for guidance before proceeding.
+   c. Spawn a **new fresh `adversarial-lens` subagent** to review the revised plan. (Each review must use a fresh subagent.)
+3. If the review comes back clean (no actionable findings), proceed to Step 6.
+4. If the loop has run **5 times** without converging, proceed to Step 6 anyway — present the remaining unresolved findings to the user for decision.
 
-#### Step 5 — Present for approval
+#### Step 6 — Present for approval
 
 Present the reviewed plan to the user along with a brief summary of:
-- Key points of agreement across the four sub-planners.
+- Key points of agreement across the four lens agents.
 - Notable trade-offs made during synthesis.
-- Any minority opinions from individual sub-planners that were overruled.
-- Issues caught and resolved during the review loop (if any).
+- Conflicts resolved via rebuttals and which perspective prevailed.
+- Any minority opinions from individual lens agents that were overruled.
+- Issues caught and resolved during the adversarial review loop.
+- Any unresolved adversarial findings (if the loop hit the 5-iteration cap).
+
+### Execution Rules
+
+- Fresh subagents for each phase (lens, rebuttal, synthesis, adversarial review) — no context contamination.
+- Four constructive lens subagents run in parallel; conflict identification, rebuttals, synthesis, adversarial review, and user-facing presentation run sequentially.
+- Rebuttal subagents for a single conflict run in parallel with each other (they argue independently).
+- Lens phases are independent — do not allow one lens's output to shape another's. Rebuttals are a second pass; the original independent outputs are preserved and forwarded to synthesis alongside rebuttals.
+- Synthesis must resolve disagreements explicitly, not average them away. When rebuttals are available, synthesis must engage with the arguments made rather than ignoring them.
+- The adversarial review loop is mandatory before presenting to the user. Each iteration uses a fresh adversarial subagent.
 
 ### Review Loop
 
