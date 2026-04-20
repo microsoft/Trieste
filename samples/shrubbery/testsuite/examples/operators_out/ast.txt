@@ -2,29 +2,29 @@ shrubbery
 group structure
 (top
   {}
-  (file
-    (group
-      (shrub-terms
-        (shrub-atom 1:x)
-        (shrub-op 1:+)
-        (shrub-atom 1:y)
-        (shrub-op 1:*)
-        (shrub-atom 1:z))
-      (shrub-none)
-      (shrub-none))
-    (group
-      (shrub-terms
-        (shrub-atom 1:a))
-      (shrub-none)
-      (shrub-alt
-        (shrub-block
-          (group
-            (shrub-terms
-              (shrub-atom 1:b))
-            (shrub-none)
-            (shrub-none))
-          (group
-            (shrub-terms
-              (shrub-atom 1:c))
-            (shrub-none)
-            (shrub-none)))))))
+  (file 19:operators.shrubbery:0:19
+    (group :0:9
+      (shrub-terms :0:9
+        (shrub-atom :0:1:x)
+        (shrub-op :2:1:+)
+        (shrub-atom :4:1:y)
+        (shrub-op :6:1:*)
+        (shrub-atom :8:1:z))
+      (shrub-none :0:9)
+      (shrub-none :0:9))
+    (group :10:1
+      (shrub-terms :10:8
+        (shrub-atom :10:1:a))
+      (shrub-none :10:8)
+      (shrub-alt :12:6
+        (shrub-block :12:6
+          (group :14:1
+            (shrub-terms :14:1
+              (shrub-atom :14:1:b))
+            (shrub-none :14:1)
+            (shrub-none :14:1))
+          (group :17:1
+            (shrub-terms :17:1
+              (shrub-atom :17:1:c))
+            (shrub-none :17:1)
+            (shrub-none :17:1)))))))

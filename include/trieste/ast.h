@@ -746,15 +746,51 @@ namespace trieste
 
     void str(std::ostream& out, size_t level = 0) const
     {
+      std::vector<const std::string*> origin_stack;
+      static const std::string no_origin;
+
       auto pre = [&](Node& node) {
         if (level != 0)
           out << std::endl;
 
         out << indent(level) << "(" << node->type_.str();
 
-        if (node->type_ & flag::print)
-          out << " " << node->location_.view().size() << ":"
-              << node->location_.view();
+        auto& loc = node->location_;
+        auto has_origin = loc.source && !loc.source->origin().empty();
+        auto& effective =
+          origin_stack.empty() ? no_origin : *origin_stack.back();
+
+        if (has_origin)
+        {
+          auto& origin = loc.source->origin();
+          if (origin != effective)
+            out << " " << origin.size() << ":" << origin;
+          else
+            out << " ";
+
+          if (node->type_ & flag::print)
+          {
+            auto content = loc.view();
+            out << ":" << loc.pos << ":" << content.size() << ":" << content;
+          }
+          else
+          {
+            out << ":" << loc.pos << ":" << loc.len;
+          }
+
+          origin_stack.push_back(&origin);
+        }
+        else
+        {
+          if (node->type_ & flag::print)
+          {
+            auto content = loc.view();
+            out << " " << content.size() << ":" << content;
+          }
+
+          origin_stack.push_back(
+            origin_stack.empty() ? &no_origin : origin_stack.back());
+        }
 
         if (node->symtab_)
         {
@@ -769,6 +805,7 @@ namespace trieste
       auto post = [&](Node&) {
         out << ")";
         level--;
+        origin_stack.pop_back();
       };
 
       // Cast is safe as traverse only mutates if pre and post do.
