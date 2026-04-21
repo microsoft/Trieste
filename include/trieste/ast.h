@@ -771,11 +771,11 @@ namespace trieste
           if (node->type_ & flag::print)
           {
             auto content = loc.view();
-            out << ":" << loc.pos << ":" << content.size() << ":" << content;
+            out << "|" << loc.pos << "|" << content.size() << ":" << content;
           }
           else
           {
-            out << ":" << loc.pos << ":" << loc.len;
+            out << "|" << loc.pos << "|" << loc.len;
           }
 
           origin_stack.push_back(&origin);

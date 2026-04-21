@@ -2,24 +2,24 @@ shrubbery
 group structure
 (top
   {}
-  (file 16:simple.shrubbery:0:30
-    (group :0:29
-      (shrub-terms :0:29
-        (shrub-atom :0:5:hello))
-      (shrub-block :5:24
-        (group :9:5
-          (shrub-terms :9:5
-            (shrub-atom :9:5:world))
-          (shrub-none :9:5)
-          (shrub-none :9:5))
-        (group :17:12
-          (shrub-terms :17:12
-            (shrub-atom :17:3:foo))
-          (shrub-block :20:9
-            (group :26:3
-              (shrub-terms :26:3
-                (shrub-atom :26:3:bar))
-              (shrub-none :26:3)
-              (shrub-none :26:3)))
-          (shrub-none :17:12)))
-      (shrub-none :0:29))))
+  (file 16:simple.shrubbery|0|30
+    (group |0|29
+      (shrub-terms |0|29
+        (shrub-atom |0|5:hello))
+      (shrub-block |5|24
+        (group |9|5
+          (shrub-terms |9|5
+            (shrub-atom |9|5:world))
+          (shrub-none |9|5)
+          (shrub-none |9|5))
+        (group |17|12
+          (shrub-terms |17|12
+            (shrub-atom |17|3:foo))
+          (shrub-block |20|9
+            (group |26|3
+              (shrub-terms |26|3
+                (shrub-atom |26|3:bar))
+              (shrub-none |26|3)
+              (shrub-none |26|3)))
+          (shrub-none |17|12)))
+      (shrub-none |0|29))))

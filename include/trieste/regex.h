@@ -864,43 +864,43 @@ namespace trieste
       TRegex("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
     static const auto st = TRegex("[[:space:]]*\\{[^\\}]*\\}");
     static const auto ns = TRegex("[[:space:]]*([[:digit:]]+):");
-    static const auto colon_num = TRegex("[[:space:]]*:([[:digit:]]+)");
+    static const auto colon_num = TRegex("[[:space:]]*\\|([[:digit:]]+)");
     static const auto num = TRegex("[[:space:]]*([[:digit:]]+)");
-    static const auto colon = TRegex(":");
+    static const auto pipe = TRegex("\\|");
     static const auto tl = TRegex("[[:space:]]*\\)");
 
-    TRegexMatch m(2);
-    TRegexIterator it(source);
-    it.skip(pos);
+    TRegexMatch re_match(2);
+    TRegexIterator re_iterator(source);
+    re_iterator.skip(pos);
 
     // Consume a netstring (N:...N bytes...).
     auto netstring = [&]() -> std::optional<std::string> {
-      if (!it.consume(ns, m))
+      if (!re_iterator.consume(ns, re_match))
         return std::nullopt;
 
-      auto len = m.parse<size_t>(1);
-      auto remaining = source->view().size() - it.current().pos;
+      auto len = re_match.parse<size_t>(1);
+      auto remaining = source->view().size() - re_iterator.current().pos;
       if (len > remaining)
       {
-        auto loc = it.current();
+        auto loc = re_iterator.current();
         logging::Error() << loc.origin_linecol() << ": netstring length " << len
                          << " exceeds remaining input (" << remaining << ")"
                          << std::endl
                          << loc.str() << std::endl;
         return std::nullopt;
       }
-      auto content = std::string(source->view().substr(it.current().pos, len));
-      it.skip(len);
+      auto content = std::string(source->view().substr(re_iterator.current().pos, len));
+      re_iterator.skip(len);
       return content;
     };
 
     // Parse optional location annotation after a token name.
     //
-    //   NetString :Num :NetString    filename + :pos + :content  (print)
-    //   NetString :Num :Num          filename + :pos + :len      (non-print)
-    //   NetString                    old-format bare content     (print)
-    //   :Num :NetString              elided + :pos + :content    (print)
-    //   :Num :Num                    elided + :pos + :len        (non-print)
+    //   NetString |Num |NetString    filename |pos |content  (print)
+    //   NetString |Num |Num          filename |pos |len      (non-print)
+    //   NetString                    old-format bare content  (print)
+    //   |Num |NetString              elided |pos |content     (print)
+    //   |Num |Num                    elided |pos |len         (non-print)
     //   (empty)                      bare token
     auto parse_location =
       [&](const Location& type_loc, const Node& parent)
@@ -910,21 +910,21 @@ namespace trieste
 
       if (auto text = netstring())
       {
-        if (!it.consume(colon_num, m))
+        if (!re_iterator.consume(colon_num, re_match))
         {
           // Old format: text was print content, no location.
           return Location(SourceDef::synthetic(*text, ""), 0, text->size());
         }
         origin = *text;
-        loc_pos = m.parse<size_t>(1);
+        loc_pos = re_match.parse<size_t>(1);
       }
-      else if (it.consume(colon_num, m))
+      else if (re_iterator.consume(colon_num, re_match))
       {
         // Elided filename.
         origin = (parent && parent->location().source) ?
           parent->location().source->origin() :
           std::string();
-        loc_pos = m.parse<size_t>(1);
+        loc_pos = re_match.parse<size_t>(1);
       }
       else
       {
@@ -934,13 +934,13 @@ namespace trieste
           type_loc.len);
       }
 
-      // After :pos, consume `:` then try netstring for content.
+      // After |pos, consume `|` then try netstring for content.
       // If netstring succeeds, it's inline content (print node).
       // Otherwise, what follows is just a number (len for non-print).
-      if (!it.consume(colon, m))
+      if (!re_iterator.consume(pipe, re_match))
       {
-        auto loc = it.current();
-        logging::Error() << loc.origin_linecol() << ": expected ':' after pos"
+        auto loc = re_iterator.current();
+        logging::Error() << loc.origin_linecol() << ": expected '|' after pos"
                          << std::endl
                          << loc.str() << std::endl;
         return std::nullopt;
@@ -948,13 +948,14 @@ namespace trieste
 
       if (auto content = netstring())
       {
-        auto src = SourceDef::synthetic_at_zero(*content, origin);
+        auto src =
+          SourceDef::synthetic_at_offset(*content, origin, loc_pos);
         return Location(src, loc_pos, content->size());
       }
 
-      if (!it.consume(num, m))
+      if (!re_iterator.consume(num, re_match))
       {
-        auto loc = it.current();
+        auto loc = re_iterator.current();
         logging::Error() << loc.origin_linecol()
                          << ": expected length or content" << std::endl
                          << loc.str() << std::endl;
@@ -962,18 +963,18 @@ namespace trieste
       }
 
       return Location(
-        SourceDef::synthetic("", origin), loc_pos, m.parse<size_t>(1));
+        SourceDef::synthetic("", origin), loc_pos, re_match.parse<size_t>(1));
     };
 
     Node top;
     Node ast;
 
-    while (!it.empty())
+    while (!re_iterator.empty())
     {
       // Find the type of the node. If we didn't find a node, it's an error.
-      if (!it.consume(hd, m))
+      if (!re_iterator.consume(hd, re_match))
       {
-        auto loc = it.current();
+        auto loc = re_iterator.current();
         logging::Error() << loc.origin_linecol() << ": expected node"
                          << std::endl
                          << loc.str() << std::endl;
@@ -981,7 +982,7 @@ namespace trieste
       }
 
       // If we don't have a valid node type, it's an error.
-      auto type_loc = m.at(1);
+      auto type_loc = re_match.at(1);
       auto type = detail::find_token(type_loc.view());
 
       if (type == Invalid)
@@ -1008,10 +1009,10 @@ namespace trieste
       ast = node;
 
       // Skip the symbol table.
-      it.consume(st, m);
+      re_iterator.consume(st, re_match);
 
       // `)` ends the node. Otherwise, we'll add children to this node.
-      while (it.consume(tl, m))
+      while (re_iterator.consume(tl, re_match))
       {
         auto parent = ast->parent();
 
@@ -1023,7 +1024,7 @@ namespace trieste
     }
 
     // We never finished the AST, so it's an error.
-    auto loc = it.current();
+    auto loc = re_iterator.current();
     logging::Error() << loc.origin_linecol() << ": incomplete AST" << std::endl
                      << loc.str() << std::endl;
     return {};

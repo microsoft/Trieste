@@ -159,7 +159,7 @@ int main()
     auto src = SourceDef::synthetic("abcdefghij", "input.json");
     auto ast = NodeDef::create(TestNode, Location(src, 2, 5));
     if (!check_format(
-          "loc_filename_noprint", ast, "(test-node 10:input.json:2:5)"))
+          "loc_filename_noprint", ast, "(test-node 10:input.json|2|5)"))
       failures++;
     if (!check_roundtrip("loc_filename_noprint", ast))
       failures++;
@@ -170,7 +170,7 @@ int main()
     auto src = SourceDef::synthetic("abcdefghij", "input.json");
     auto ast = NodeDef::create(TestPrint, Location(src, 3, 4));
     if (!check_format(
-          "loc_filename_print", ast, "(test-print 10:input.json:3:4:defg)"))
+          "loc_filename_print", ast, "(test-print 10:input.json|3|4:defg)"))
       failures++;
     if (!check_roundtrip("loc_filename_print", ast))
       failures++;
@@ -187,9 +187,9 @@ int main()
     if (!check_format(
           "elided_filename",
           parent,
-          "(test-node 8:test.txt:0:10\n"
-          "  (test-node :2:3)\n"
-          "  (test-print :5:4:fghi))"))
+          "(test-node 8:test.txt|0|10\n"
+          "  (test-node |2|3)\n"
+          "  (test-print |5|4:fghi))"))
       failures++;
     if (!check_roundtrip("elided_filename", parent))
       failures++;
@@ -206,8 +206,8 @@ int main()
     if (!check_format(
           "mixed_sources",
           parent,
-          "(test-node 9:file1.txt:0:10\n"
-          "  (test-print 9:file2.txt:1:3:lmn))"))
+          "(test-node 9:file1.txt|0|10\n"
+          "  (test-print 9:file2.txt|1|3:lmn))"))
       failures++;
     if (!check_roundtrip("mixed_sources", parent))
       failures++;
@@ -224,7 +224,7 @@ int main()
           "null_parent_loc_child",
           parent,
           "(test-root\n"
-          "  (test-node 8:test.txt:0:5))"))
+          "  (test-node 8:test.txt|0|5))"))
       failures++;
     if (!check_roundtrip("null_parent_loc_child", parent))
       failures++;
@@ -245,7 +245,7 @@ int main()
   {
     auto src = SourceDef::synthetic("abcdefghij", "test.txt");
     auto ast = NodeDef::create(TestPrint, Location(src, 3, 0));
-    if (!check_format("zero_len_print", ast, "(test-print 8:test.txt:3:0:)"))
+    if (!check_format("zero_len_print", ast, "(test-print 8:test.txt|3|0:)"))
       failures++;
     if (!check_roundtrip("zero_len_print", ast))
       failures++;
@@ -257,7 +257,7 @@ int main()
     auto src = SourceDef::synthetic("abcdefghij", origin);
     auto ast = NodeDef::create(TestNode, Location(src, 0, 5));
     auto expected =
-      "(test-node " + std::to_string(origin.size()) + ":" + origin + ":0:5)";
+      "(test-node " + std::to_string(origin.size()) + ":" + origin + "|0|5)";
     if (!check_format("colon_in_filename", ast, expected))
       failures++;
     if (!check_roundtrip("colon_in_filename", ast))

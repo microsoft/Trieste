@@ -27,11 +27,10 @@ namespace trieste
     std::string contents;
     std::vector<size_t> lines;
 
-    // When true, Location::view() ignores `pos` and always reads content
-    // from offset 0. This allows a Location to carry the original file
-    // offset in `pos` while the source buffer holds only the extracted
-    // content (e.g. when reconstructing locations from a .trieste dump).
-    bool content_at_zero_ = false;
+    // Byte offset subtracted from Location::pos when indexing into contents.
+    // Non-zero for sources created by synthetic_at_offset(), where the buffer
+    // holds extracted content but pos carries the original file offset.
+    size_t offset_ = 0;
 
   public:
     static Source load(const std::filesystem::path& file)
@@ -66,14 +65,16 @@ namespace trieste
       return source;
     }
 
-    // Create a synthetic source where view() ignores Location::pos.
-    // Used when the buffer holds extracted content but pos carries
-    // the original file offset (e.g. reconstructing from .trieste dumps).
-    static Source
-    synthetic_at_zero(const std::string& contents, const std::string& origin)
+    // Create a synthetic source with offset. view() uses (pos - offset)
+    // to index into the buffer, allowing pos to carry the original file
+    // offset while the buffer holds only the extracted content.
+    static Source synthetic_at_offset(
+      const std::string& contents,
+      const std::string& origin,
+      size_t offset)
     {
       auto source = synthetic(contents, origin);
-      source->content_at_zero_ = true;
+      source->offset_ = offset;
       return source;
     }
 
@@ -82,9 +83,9 @@ namespace trieste
       return origin_;
     }
 
-    bool is_content_at_zero() const
+    size_t offset() const
     {
-      return content_at_zero_;
+      return offset_;
     }
 
     std::string_view view() const
@@ -166,10 +167,7 @@ namespace trieste
       if (!source)
         return {};
 
-      if (source->is_content_at_zero())
-        return source->view().substr(0, len);
-
-      return source->view().substr(pos, len);
+      return source->view().substr(pos - source->offset(), len);
     }
 
     std::string origin_linecol() const
@@ -178,16 +176,8 @@ namespace trieste
 
       if (source && !source->origin().empty())
       {
-        if (source->is_content_at_zero())
-        {
-          // pos is the original file offset, not an index into the buffer.
-          ss << source->origin() << ":" << pos;
-        }
-        else
-        {
-          auto [line, col] = linecol();
-          ss << source->origin() << ":" << (line + 1) << ":" << (col + 1);
-        }
+        auto [line, col] = linecol();
+        ss << source->origin() << ":" << (line + 1) << ":" << (col + 1);
       }
 
       return ss.str();
@@ -277,12 +267,12 @@ namespace trieste
       if (!source)
         return {0, 0};
 
-      // For content_at_zero sources, the original file content is not
+      // For sources with an offset, the original file content is not
       // available — only the extracted text is stored. We return {0, pos}
       // as a best-effort approximation using the byte offset. To get
       // accurate line:col, the dump format would need to serialize
       // line:col instead of (or in addition to) the byte offset.
-      if (source->is_content_at_zero())
+      if (source->offset() != 0)
         return {0, pos};
 
       return source->linecol(pos);
