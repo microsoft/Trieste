@@ -903,7 +903,8 @@ namespace trieste
     //   :Num :Num                    elided + :pos + :len        (non-print)
     //   (empty)                      bare token
     auto parse_location =
-      [&](const Location& type_loc, const Node& parent) -> Location {
+      [&](const Location& type_loc, const Node& parent)
+        -> std::optional<Location> {
       std::string origin;
       size_t loc_pos;
 
@@ -942,7 +943,7 @@ namespace trieste
         logging::Error() << loc.origin_linecol() << ": expected ':' after pos"
                          << std::endl
                          << loc.str() << std::endl;
-        return {};
+        return std::nullopt;
       }
 
       if (auto content = netstring())
@@ -957,7 +958,7 @@ namespace trieste
         logging::Error() << loc.origin_linecol()
                          << ": expected length or content" << std::endl
                          << loc.str() << std::endl;
-        return {};
+        return std::nullopt;
       }
 
       return Location(
@@ -993,11 +994,11 @@ namespace trieste
 
       auto ident_loc = parse_location(type_loc, ast);
 
-      if (!ident_loc.source)
+      if (!ident_loc)
         return {};
 
       // Push the node into the AST.
-      auto node = NodeDef::create(type, ident_loc);
+      auto node = NodeDef::create(type, *ident_loc);
 
       if (ast)
         ast->push_back(node);
