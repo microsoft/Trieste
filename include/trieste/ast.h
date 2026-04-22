@@ -788,8 +788,7 @@ namespace trieste
             out << " " << content.size() << ":" << content;
           }
 
-          origin_stack.push_back(
-            origin_stack.empty() ? &no_origin : origin_stack.back());
+          origin_stack.push_back(&no_origin);
         }
 
         if (node->symtab_)
