@@ -1,0 +1,8 @@
+# Force LF line endings for test inputs and golden files so that
+# byte offsets in .trieste dumps are consistent across platforms.
+*.shrubbery text eol=lf
+*.infix     text eol=lf
+*.trieste   text eol=lf
+
+# Golden output files
+*_out/*.txt text eol=lf

@@ -58,10 +58,10 @@ namespace trieste
       size_t error_count_;
 
     public:
-      Make(const std::string& name, const Token& token, const Source& source)
+      Make(const Token& token, const Source& source)
       : re_match(10), re_iterator(source), error_count_(0)
       {
-        node = NodeDef::create(token, {name});
+        node = NodeDef::create(token, {source, 0, source->view().size()});
         top = node;
       }
 
@@ -470,7 +470,7 @@ namespace trieste
       if (!source)
         return {};
 
-      auto make = detail::Make(name, token, source);
+      auto make = detail::Make(token, source);
 
       // Find the start rules.
       auto find = rules_.find("start");

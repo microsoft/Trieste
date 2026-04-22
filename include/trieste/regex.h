@@ -860,14 +860,113 @@ namespace trieste
 
   inline Node build_ast(Source source, size_t pos)
   {
-    auto hd = TRegex("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
-    auto st = TRegex("[[:space:]]*\\{[^\\}]*\\}");
-    auto id = TRegex("[[:space:]]*([[:digit:]]+):");
-    auto tl = TRegex("[[:space:]]*\\)");
+    static const auto hd =
+      TRegex("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
+    static const auto st = TRegex("[[:space:]]*\\{[^\\}]*\\}");
+    static const auto ns = TRegex("[[:space:]]*([[:digit:]]+):");
+    static const auto pipe_num = TRegex("[[:space:]]*\\|([[:digit:]]+)");
+    static const auto num = TRegex("[[:space:]]*([[:digit:]]+)");
+    static const auto pipe = TRegex("\\|");
+    static const auto tl = TRegex("[[:space:]]*\\)");
 
     TRegexMatch re_match(2);
     TRegexIterator re_iterator(source);
     re_iterator.skip(pos);
+
+    // Consume a netstring (N:...N bytes...).
+    auto netstring = [&]() -> std::optional<std::string> {
+      if (!re_iterator.consume(ns, re_match))
+        return std::nullopt;
+
+      auto len = re_match.parse<size_t>(1);
+      auto remaining = source->view().size() - re_iterator.current().pos;
+      if (len > remaining)
+      {
+        auto loc = re_iterator.current();
+        logging::Error() << loc.origin_linecol() << ": netstring length " << len
+                         << " exceeds remaining input (" << remaining << ")"
+                         << std::endl
+                         << loc.str() << std::endl;
+        return std::nullopt;
+      }
+      auto content =
+        std::string(source->view().substr(re_iterator.current().pos, len));
+      re_iterator.skip(len);
+      return content;
+    };
+
+    // Parse optional location annotation after a token name.
+    //
+    //   location  ::= filename? '|' pos '|' (content | len)
+    //               | content
+    //               | ε
+    //
+    //   filename  ::= netstring
+    //   content   ::= netstring
+    //   pos, len  ::= NUM
+    //   netstring ::= NUM ':' <NUM bytes>
+    auto parse_location = [&](
+                            const Location& type_loc,
+                            const Node& parent) -> std::optional<Location> {
+      std::string origin;
+      size_t loc_pos;
+
+      if (auto text = netstring())
+      {
+        if (!re_iterator.consume(pipe_num, re_match))
+        {
+          // Old format: text was print content, no location.
+          return Location(SourceDef::synthetic(*text, ""), 0, text->size());
+        }
+        origin = *text;
+        loc_pos = re_match.parse<size_t>(1);
+      }
+      else if (re_iterator.consume(pipe_num, re_match))
+      {
+        // Elided filename.
+        origin = (parent && parent->location().source) ?
+          parent->location().source->origin() :
+          std::string();
+        loc_pos = re_match.parse<size_t>(1);
+      }
+      else
+      {
+        return Location(
+          SourceDef::synthetic(std::string(type_loc.view()), ""),
+          0,
+          type_loc.len);
+      }
+
+      // After |pos, consume `|` then try netstring for content.
+      // If netstring succeeds, it's inline content (print node).
+      // Otherwise, what follows is just a number (len for non-print).
+      if (!re_iterator.consume(pipe, re_match))
+      {
+        auto loc = re_iterator.current();
+        logging::Error() << loc.origin_linecol() << ": expected '|' after pos"
+                         << std::endl
+                         << loc.str() << std::endl;
+        return std::nullopt;
+      }
+
+      if (auto content = netstring())
+      {
+        auto src = SourceDef::synthetic_at_offset(*content, origin, loc_pos);
+        return Location(src, loc_pos, content->size());
+      }
+
+      if (!re_iterator.consume(num, re_match))
+      {
+        auto loc = re_iterator.current();
+        logging::Error() << loc.origin_linecol()
+                         << ": expected length or content" << std::endl
+                         << loc.str() << std::endl;
+        return std::nullopt;
+      }
+
+      return Location(
+        SourceDef::synthetic("", origin), loc_pos, re_match.parse<size_t>(1));
+    };
 
     Node top;
     Node ast;
@@ -896,19 +995,13 @@ namespace trieste
         return {};
       }
 
-      // Find the source location of the node as a netstring.
-      auto ident_loc = type_loc;
+      auto ident_loc = parse_location(type_loc, ast);
 
-      if (re_iterator.consume(id, re_match))
-      {
-        auto len = re_match.parse<size_t>(1);
-        ident_loc =
-          Location(source, re_match.at().pos + re_match.at().len, len);
-        re_iterator.skip(len);
-      }
+      if (!ident_loc)
+        return {};
 
       // Push the node into the AST.
-      auto node = NodeDef::create(type, ident_loc);
+      auto node = NodeDef::create(type, *ident_loc);
 
       if (ast)
         ast->push_back(node);

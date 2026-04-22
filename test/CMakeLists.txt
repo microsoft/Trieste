@@ -38,6 +38,14 @@ target_link_libraries(trieste_regex_engine_test trieste::trieste)
 
 add_test(NAME trieste_regex_engine_test COMMAND trieste_regex_engine_test WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_regex_engine_test>)
 
+add_executable(trieste_roundtrip_test
+  roundtrip_test.cc
+)
+enable_warnings(trieste_roundtrip_test)
+target_link_libraries(trieste_roundtrip_test trieste::trieste)
+
+add_test(NAME trieste_roundtrip_test COMMAND trieste_roundtrip_test WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_roundtrip_test>)
+
 if(TRIESTE_BUILD_REGEX_BENCHMARK)
   include(FetchContent)
 
