@@ -864,7 +864,7 @@ namespace trieste
       TRegex("[[:space:]]*\\([[:space:]]*([^[:space:]\\(\\)]*)");
     static const auto st = TRegex("[[:space:]]*\\{[^\\}]*\\}");
     static const auto ns = TRegex("[[:space:]]*([[:digit:]]+):");
-    static const auto colon_num = TRegex("[[:space:]]*\\|([[:digit:]]+)");
+    static const auto pipe_num = TRegex("[[:space:]]*\\|([[:digit:]]+)");
     static const auto num = TRegex("[[:space:]]*([[:digit:]]+)");
     static const auto pipe = TRegex("\\|");
     static const auto tl = TRegex("[[:space:]]*\\)");
@@ -889,28 +889,31 @@ namespace trieste
                          << loc.str() << std::endl;
         return std::nullopt;
       }
-      auto content = std::string(source->view().substr(re_iterator.current().pos, len));
+      auto content =
+        std::string(source->view().substr(re_iterator.current().pos, len));
       re_iterator.skip(len);
       return content;
     };
 
     // Parse optional location annotation after a token name.
     //
-    //   NetString |Num |NetString    filename |pos |content  (print)
-    //   NetString |Num |Num          filename |pos |len      (non-print)
-    //   NetString                    old-format bare content  (print)
-    //   |Num |NetString              elided |pos |content     (print)
-    //   |Num |Num                    elided |pos |len         (non-print)
-    //   (empty)                      bare token
-    auto parse_location =
-      [&](const Location& type_loc, const Node& parent)
-        -> std::optional<Location> {
+    //   location  ::= filename? '|' pos '|' (content | len)
+    //               | content
+    //               | ε
+    //
+    //   filename  ::= netstring
+    //   content   ::= netstring
+    //   pos, len  ::= NUM
+    //   netstring ::= NUM ':' <NUM bytes>
+    auto parse_location = [&](
+                            const Location& type_loc,
+                            const Node& parent) -> std::optional<Location> {
       std::string origin;
       size_t loc_pos;
 
       if (auto text = netstring())
       {
-        if (!re_iterator.consume(colon_num, re_match))
+        if (!re_iterator.consume(pipe_num, re_match))
         {
           // Old format: text was print content, no location.
           return Location(SourceDef::synthetic(*text, ""), 0, text->size());
@@ -918,7 +921,7 @@ namespace trieste
         origin = *text;
         loc_pos = re_match.parse<size_t>(1);
       }
-      else if (re_iterator.consume(colon_num, re_match))
+      else if (re_iterator.consume(pipe_num, re_match))
       {
         // Elided filename.
         origin = (parent && parent->location().source) ?
@@ -948,8 +951,7 @@ namespace trieste
 
       if (auto content = netstring())
       {
-        auto src =
-          SourceDef::synthetic_at_offset(*content, origin, loc_pos);
+        auto src = SourceDef::synthetic_at_offset(*content, origin, loc_pos);
         return Location(src, loc_pos, content->size());
       }
 

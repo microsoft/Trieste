@@ -69,9 +69,7 @@ namespace trieste
     // to index into the buffer, allowing pos to carry the original file
     // offset while the buffer holds only the extracted content.
     static Source synthetic_at_offset(
-      const std::string& contents,
-      const std::string& origin,
-      size_t offset)
+      const std::string& contents, const std::string& origin, size_t offset)
     {
       auto source = synthetic(contents, origin);
       source->offset_ = offset;
