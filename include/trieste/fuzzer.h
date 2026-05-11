@@ -25,6 +25,7 @@ namespace trieste
     bool bound_vars_;
     bool test_sequence_;
     bool size_stats_;
+    bool oracle_;
 
     struct SeedContext
     {
@@ -309,6 +310,11 @@ namespace trieste
 
         auto ast = gen_ast(prev, seed_context);
 
+        if (oracle_)
+        {
+          std::cout << ast;
+        }
+
         logging::Trace() << "============" << std::endl
                          << "Pass: " << pass->name()
                          << ", seed: " << seed_context.current_seed << std::endl
@@ -354,6 +360,12 @@ namespace trieste
             {new_ast,
              seed_context.current_seed,
              pass_stats.change_count - old_changes});
+        }
+
+        if (oracle_)
+        {
+          std::cout << new_ast;
+          std::cout << (result == RunResult::FAIL ? "FAIL" : "OK") << std::endl;
         }
       }
 
@@ -478,7 +490,8 @@ namespace trieste
       max_retries_(100),
       bound_vars_(true),
       test_sequence_(false),
-      size_stats_(false)
+      size_stats_(false),
+      oracle_(false)
     {}
 
     Fuzzer(const Reader& reader)
@@ -595,6 +608,17 @@ namespace trieste
     Fuzzer& size_stats(bool size_stats)
     {
       size_stats_ = size_stats;
+      return *this;
+    }
+
+    bool oracle() const
+    {
+      return oracle_;
+    }
+
+    Fuzzer& oracle(bool oracle)
+    {
+      oracle_ = oracle;
       return *this;
     }
 

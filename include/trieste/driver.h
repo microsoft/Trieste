@@ -148,6 +148,10 @@ namespace trieste
       test->add_option(
         "--gen_bound", bound_vars, "Generate bound variable names if possible");
 
+      auto oracle = false;
+      test->add_flag(
+        "--oracle", oracle, "Act as an oracle for differential testing");
+
       // Subcommand to test entropy of random number generation.
       auto entropy = test->add_subcommand(
         "debug_entropy",
@@ -290,7 +294,8 @@ namespace trieste
             .start_seed(test_seed)
             .bound_vars(bound_vars)
             .test_sequence(test_sequence)
-            .size_stats(test_size_stats);
+            .size_stats(test_size_stats)
+            .oracle(oracle);
 
         if (*entropy)
         {
