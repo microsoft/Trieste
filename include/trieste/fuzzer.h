@@ -437,15 +437,14 @@ namespace trieste
       return pass_stats;
     }
 
-    PassStats test_pass_with_oracle(
-      Pass& pass,
-      const trieste::wf::Wellformed& prev)
+    PassStats
+    test_pass_with_oracle(Pass& pass, const trieste::wf::Wellformed& prev)
     {
       PassStats pass_stats;
 
       // Run the oracle on the pass and collect trees and results.
       std::string oracle_command = oracle_command_ + " '" + pass->name() + "'";
-      FILE *oracle_output = popen(oracle_command.c_str(), "r");
+      FILE* oracle_output = popen(oracle_command.c_str(), "r");
 
       if (!oracle_output)
       {
@@ -463,25 +462,27 @@ namespace trieste
         while (fgets(buffer, sizeof(buffer), oracle_output))
         {
           std::string line(buffer);
-          if (line == "\n") break;
+          if (line == "\n")
+            break;
           generated_input += line;
         }
 
         while (fgets(buffer, sizeof(buffer), oracle_output))
         {
           std::string line(buffer);
-          if (line == "\n") break;
+          if (line == "\n")
+            break;
           expected_output += line;
         }
 
         fgets(buffer, sizeof(buffer), oracle_output);
         std::string result_str(buffer);
-        RunResult result = (result_str.find("FAIL") != std::string::npos)
-        ? RunResult::FAIL
-        : RunResult::OK;
+        RunResult result = (result_str.find("FAIL") != std::string::npos) ?
+          RunResult::FAIL :
+          RunResult::OK;
 
         // TODO: Use this for checking
-        (void) result;
+        (void)result;
 
         auto input_source = SourceDef::synthetic(generated_input);
         auto expected_source = SourceDef::synthetic(expected_output);
@@ -504,7 +505,8 @@ namespace trieste
           return pass_stats;
         }
 
-        auto [new_ast, pass_result] = run_pass(input_tree, pass, pass->wf(), pass_stats);
+        auto [new_ast, pass_result] =
+          run_pass(input_tree, pass, pass->wf(), pass_stats);
 
         auto [lhs, rhs] = new_ast->diff(expected_tree);
         if (lhs || rhs)
@@ -526,11 +528,9 @@ namespace trieste
             err << "<missing>" << std::endl;
 
           err << "------------" << std::endl
-              << generated_input
-              << "------------" << std::endl
+              << generated_input << "------------" << std::endl
               << "oracle output:" << std::endl
-              << expected_output
-              << "------------" << std::endl
+              << expected_output << "------------" << std::endl
               << "resulting output:" << std::endl
               << new_ast;
 
@@ -540,7 +540,6 @@ namespace trieste
           if (failfast_)
             break;
         }
-
       }
       pclose(oracle_output);
       return pass_stats;
@@ -846,7 +845,8 @@ namespace trieste
 
       if (test_diff_ && run_as_oracle_)
       {
-        logging::Error() << "cannot both act as oracle and test diffs" << std::endl;
+        logging::Error() << "cannot both act as oracle and test diffs"
+                         << std::endl;
         return 1;
       }
 

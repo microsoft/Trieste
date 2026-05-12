@@ -153,10 +153,12 @@ namespace trieste
         "--oracle", oracle, "Act as an oracle for differential testing");
 
       std::filesystem::path path_to_oracle;
-      test->add_option(
-        "--diff",
-        path_to_oracle,
-        "Path to the oracle for differential testing")->excludes(oracle_opt);
+      test
+        ->add_option(
+          "--diff",
+          path_to_oracle,
+          "Path to the oracle for differential testing")
+        ->excludes(oracle_opt);
 
       // Subcommand to test entropy of random number generation.
       auto entropy = test->add_subcommand(
@@ -275,23 +277,22 @@ namespace trieste
         size_t max_retries =
           test_max_retries ? *test_max_retries : test_seed_count * 2;
 
-        std::string oracle_command =
-          path_to_oracle.empty() ? "" :
-          path_to_oracle.string() +
-          " test -l None --oracle" +
-          " -c " + std::to_string(test_seed_count) +
-          " -s " + std::to_string(test_seed) +
-          " -d " + std::to_string(test_max_depth) +
-          " -r " + std::to_string(max_retries) +
-          " --gen_bound " + (bound_vars ? "true" : "false");
+        std::string oracle_command = path_to_oracle.empty() ?
+          "" :
+          path_to_oracle.string() + " test -l None --oracle" + " -c " +
+            std::to_string(test_seed_count) + " -s " +
+            std::to_string(test_seed) + " -d " +
+            std::to_string(test_max_depth) + " -r " +
+            std::to_string(max_retries) + " --gen_bound " +
+            (bound_vars ? "true" : "false");
 
         logging::Output() << "Testing x" << test_seed_count
                           << ", seed: " << test_seed << std::endl;
 
         if (!oracle_command.empty())
         {
-          logging::Output() << "Using oracle command: " << oracle_command << " <pass_name>"
-                            << std::endl;
+          logging::Output() << "Using oracle command: " << oracle_command
+                            << " <pass_name>" << std::endl;
         }
 
         if (test_start_pass.empty())
