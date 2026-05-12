@@ -149,8 +149,14 @@ namespace trieste
         "--gen_bound", bound_vars, "Generate bound variable names if possible");
 
       auto oracle = false;
-      test->add_flag(
+      auto oracle_opt = test->add_flag(
         "--oracle", oracle, "Act as an oracle for differential testing");
+
+      std::filesystem::path path_to_oracle;
+      test->add_option(
+        "--diff",
+        path_to_oracle,
+        "Path to the oracle for differential testing")->excludes(oracle_opt);
 
       // Subcommand to test entropy of random number generation.
       auto entropy = test->add_subcommand(
@@ -266,8 +272,27 @@ namespace trieste
           return 1;
         }
 
+        size_t max_retries =
+          test_max_retries ? *test_max_retries : test_seed_count * 2;
+
+        std::string oracle_command =
+          path_to_oracle.empty() ? "" :
+          path_to_oracle.string() +
+          " test -l None --oracle" +
+          " -c " + std::to_string(test_seed_count) +
+          " -s " + std::to_string(test_seed) +
+          " -d " + std::to_string(test_max_depth) +
+          " -r " + std::to_string(max_retries) +
+          " --gen_bound " + (bound_vars ? "true" : "false");
+
         logging::Output() << "Testing x" << test_seed_count
                           << ", seed: " << test_seed << std::endl;
+
+        if (!oracle_command.empty())
+        {
+          logging::Output() << "Using oracle command: " << oracle_command << " <pass_name>"
+                            << std::endl;
+        }
 
         if (test_start_pass.empty())
         {
@@ -284,8 +309,7 @@ namespace trieste
 
         Fuzzer fuzzer =
           Fuzzer(reader)
-            .max_retries(
-              test_max_retries ? *test_max_retries : test_seed_count * 2)
+            .max_retries(max_retries)
             .max_depth(test_max_depth)
             .failfast(test_failfast)
             .seed_count(test_seed_count)
@@ -295,7 +319,9 @@ namespace trieste
             .bound_vars(bound_vars)
             .test_sequence(test_sequence)
             .size_stats(test_size_stats)
-            .oracle(oracle);
+            .test_diff(!path_to_oracle.empty())
+            .oracle_command(oracle_command)
+            .run_as_oracle(oracle);
 
         if (*entropy)
         {
