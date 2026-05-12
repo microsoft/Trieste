@@ -475,7 +475,11 @@ namespace trieste
           expected_output += line;
         }
 
-        fgets(buffer, sizeof(buffer), oracle_output);
+        if (!fgets(buffer, sizeof(buffer), oracle_output))
+        {
+          logging::Error() << "Failed to read oracle output" << std::endl;
+          return pass_stats;
+        }
         std::string result_str(buffer);
         RunResult result = (result_str.find("FAIL") != std::string::npos) ?
           RunResult::FAIL :
