@@ -706,6 +706,62 @@ namespace trieste
           [](auto& a, auto& b) { return a->equals(b); }));
     }
 
+    std::pair<Node, Node> diff(Node& other)
+    {
+      std::pair<Node, Node> result = {{}, {}};
+
+      // Each entry holds the remaining unvisited counterpart children at one
+      // level of the tree, stored in reverse so pop_back() is O(1).
+      std::vector<Nodes> level_stack;
+      level_stack.push_back({other});
+
+      traverse(
+        [&](Node& node) -> bool {
+          if (result.first || result.second)
+            return false;
+
+          auto& current_level = level_stack.back();
+          if (current_level.empty())
+          {
+            result = {node, {}};
+            return false;
+          }
+
+          Node cp = current_level.back();
+          current_level.pop_back();
+
+          if (node->type() != cp->type())
+          {
+            result = {node, cp};
+            return false;
+          }
+
+          if (
+            (node->type() & flag::print) &&
+            (node->location() != cp->location()))
+          {
+            result = {node, cp};
+            return false;
+          }
+
+          // Push cp's children in reverse order onto a new level.
+          Nodes child_level;
+          child_level.reserve(cp->size());
+          for (auto it = cp->rbegin(); it != cp->rend(); ++it)
+            child_level.push_back(*it);
+          level_stack.push_back(std::move(child_level));
+          return true;
+        },
+        [&](Node&) {
+          auto& child_level = level_stack.back();
+          if (!result.first && !result.second && !child_level.empty())
+            result = {{}, child_level.back()};
+          level_stack.pop_back();
+        });
+
+      return result;
+    }
+
     Node common_parent(Node node)
     {
       return common_parent(node.get());

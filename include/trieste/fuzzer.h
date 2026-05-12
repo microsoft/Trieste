@@ -25,6 +25,9 @@ namespace trieste
     bool bound_vars_;
     bool test_sequence_;
     bool size_stats_;
+    bool test_diff_;
+    std::string oracle_command_;
+    bool run_as_oracle_;
 
     struct SeedContext
     {
@@ -49,6 +52,8 @@ namespace trieste
       size_t error_count = 0;
       size_t change_count = 0;
 
+      size_t diff_count = 0;
+
       std::vector<size_t> passed_sizes;
       std::vector<size_t> passed_heights;
       std::vector<size_t> error_sizes;
@@ -64,6 +69,9 @@ namespace trieste
         if (failed_count > 0)
           info << "  " << failed_count << " well-formedness errors."
                << std::endl;
+
+        if (diff_count > 0)
+          info << "  " << diff_count << " different from oracle." << std::endl;
 
         if (error_count > 0)
         {
@@ -309,6 +317,11 @@ namespace trieste
 
         auto ast = gen_ast(prev, seed_context);
 
+        if (run_as_oracle_)
+        {
+          std::cout << ast << std::endl;
+        }
+
         logging::Trace() << "============" << std::endl
                          << "Pass: " << pass->name()
                          << ", seed: " << seed_context.current_seed << std::endl
@@ -354,6 +367,12 @@ namespace trieste
             {new_ast,
              seed_context.current_seed,
              pass_stats.change_count - old_changes});
+        }
+
+        if (run_as_oracle_)
+        {
+          std::cout << new_ast << std::endl;
+          std::cout << (result == RunResult::FAIL ? "FAIL" : "OK") << std::endl;
         }
       }
 
@@ -418,6 +437,118 @@ namespace trieste
       return pass_stats;
     }
 
+    PassStats
+    test_pass_with_oracle(Pass& pass, const trieste::wf::Wellformed& prev)
+    {
+      PassStats pass_stats;
+
+      // Run the oracle on the pass and collect trees and results.
+      std::string oracle_command = oracle_command_ + " '" + pass->name() + "'";
+      FILE* oracle_output = popen(oracle_command.c_str(), "r");
+
+      if (!oracle_output)
+      {
+        logging::Error() << "Failed to run oracle command: " << oracle_command
+                         << std::endl;
+        return pass_stats;
+      }
+
+      for (size_t i = 0; i < seed_count_; i++)
+      {
+        char buffer[1024];
+        std::string generated_input;
+        std::string expected_output;
+
+        while (fgets(buffer, sizeof(buffer), oracle_output))
+        {
+          std::string line(buffer);
+          if (line == "\n")
+            break;
+          generated_input += line;
+        }
+
+        while (fgets(buffer, sizeof(buffer), oracle_output))
+        {
+          std::string line(buffer);
+          if (line == "\n")
+            break;
+          expected_output += line;
+        }
+
+        if (!fgets(buffer, sizeof(buffer), oracle_output))
+        {
+          logging::Error() << "Failed to read oracle output" << std::endl;
+          return pass_stats;
+        }
+        std::string result_str(buffer);
+        RunResult result = (result_str.find("FAIL") != std::string::npos) ?
+          RunResult::FAIL :
+          RunResult::OK;
+
+        // TODO: Use this for checking
+        (void)result;
+
+        auto input_source = SourceDef::synthetic(generated_input);
+        auto expected_source = SourceDef::synthetic(expected_output);
+
+        auto input_tree = build_ast(input_source, 0);
+        if (!input_tree)
+        {
+          logging::Error() << "Failed to parse oracle input: " << std::endl
+                           << generated_input << std::endl;
+          return pass_stats;
+        }
+
+        prev.build_st(input_tree);
+
+        auto expected_tree = build_ast(expected_source, 0);
+        if (!expected_tree)
+        {
+          logging::Error() << "Failed to parse oracle output: " << std::endl
+                           << expected_output << std::endl;
+          return pass_stats;
+        }
+
+        auto [new_ast, pass_result] =
+          run_pass(input_tree, pass, pass->wf(), pass_stats);
+
+        auto [lhs, rhs] = new_ast->diff(expected_tree);
+        if (lhs || rhs)
+        {
+          pass_stats.diff_count++;
+          logging::Error err;
+          err << "============" << std::endl
+              << "in oracle output:" << std::endl;
+          if (rhs)
+            err << rhs;
+          else
+            err << "<missing>" << std::endl;
+
+          err << "------------" << std::endl
+              << "in resulting output:" << std::endl;
+          if (lhs)
+            err << lhs;
+          else
+            err << "<missing>" << std::endl;
+
+          err << "------------" << std::endl
+              << generated_input << "------------" << std::endl
+              << "oracle output:" << std::endl
+              << expected_output << "------------" << std::endl
+              << "resulting output:" << std::endl
+              << new_ast;
+
+          err << "============" << std::endl
+              << "Oracle mismatch for pass: " << pass->name() << std::endl;
+
+          if (failfast_)
+            break;
+        }
+      }
+      pclose(oracle_output);
+      return pass_stats;
+    }
+
     double calculate_entropy(std::vector<uint8_t>& byte_values)
     {
       std::map<uint8_t, double> freq;
@@ -478,7 +609,10 @@ namespace trieste
       max_retries_(100),
       bound_vars_(true),
       test_sequence_(false),
-      size_stats_(false)
+      size_stats_(false),
+      test_diff_(false),
+      oracle_command_(),
+      run_as_oracle_(false)
     {}
 
     Fuzzer(const Reader& reader)
@@ -598,6 +732,39 @@ namespace trieste
       return *this;
     }
 
+    bool test_diff() const
+    {
+      return test_diff_;
+    }
+
+    Fuzzer& test_diff(bool test_diff)
+    {
+      test_diff_ = test_diff;
+      return *this;
+    }
+
+    std::string oracle_command() const
+    {
+      return oracle_command_;
+    }
+
+    Fuzzer& oracle_command(const std::string& oracle_command)
+    {
+      oracle_command_ = oracle_command;
+      return *this;
+    }
+
+    bool run_as_oracle() const
+    {
+      return run_as_oracle_;
+    }
+
+    Fuzzer& run_as_oracle(bool run_as_oracle)
+    {
+      run_as_oracle_ = run_as_oracle;
+      return *this;
+    }
+
     int debug_entropy()
     {
       const uint8_t NO_BYTES = 4;
@@ -679,6 +846,21 @@ namespace trieste
         logging::Error() << "pass range is empty" << std::endl;
         return 1;
       }
+
+      if (test_diff_ && run_as_oracle_)
+      {
+        logging::Error() << "cannot both act as oracle and test diffs"
+                         << std::endl;
+        return 1;
+      }
+
+      if (test_diff_ && oracle_command_.empty())
+      {
+        logging::Error() << "path to oracle must be provided when testing diffs"
+                         << std::endl;
+        return 1;
+      }
+
       WFContext context;
       SequenceStats sequence_stats(end_index_ - start_index_ + 1, seed_count_);
       std::vector<Survivor> survivors;
@@ -710,11 +892,11 @@ namespace trieste
         seed_context.retry_seed = start_seed_ + seed_count_;
 
         PassStats pass_stats;
-        if (!test_sequence_ || i == start_index_)
+        if (!test_diff_ && (!test_sequence_ || i == start_index_))
         {
           pass_stats = test_pass(pass, prev, seed_context);
         }
-        else
+        else if (test_sequence_)
         {
           logging::Info() << "  " << survivors.size()
                           << " survivors from previous pass.";
@@ -726,8 +908,12 @@ namespace trieste
           }
           pass_stats = test_pass_with_survivors(pass, survivors);
         }
+        else if (test_diff_)
+        {
+          pass_stats = test_pass_with_oracle(pass, prev);
+        }
 
-        if (pass_stats.failed_count > 0)
+        if (pass_stats.failed_count > 0 || pass_stats.diff_count > 0)
         {
           ret = 1;
           if (failfast_)
