@@ -736,7 +736,9 @@ namespace trieste
             return false;
           }
 
-          if ((node->type() & flag::print) && (node->location() != cp->location()))
+          if (
+            (node->type() & flag::print) &&
+            (node->location() != cp->location()))
           {
             result = {node, cp};
             return false;

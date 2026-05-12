@@ -308,21 +308,20 @@ namespace trieste
             test_end_pass = test_start_pass;
         }
 
-        Fuzzer fuzzer =
-          Fuzzer(reader)
-            .max_retries(max_retries)
-            .max_depth(test_max_depth)
-            .failfast(test_failfast)
-            .seed_count(test_seed_count)
-            .start_index(reader.pass_index(test_start_pass))
-            .end_index(reader.pass_index(test_end_pass))
-            .start_seed(test_seed)
-            .bound_vars(bound_vars)
-            .test_sequence(test_sequence)
-            .size_stats(test_size_stats)
-            .test_diff(!path_to_oracle.empty())
-            .oracle_command(oracle_command)
-            .run_as_oracle(oracle);
+        Fuzzer fuzzer = Fuzzer(reader)
+                          .max_retries(max_retries)
+                          .max_depth(test_max_depth)
+                          .failfast(test_failfast)
+                          .seed_count(test_seed_count)
+                          .start_index(reader.pass_index(test_start_pass))
+                          .end_index(reader.pass_index(test_end_pass))
+                          .start_seed(test_seed)
+                          .bound_vars(bound_vars)
+                          .test_sequence(test_sequence)
+                          .size_stats(test_size_stats)
+                          .test_diff(!path_to_oracle.empty())
+                          .oracle_command(oracle_command)
+                          .run_as_oracle(oracle);
 
         if (*entropy)
         {
