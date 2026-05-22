@@ -96,20 +96,6 @@ The following methods are available on the `Make` object `m` inside a rule effec
 * `m.invalid()` -- extend (or create) an `Invalid` node at the current position, recording a parse error.
 * `m.error(msg, index = 0)` -- insert an `Error` node with the given message at the location of capture group `index`.
 
-### Examples
-
-* Parsing an assignment `x = 5 + 3;` using the rules above:
-  ```
-  Initial:   Top > File, cursor at File
-
-  "x"        add(Ident)  → File > Group[Ident]
-  "="        seq(Equals) → File > Equals > Group[Ident], cursor at Equals
-  "5"        add(Int)    → Equals > Group[Ident], Group[Int ...]
-  "+"        add(Add)    → Equals > Group[Ident], Group[Int, Add ...]
-  "3"        add(Int)    → Equals > Group[Ident], Group[Int, Add, Int]
-  ";"        term({Equals}) → closes Group, pops Equals → cursor back at File
-  ```
-
 ### Pre/Post Hooks
 
 The `Parse` object supports optional callbacks for processing files and directories:
@@ -121,6 +107,20 @@ The `Parse` object supports optional callbacks for processing files and director
 * `p.postparse(f)` -- called once after the full parse is complete, receiving the `Top` node.
 * `p.done(f)` -- called as a `Make` effect when the end of input is reached (allows cleanup of unclosed structures).
 
+### Examples
+
+* Parsing an assignment `x = 5 + 3;` using the rules from the beginning of this section:
+  ```
+  Initial:   Top > File, cursor at File
+
+  "x"        add(Ident)  → File > Group[Ident]
+  "="        seq(Equals) → File > Equals > Group[Ident], cursor at Equals
+  "5"        add(Int)    → Equals > Group[Ident], Group[Int ...]
+  "+"        add(Add)    → Equals > Group[Ident], Group[Int, Add ...]
+  "3"        add(Int)    → Equals > Group[Ident], Group[Int, Add, Int]
+  ";"        term({Equals}) → closes Group, pops Equals → cursor back at File
+  ```
+
 
 ## Term rewriting
 
@@ -130,7 +130,7 @@ Term rewriting logically moves a cursor through the whole term and applies all r
 * `dir::topdown`  -- Visit nodes top down, left to right.
 * `dir::once`     -- Visit each position once instead of until fixpoint.
 
-A rule consists of a pattern and an effect. For each cursor position and rule, the pattern selects zero or more sibling terms that matches the pattern and these terms are replaced by the results of the effect. Pattern matching can bind substructures of the selected terms which can be used in the effect.
+A rule consists of a pattern and an effect. For each cursor position and rule, the pattern selects zero or more sibling terms that matches the pattern and these terms are replaced by the results of the effect. Pattern matching can bind substructures of the selected terms which can be used in the effect. Unless the pass is `dir::once`, whenever a rule matches some nodes the cursor will reset to before the first child of the current parent node.
 
 Effects are typically written as lambdas and a pattern is separated from its effect by `>>`. The following rewrite rule matches a single `Foo` node and replaces it by a `Bar` node:
 
@@ -216,14 +216,17 @@ An effect is a C++ function that takes a single argument of type `Match&` (named
 * `_[Name]` -- get the sequence of terms bound to `Name`.
 * `_(Name)` -- get the single term bound to `Name`.
   * If `Name` is bound to a sequence of terms, get the first of these. Note that if `Name` is bound to an empty sequence, the result is the next node where the empty sequence was matched. In other words, only use `_(Name)` when the binding comes from a pattern that match exactly one thing.
-* `*_[Name]` -- get the concatenated children of the sequence of terms bound to `Name`.
+* `*_[Name]` -- get the concatenated children of the sequence of terms bound to `Name`. For each node `n` in the range, the **children** of `n` (not `n` itself) are appended. The typical use is unwrapping a `Group` node: `Foo << *_[Group]` gives a `Foo` node whose children are the former children of the bound `Group`.
   * If `Name` is bound to an empty sequence, the program crashes.
-  * Note that TODO!
+  * To append the bound nodes themselves (rather than their children), use `node << _[Name]` without the `*`.
 
 * `Lift << tok` -- lift the children of this node to the nearest enclosing term with token `tok` (having no such enclosing term is an error). For example `Lift << Foo << a << b` will lift `a b` to be a child of the nearest enclosing `Foo` term.
 
 * `NoChange` - don't replace the matched subtree and don't signal that a change has been made.
 * `{}` - remove the matched subtree completely (replace it with an empty sequence).
+
+* `Reapply` - replace the matched subtree and signal that the rewriter should re-examine the same position.
+  * Mainly useful in `dir::once` passes, where without `Reapply` each position is only visited once.
 
 * `Error` - signal an error, aborting after finishing the current pass iteration. An `Error` node typically has two children with tokens `ErrorMsg` and `ErrorAst`. The payload of the `ErrorMsg` node is printed as an error message and the location of the child `ErrorAst` node is used to point to the source of the error.
   * An `Error` node can have any number of `ErrorMsg` nodes and any number of other nodes which will be treated as `ErrorAst` nodes.
@@ -251,7 +254,7 @@ Here are a few rewrite rules from the infix tutorial.
 * Find `Add` or `Subtract` nodes with no children and signal an error:
   ```c++
   (T(Add, Subtract))[Op] << End >>
-    [](Match& _) { return Error << ErrorMsg "No arguments" << (ErrorAst << _(Op)); }
+    [](Match& _) { return Error << (ErrorMsg ^ "No arguments") << (ErrorAst << _(Op)); }
   ```
 
 Note that the effect can contain arbitrary C++ code. For example, the following rule finds identifiers in expressions and checks that they are bound before replacing them with `Ref` nodes:
