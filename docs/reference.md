@@ -1,5 +1,7 @@
 # Trieste Reference Documentation
 
+This document gives an overview of most features of Trieste. If you are just starting out with Trieste, we recommend the [`infix` tutorial language](/samples/infix/README.md).
+
 ## Tokens
 
 A `Token` is the fundamental label on every node in the tree. Tokens are defined as global `TokenDef` objects:
@@ -90,7 +92,7 @@ The following methods are available on the `Make` object `m` inside a rule effec
 * `m.add(tok, index = 0)` -- append a new child node of type `tok` to the current `Group`, using the location of capture group `index`. Creates a `Group` first if there is none.
 * `m.extend(tok, index = 0)` -- if the last child is already of type `tok`, extend its location to cover the current match; otherwise behave like `add`.
 * `m.push(tok, index = 0)` -- like `add`, but also move the cursor into the newly created node. Subsequent calls add children to that node.
-* `m.pop(tok)` -- close the current `Group` (if any) and move the cursor up to the nearest ancestor of type `tok`. Throws if none exists.
+* `m.pop(tok)` -- if the cursor is below a node of type `tok`, close it and move to its parent. Otherwise, create (or extend) an `Invalid` node at the current position.
 * `m.seq(tok, skip = {})` -- start a _sequence_. Lifts the current `Group` to become the first child of a new `tok` node; subsequent adds continue as further children of the `tok` node. If the parent is already `tok`, simply moves the cursor into it. Token types in `skip` are popped before the sequence is created.
 * `m.term(end = {})` -- close the current `Group` and move the cursor up. For each token type in `end`, also pops that ancestor (used to close a `seq`-created node at statement boundaries).
 * `m.invalid()` -- extend (or create) an `Invalid` node at the current position, recording a parse error.
@@ -420,7 +422,7 @@ Symbol table entries are controlled by the well-formedness specification. `(tok 
 ### Type and location
 
 * `n->type()` — returns the `Token` of the node.
-* `n == Tok` / `n != Tok` — compare the node's type to a token (equivalent to `n->node() == Tok`).
+* `n == Tok` / `n != Tok` — compare the node's type to a token (equivalent to `n->type() == Tok`).
 * `n->in({Tok1, Tok2, ...})` — true if the node's type is one of the listed tokens.
 * `n->location()` — returns the `Location` associated with the node.
 * `n->set_location(loc)` — sets the location of all nodes in the subtree that currently have no location.
@@ -456,7 +458,7 @@ Symbol table entries are controlled by the well-formedness specification. `(tok 
 
 ### Symbol tables
 
-* `n->lookup()` — search upward through ancestor symbol tables for nodes bound to `n`'s location that have `flag::lookup`. Returns a vector of the `Node`s found. Respects `flag::defbeforeuse` (only definitions that precede `n` are visible) and `flag::shadowing` (stops ascending at a shadowing entry).
+* `n->lookup(until = {})` — search upward through ancestor symbol tables for nodes bound to `n`'s location (that have `flag::lookup`) and return a vector of the `Node`s found. Search stops early after reaching the node `until`, if specified. Respects `flag::defbeforeuse` (only definitions that precede `n` are visible) and `flag::shadowing` (stops ascending at a shadowing entry).
 * `n->lookdown(loc)` — search downward in `n`'s own symbol table for entries at key `loc` that have `flag::lookdown`. Does not traverse parent scopes. Used for scoped member access (e.g. finding a field within a specific object).
 * `n->look(loc)` — return all entries at key `loc` in `n`'s own symbol table, ignoring `flag::lookup` and `flag::lookdown`. Useful when you want unconditional access to the raw bindings in a specific symbol table.
 * `n->bind(loc)` — bind this node into the nearest enclosing symbol table under key `loc`. Returns `true` if the binding is unambiguous (no duplicate shadowing entries).
@@ -737,7 +739,7 @@ Configuration is done via the builder pattern:
 | `.max_depth(n)` | 10 | Maximum depth of generated ASTs. |
 | `.failfast(bool)` | `false` | Stop after the first WF failure. |
 | `.test_sequence(bool)` | `false` | Feed survivors from pass N as input to pass N+1 rather than regenerating. |
-| `.bound_vars(bool)` | `true` | Generate symbol-table references that are bound when posible. |
+| `.bound_vars(bool)` | `true` | Generate symbol-table references that are bound when possible. |
 | `.max_retries(n)` | 100 | Retries to find a hash-unique tree before reusing. |
 | `.start_index(n)` | 1 | First pass to test (1-based). |
 | `.end_index(n)` | last | Last pass to test (1-based). |
