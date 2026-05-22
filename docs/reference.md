@@ -40,7 +40,86 @@ See the section on effects below for how the built-in tokens from `Error` and be
 
 ## Parsing
 
-TODO
+The parser converts a text source into an initial tree of `Group` nodes. It is created as a `Parse` object:
+
+```c++
+Parse p(depth::file, wf_parser);
+```
+
+The first argument controls how the input path is interpreted:
+
+| `depth` | Behaviour |
+|---------|-----------|
+| `depth::file` | Parse a single file. |
+| `depth::directory` | Parse all files in a directory (non-recursive). |
+| `depth::subdirectories` | Parse all files in a directory tree. |
+
+Regardless of depth, the result is always a single `Top` node with one `File` (or `Directory`) child per file parsed. The optional second argument is the well-formedness specification for the output of parsing; it is checked before the first rewrite pass runs.
+
+### Modes and Rules
+
+Rules are grouped into named _modes_ and registered on the `Parse` object:
+
+```c++
+p("start",
+  {
+    "[[:blank:]]+"    >> [](auto&) {},                      // skip whitespace
+    "[[:digit:]]+\\b" >> [](auto& m) { m.add(Int); },
+    "="               >> [](auto& m) { m.seq(Equals); },
+    ";[\n]*"          >> [](auto& m) { m.term({Equals}); },
+  });
+```
+
+A rule is a regex and a `Make` effect joined by `>>`. Rules for the current mode are tried in order; the first matching rule is applied. Regexes may include capture groups — capture group 0 is the full match, groups 1, 2, … are sub-groups. Rules should cover all possible input; any unmatched input is parsed as an `Invalid` node.
+
+The parser always starts in the `"start"` mode. An effect can switch modes with `m.mode("other")`, which takes effect for the next token.
+
+### `Make` API
+
+The following methods are available on the `Make` object `m` inside a rule effect.
+
+**Inspecting the cursor**
+* `m.match(index = 0)` -- the `Location` of capture group `index` from the current match.
+* `m.mode()` -- get the current mode name.
+* `m.mode("name")` -- switch to the named mode for subsequent rules.
+* `m.in(tok)` -- true if the cursor is currently inside a node of type `tok`.
+* `m.group_in(tok)` -- true if the cursor is inside a `Group` whose parent is of type `tok`.
+* `m.previous(tok)` -- true if the last child of the current parent node is of type `tok`.
+
+**Building the tree**
+* `m.add(tok, index = 0)` -- append a new child node of type `tok` to the current `Group`, using the location of capture group `index`. Creates a `Group` first if there is none.
+* `m.extend(tok, index = 0)` -- if the last child is already of type `tok`, extend its location to cover the current match; otherwise behave like `add`.
+* `m.push(tok, index = 0)` -- like `add`, but also move the cursor into the newly created node. Subsequent calls add children to that node.
+* `m.pop(tok)` -- close the current `Group` (if any) and move the cursor up to the nearest ancestor of type `tok`. Throws if none exists.
+* `m.seq(tok, skip = {})` -- start a _sequence_. Lifts the current `Group` to become the first child of a new `tok` node; subsequent adds continue as further children of the `tok` node. If the parent is already `tok`, simply moves the cursor into it. Token types in `skip` are popped before the sequence is created.
+* `m.term(end = {})` -- close the current `Group` and move the cursor up. For each token type in `end`, also pops that ancestor (used to close a `seq`-created node at statement boundaries).
+* `m.invalid()` -- extend (or create) an `Invalid` node at the current position, recording a parse error.
+* `m.error(msg, index = 0)` -- insert an `Error` node with the given message at the location of capture group `index`.
+
+### Examples
+
+* Parsing an assignment `x = 5 + 3;` using the rules above:
+  ```
+  Initial:   Top > File, cursor at File
+
+  "x"        add(Ident)  → File > Group[Ident]
+  "="        seq(Equals) → File > Equals > Group[Ident], cursor at Equals
+  "5"        add(Int)    → Equals > Group[Ident], Group[Int ...]
+  "+"        add(Add)    → Equals > Group[Ident], Group[Int, Add ...]
+  "3"        add(Int)    → Equals > Group[Ident], Group[Int, Add, Int]
+  ";"        term({Equals}) → closes Group, pops Equals → cursor back at File
+  ```
+
+### Pre/Post Hooks
+
+The `Parse` object supports optional callbacks for processing files and directories:
+
+* `p.prefile(f)` -- called before each file is parsed; return `false` to skip the file.
+* `p.predir(f)` -- called before each directory is entered; return `false` to skip it.
+* `p.postfile(f)` -- called after each file is parsed, receiving the file's subtree.
+* `p.postdir(f)` -- called after each directory is processed.
+* `p.postparse(f)` -- called once after the full parse is complete, receiving the `Top` node.
+* `p.done(f)` -- called as a `Make` effect when the end of input is reached (allows cleanup of unclosed structures).
 
 
 ## Term rewriting
