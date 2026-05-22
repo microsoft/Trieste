@@ -489,93 +489,73 @@ n->traverse([&](Node&) {
 * `std::cout << n` — print the tree in S-expression format to any `std::ostream`.
 * `n->str()` — return the S-expression as a `std::string` (useful inside a debugger).
 
-## Passes
+## Reader
 
-A `PassDef` bundles a set of rewrite rules with a name, an output WF spec, and a direction. Passes are the pipeline stages between the parser and the final output.
+A `Reader` combines a `Parse` and an ordered list of passes into a source-to-AST pipeline.
 
-### Declaring a pass
-
-```c++
-PassDef my_pass = {
-  "pass_name",           // name (used in debug output and CLI)
-  wf_after_my_pass,      // output WF spec (checked after this pass runs)
-  dir::topdown,          // direction (optional, default: topdown)
-  {
-    // rewrite rules ...
-  }
-};
-```
-
-All four arguments are optional. The minimal form takes just a list of rules:
+### Construction
 
 ```c++
-PassDef my_pass = {
-  T(Foo) >> [](Match&) { return Bar; },
-};
+Reader reader()
+{
+  return {
+    "language-name",
+    {pass1(), pass2(), pass3()},
+    parser(),
+  };
+}
 ```
 
-`PassDef` implicitly converts to `Pass` (`intrusive_ptr<PassDef>`), which is what `Reader` and `Rewriter` accept.
+The first argument is a language name (used in debug output); the second is the ordered list of passes; the third is the `Parse` object.
 
-### Direction
+### Providing input
 
-| Flag | Behaviour |
-|------|-----------|
-| `dir::topdown` | Visit nodes top-down, left-to-right. Default. |
-| `dir::bottomup` | Visit nodes bottom-up, left-to-right. |
-| `dir::once` | Visit each position exactly once instead of iterating to fixpoint. |
+Input is set via builder methods that return the `Reader` by reference:
 
-Flags may be combined: `dir::bottomup | dir::once`. Without `dir::once`, the pass repeats until no rule matches anywhere in the tree.
+| Method | Description |
+|--------|-------------|
+| `.file(path)` | Read from a filesystem path. |
+| `.source(src)` | Read from an in-memory `Source`. |
+| `.synthetic(contents, origin="")` | Read from a literal string. |
 
-### Pre and post hooks
-
-Hooks are callbacks registered on a `PassDef` after construction. All hook functions take a `Node` (the node being entered/left, or the root for the global forms) and return `size_t` — the number of changes made. A non-zero return counts as a change and may cause another pass iteration (unless `dir::once`).
-
-**Global hooks** — run once around the entire pass:
+### Running the pipeline
 
 ```c++
-my_pass.pre([](Node root) -> size_t {
-  // runs before any rule is applied
-  return 0;
-});
-
-my_pass.post([](Node root) -> size_t {
-  // runs after all rules have converged
-  return 0;
-});
+ProcessResult result = reader.file("input.foo").read();
 ```
 
-**Per-token hooks** — run each time the rewriter enters or leaves a node of the given type:
+`.read()` parses the input and runs all passes in order. It returns a `ProcessResult`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ok` | `bool` | `true` if all passes succeeded. |
+| `ast` | `Node` | The final tree (valid only when `ok` is `true`). |
+| `errors` | `Nodes` | Error nodes collected during processing. |
+| `last_pass` | `std::string` | Name of the last pass that ran. |
+
+### Configuration
+
+| Method | Default | Description |
+|--------|---------|-------------|
+| `.wf_check_enabled(bool)` | `false` | Validate WF specs after each pass. |
+| `.debug_enabled(bool)` | `false` | Write per-pass AST dumps to `debug_path`. |
+| `.debug_path(path)` | `"."` | Directory for debug dumps. |
+| `.start_pass(name)` | `""` | Resume from a named pass (reads a Trieste dump instead of parsing). |
+| `.end_pass(name)` | `""` | Stop after the named pass. |
+
+Note that the Driver API sets `wf_check_enabled` to `true` by default.
+
+### Pipeline operators
+
+`>>` chains a `Reader` with a `Rewriter` or `Writer`, calling `.read()` automatically. If the `Reader` fails, the right-hand side is skipped and the error result is propagated:
 
 ```c++
-my_pass.pre(Tok, [](Node n) -> size_t { ... return 0; });
-my_pass.post(Tok, [](Node n) -> size_t { ... return 0; });
+auto result = reader.file("input.foo") >> rewriter >> writer;
 ```
 
-Multiple tokens can share a hook:
+`>>=` merges a `Rewriter`'s passes into a `Reader`, returning a new combined `Reader`. This is useful when constructing a `Reader` to hand to a `Driver`:
 
 ```c++
-my_pass.pre({Tok1, Tok2}, [](Node n) -> size_t { ... return 0; });
+Reader full = base_reader() >>= extra_rewriter();
 ```
-
-### Conditional execution
-
-`pass.cond(f)` registers a condition. Before each run of the pass, `f` receives the root node and returns `bool`. If it returns `false`, the entire pass is skipped for that iteration:
-
-```c++
-my_pass.cond([](Node root) {
-  return root->contains(SomeTok);
-});
-```
-
-### Adding rules after construction
-
-Rules can also be added after the `PassDef` is created:
-
-```c++
-my_pass.rules({
-  T(Foo) >> [](Match&) { return Bar; },
-});
-```
-
-
 
