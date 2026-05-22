@@ -1,8 +1,42 @@
 # Trieste Reference Sheet
 
-## Nodes
+## Tokens
 
-TODO
+A `Token` is the fundamental label on every node in the tree. Tokens are defined as global `TokenDef` objects:
+
+```c++
+inline const auto Int    = TokenDef("int",    flag::print);
+inline const auto Assign = TokenDef("assign", flag::lookup | flag::shadowing);
+```
+
+The string passed to `TokenDef` is used when printing the tree. The optional second argument is a combination of flags:
+
+| Flag | Description |
+|------|-------------|
+| `flag::print` | When printing the tree, also print the node's source location text. |
+| `flag::symtab` | Attach a symbol table to nodes of this type. |
+| `flag::defbeforeuse` | When a node with `flag::symtab` has this flag, definitions bound in the symbol table are only visible from later (than the defining node) in the same source file. |
+| `flag::lookup` | Definitions of this type can be found by `node->lookup()`. |
+| `flag::lookdown` | Definitions of this type can be found by `node->lookdown()`. |
+| `flag::shadowing` | A definition of this type (with `flag::lookup`) shadows results from parent symbol tables. |
+
+Trieste defines the following built-in tokens:
+
+| Token | Description |
+|-------|-------------|
+| `Top` | Root of every tree. Has `flag::symtab`. |
+| `File` | Produced by the parser for each parsed file. |
+| `Directory` | Produced by the parser when parsing a directory. |
+| `Group` | General-purpose grouping node created by the parser. |
+| `Error` | Marks an error in the tree. Rewriting does not enter error nodes. |
+| `ErrorMsg` | Child of `Error` carrying the message string (has `flag::print`). |
+| `ErrorAst` | Child of `Error` pointing to the offending source location. |
+| `Seq` | Used in effects to return a flat sequence (the `Seq` node itself is discarded). |
+| `Lift` | Used in effects to lift children to an enclosing node. |
+| `NoChange` | Returned from an effect to signal that no change was made. |
+| `Reapply` | Returned from an effect to signal that the rewriter should re-examine the same position. |
+
+See the section on effects below for how the built-in tokens from `Error` and below are used.
 
 ## Parsing
 
