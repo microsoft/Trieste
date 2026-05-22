@@ -1,4 +1,4 @@
-# Trieste Reference Sheet
+# Trieste Reference Documentation
 
 ## Tokens
 
@@ -341,5 +341,82 @@ Symbol table entries are controlled by the well-formedness specification. `(tok 
   (Assign <<= Ident * Expression)[Ident]
   ```
   Nodes of type `Assign` will be bound to the symbol table of its closest ancestor defined with `flag::symtab`. The `Top` node is defined with `flag::symtab` and is the ancestor of all other nodes so there is always at least one symbol table. In the above example, the value of the `Ident` node is the lookup key in the symbol table. Note that the `Assign` node (not the `Ident` node) must be defined with `flag::lookup` for the lookup to work for this example. The same key can be bound to several nodes (possibly of different types) in the same symbol table if the key token type (`Ident` in the infix example) is not defined with `flag::shadowing`.
+
+## Node API
+
+`Node` is a reference-counted pointer to a `NodeDef`. This is the representation of syntax trees in Trieste, and the subject of pattern-matching and rewriting. A node contains a `Token` which defines the type of the node, a `Location` (typically the corresponding range in the source code) and a sequence of zero or more children nodes. Nodes are expected to appear at at most one location in the tree; inserting a pre-existing node in a tree requires cloning.
+
+### Type and location
+
+* `n->type()` — returns the `Token` of the node.
+* `n == Tok` / `n != Tok` — compare the node's type to a token (equivalent to `n->node() == Tok`).
+* `n->in({Tok1, Tok2, ...})` — true if the node's type is one of the listed tokens.
+* `n->location()` — returns the `Location` associated with the node.
+* `n->set_location(loc)` — sets the location of all nodes in the subtree that currently have no location.
+* `n->extend(loc)` — extend the node's location to also span `loc`.
+
+### Children
+
+* `n->size()` — number of children.
+* `n->empty()` — true if there are no children.
+* `n->front()` / `n->back()` — first and last child respectively.
+* `n->at(i)` — child at index `i` (throws if out of range).
+* Range-for: `for (auto& child : *n) { ... }` — iterates over children.
+* `n / Label` — return the child at the position defined by `Label` in the active WF spec. `Label` is the field label token used in the WF shape (either the child token itself or the label from `label >>= tok`). Requires an active WF context; throws if the node type has no such field.
+
+### Parent and scope
+
+* `n->parent()` — the immediate parent node, or null if `n` is the root.
+* `n->parent(Tok)` — walk up and return the first ancestor with type `Tok`, or null.
+* `n->parent({Tok1, Tok2, ...})` — walk up and return the first ancestor whose type is one of the listed tokens, or null.
+* `n->scope()` — first ancestor that has a symbol table (`flag::symtab`), or null.
+
+### Tree construction and mutation
+
+* `n << child` — append `child` to `n`'s children; returns `n`. Can be chained: `n << a << b << c` appends `a`, `b` and `c` in order and returns `n`.
+* `n->push_front(node)` — prepend `node` as the first child.
+* `n->push_back(node)` — append `node` as the last child.
+* `n->pop_back()` — remove and return the last child.
+* `n->insert(pos, node)` — insert `node` at iterator position `pos`.
+* `n->erase(first, last)` — erase children in the iterator range `[first, last)`.
+* `n->replace(node1, node2)` — replace child `node1` with `node2` (pass `{}` to just remove `node1`).
+* `n->replace_at(index, node2)` — replace the child at index `index` with `node2`.
+* `n->clone()` — deep copy of the node and its subtree. Symbol tables are **not** copied.
+
+### Symbol tables
+
+* `n->lookup()` — search upward through ancestor symbol tables for nodes bound to `n`'s location that have `flag::lookup`. Returns a vector of the `Node`s found. Respects `flag::defbeforeuse` (only definitions that precede `n` are visible) and `flag::shadowing` (stops ascending at a shadowing entry).
+* `n->lookdown(loc)` — search downward in `n`'s own symbol table for entries at key `loc` that have `flag::lookdown`. Does not traverse parent scopes. Used for scoped member access (e.g. finding a field within a specific object).
+* `n->look(loc)` — return all entries at key `loc` in `n`'s own symbol table, ignoring `flag::lookup` and `flag::lookdown`. Useful when you want unconditional access to the raw bindings in a specific symbol table.
+* `n->bind(loc)` — bind this node into the nearest enclosing symbol table under key `loc`. Returns `true` if the binding is unambiguous (no duplicate shadowing entries).
+* `n->include()` — mark this node as an include in the nearest enclosing symbol table; included nodes are always returned by `lookup()`.
+* `n->fresh(prefix = {})` / `ast::fresh(prefix = {})` — generate a unique `Location` not used anywhere else in the tree. The optional `prefix` is prepended to the generated name. Useful for creating fresh variable names in passes.
+
+### Errors
+
+* `n->get_errors(nodes)` — add all error nodes to the supplied vector.
+
+### Traversal
+
+`n->traverse(pre, post = {})` performs an explicit pre/post order depth-first walk over the subtree rooted at `n`.
+
+* `pre` is called on each node before its children are visited. It must return `bool`: `true` to continue into the children, `false` to skip them.
+* `post` is called on each node after all its children have been visited. It is only called if `pre` returned `true`. The default no-op can be omitted.
+* The traversal may modify the subtree *below* the currently visited node but not above it.
+
+```c++
+size_t count = 0;
+n->traverse([&](Node&) {
+  count++;
+  return true;  // visit children
+});
+// count now holds the total number of nodes in the subtree
+```
+
+### Printing and debugging
+
+* `std::cout << n` — print the tree in S-expression format to any `std::ostream`.
+* `n->str()` — return the S-expression as a `std::string` (useful inside a debugger).
+
 
 
