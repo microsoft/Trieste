@@ -543,19 +543,249 @@ ProcessResult result = reader.file("input.foo").read();
 | `.start_pass(name)` | `""` | Resume from a named pass (reads a Trieste dump instead of parsing). |
 | `.end_pass(name)` | `""` | Stop after the named pass. |
 
-Note that the Driver API sets `wf_check_enabled` to `true` by default.
+Note that the `Driver` API sets `wf_check_enabled` to `true` by default.
 
 ### Pipeline operators
 
-`>>` chains a `Reader` with a `Rewriter` or `Writer`, calling `.read()` automatically. If the `Reader` fails, the right-hand side is skipped and the error result is propagated:
+* `>>` chains a `Reader` with a `Rewriter` or `Writer`, calling `.read()` automatically. If the `Reader` fails, the right-hand side is skipped and the error result is propagated:
+  ```c++
+  auto result = reader.file("input.foo") >> rewriter >> writer;
+  ```
+
+* `>>=` merges a `Rewriter`'s passes into a `Reader`, returning a new combined `Reader`. This is useful when constructing a `Reader` to hand to a `Driver`:
+  ```c++
+  Reader full = base_reader() >>= extra_rewriter();
+  return Driver(full).run(argc, argv);
+  ```
+
+## Writer
+
+A `Writer` converts a processed AST into one or more output files. It runs a set of rewrite passes that reshape the AST into a tree of `File` and `Directory` nodes, then serializes each file by calling a `WriteFile` callback.
+
+### Construction
 
 ```c++
-auto result = reader.file("input.foo") >> rewriter >> writer;
+Writer my_writer(
+  "language-name",
+  {to_file()},                // passes: reshape AST → File/Directory tree
+  input_wf,                   // WF spec of the incoming AST
+  [](std::ostream& os, Node contents) {
+    // write contents to os; return true on error
+    os << contents->location().view();
+    return false;
+  }
+);
 ```
 
-`>>=` merges a `Rewriter`'s passes into a `Reader`, returning a new combined `Reader`. This is useful when constructing a `Reader` to hand to a `Driver`:
+The `WriteFile` callback has type `std::function<bool(std::ostream&, Node)>`. It receives the output stream and the contents node of each `File` node produced by the passes. It returns `true` if an error occurred.
+
+### Output tree shape
+
+Writer passes must ultimately produce a tree that sorts `File` nodes into directories:
+
+```
+Top    ::= Directory | File
+Directory ::= Path * FileSeq
+FileSeq   ::= (Directory | File)++
+File      ::= Path * <contents>
+```
+
+`Path` carries the filename as its location. The second child of `File` is whatever node the passes leave as the contents; the writer passes it directly to the `WriteFile` callback. The built-in label `Contents` always refers to that second child position, so writer passes can use it as a uniform accessor even when the actual content node type varies.
+
+For example, a writer in the infix example promotes the top-level computation node into a `File`:
 
 ```c++
-Reader full = base_reader() >>= extra_rewriter();
+// clang-format off
+const auto wf_to_file =
+    my_lang::wf
+  | (Top <<= File)
+  | (File <<= Path * Calculation)
+  ;
+// clang-format on
+
+PassDef to_file(const std::filesystem::path& filename)
+{
+  return {
+    "to_file", wf_to_file, dir::bottomup | dir::once,
+    {
+      In(Top) * T(Calculation)[Calculation] >>
+        [filename](Match& _) {
+          return File << (Path ^ filename.string()) << _(Calculation);
+        },
+    }
+  };
+}
 ```
 
+### Destination
+
+By default the writer prints to `stdout`. This can be overridden with a builder method:
+
+| Method | Description |
+|--------|-------------|
+| `.dir(path)` | Write files to the filesystem under `path`. |
+| `.console()` | Print to `stdout` (default). |
+| `.synthetic()` | Capture output in memory. Retrieve with `writer.destination()->files()`. |
+
+### Configuration
+
+| Method | Default | Description |
+|--------|---------|-------------|
+| `.wf_check_enabled(bool)` | `true` | Validate WF specs after each pass. |
+| `.debug_enabled(bool)` | `false` | Emit per-pass debug dumps. |
+| `.debug_path(path)` | `"."` | Directory for debug dumps. |
+
+### Running
+
+```c++
+ProcessResult result = my_writer.dir("out/").write(ast);
+```
+
+Or via the `>>` pipeline operator:
+
+```c++
+auto result = reader.file("input.foo") >> my_writer.dir("out/");
+```
+
+## Rewriter
+
+A `Rewriter` runs a pass pipeline on an already-built `Node` tree. It is the right tool when you have an AST in hand and want to transform it without re-parsing, for example an evaluator or an optimizer that runs on demand.
+
+### Construction
+
+```c++
+Rewriter calculate()
+{
+  return {"calculate", {maths(), cleanup()}, my_lang::wf};
+}
+```
+
+The three arguments are a name (for debug output), an ordered list of passes, and the WF spec that describes the **input** AST. The output WF is taken from the last pass in the list.
+
+### Running
+
+```c++
+ProcessResult result = calculate().rewrite(ast);
+```
+
+`.rewrite(Node)` runs the pass pipeline on the given tree and returns a `ProcessResult` (same fields as described in the Reader section).
+
+### Configuration
+
+| Method | Default | Description |
+|--------|---------|-------------|
+| `.wf_check_enabled(bool)` | `true` | Validate WF specs after each pass. |
+| `.debug_enabled(bool)` | `false` | Emit per-pass debug dumps. |
+| `.debug_path(path)` | `"."` | Directory for debug dumps. |
+
+### Pipeline operators
+
+* `>>` chains with a `Reader`, `ProcessResult`, or bare `Node`:
+  ```c++
+  // Reader → Rewriter → Writer
+  auto result = reader.file("input.foo") >> calculate() >> my_writer.dir("out/");
+
+  // Node → Rewriter (clones the node before rewriting)
+  auto result = some_node >> calculate();
+  ```
+
+* `>>=` bakes the Rewriter's passes into a Reader (see the Reader section).
+
+
+## Fuzzer
+
+The `Fuzzer` stress-tests a pass pipeline by generating random ASTs from each pass's input WF spec and checking that the pass produces output that satisfies the output WF spec. For each pass it generates a given number of random trees, runs the pass, and reports any WF violation along with the seed that triggered it so failures are reproducible.
+
+### Generators
+
+For each leaf token whose text content matters (e.g. `Int`, `Ident`), register a generator on the `Parse` object via `p.gen({...})`:
+
+```c++
+p.gen({
+  Int >> [](auto& rnd) { return std::to_string(rnd() % 100); },
+  Ident >> [](auto& rnd) { return random_identifier(rnd); },
+});
+```
+
+Each generator is a `std::function<std::string(Rand&)>`. Tokens without a registered generator get a fresh synthetic location (`ast::fresh()`), which is fine for structural tokens.
+
+### Construction
+
+| Constructor | Description |
+|-------------|-------------|
+| `Fuzzer(reader)` | Derives passes, input WF, and generators directly from a `Reader`. |
+| `Fuzzer(rewriter, generators)` | Uses a `Rewriter`'s passes; supply `GenNodeLocationF` (e.g. from `reader.parser().generators()`). |
+| `Fuzzer(writer, generators)` | Uses a `Writer`'s passes; supply `GenNodeLocationF` as above. |
+
+The `Fuzzer(Reader)` form is the most common — it wires everything up automatically:
+
+```c++
+int main()
+{
+  return Fuzzer(my_reader()).test();
+}
+```
+
+### Configuration
+
+Configuration is done via the builder pattern:
+
+| Method | Default | Description |
+|--------|---------|-------------|
+| `.seed_count(n)` | 100 | Number of random trees tested per pass. |
+| `.start_seed(n)` | random | Starting random seed (set for reproducibility). |
+| `.max_depth(n)` | 10 | Maximum depth of generated ASTs. |
+| `.failfast(bool)` | `false` | Stop after the first WF failure. |
+| `.test_sequence(bool)` | `false` | Feed survivors from pass N as input to pass N+1 rather than regenerating. |
+| `.bound_vars(bool)` | `true` | Generate symbol-table references that are bound when posible. |
+| `.max_retries(n)` | 100 | Retries to find a hash-unique tree before reusing. |
+| `.start_index(n)` | 1 | First pass to test (1-based). |
+| `.end_index(n)` | last | Last pass to test (1-based). |
+
+Note the the `Driver` defaults to using `seed_count` times two as `max_retries`.
+
+### Running
+
+```c++
+int exit_code = Fuzzer(my_reader())
+  .seed_count(500)
+  .max_depth(8)
+  .failfast(true)
+  .test();
+```
+
+Returns `0` if all passes satisfied their WF specs, non-zero otherwise. On failure it prints the failing pass name, the seed, the input tree, and the output tree.
+
+## Driver
+
+`Driver` wraps a `Reader` with a CLI11-based command-line interface. It is the
+standard entry point for language tools built with Trieste:
+
+```c++
+// main.cc
+int main(int argc, char** argv)
+{
+  return trieste::Driver(my_reader()).run(argc, argv);
+}
+```
+
+The Driver exposes three subcommands:
+
+| Subcommand | Purpose |
+|------------|---------|
+| `build`    | Parse a source file, run the rewrite pipeline, and write output. |
+| `test`     | Generate random ASTs from WF specs and fuzz-test each pass. |
+| `check`    | Statically inspect rewrite rules for common pattern bugs. |
+
+For the full list of flags for each subcommand, run:
+
+```
+my_tool --help-all
+```
+
+### Custom options
+
+If your language needs additional CLI flags (e.g. a `--target` or `--emit`
+switch), pass an `Options*` to the `Driver` constructor and implement
+`Options::configure(CLI::App&)` to register them.  The `build` subcommand calls
+`configure` before parsing so your options appear alongside the built-in ones.
