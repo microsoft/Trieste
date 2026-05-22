@@ -280,35 +280,66 @@ In(Expression) * T(Ident)[Id] >>
 
 Each rewrite pass in Trieste can have a corresponding well-formedness specification. It specifies the valid tree shape for that particular pass. The well-formedness specification is also used to create name bindings for field accesses, to bind terms to symbol tables and to generate random trees for fuzz testing. Between each pass, it is checked that the tree shape conforms with the well-formedness specification, labels are bound to nodes and symbol tables are populated. If a pass does not have a well-formedness specification, no checking is done.
 
-A well-formedness specification consists of several shapes specifying relationships of `Tokens`:
+A well-formedness specification is a set of **shapes** combined with `|`. Each shape binds a token to its allowed children:
 
-* `tok <<= tok1 ... tokn` - `tok` has children `tok1 ... tokn`,
-  where the relationship between the children is specified with the following operators:
-  * `tok1 * tok2 * ... * tokn` - specifies a sequence of siblings `tok1` to `tokn`.
-  * `tok1 | tok2 | ... | tokn` - specifies a choice of tokens `tok1`, `tok2`, up to `tokn`.
-  * `label >>= tok` - gives the label `label` to `tok`. The `label` is itself a `Token`. Allows choice of tokens to appear in a sequence, e.g., `(label >>= tok1 | tok2) * tok3`. This is disallowed without a label. Sequences or repetitions cannot be labelled.
-  * `tok++` - zero or more `Tokens`. A choice between tokens can also be repeated (`(tok1 | tok2)++`) but not sequences or labelled tokens. Repetition can be given a lower bound with `[]`, e.g., `++[2]`.
-* `(tok <<= tok1 * tok2)[tok1]` - binds `tok` nodes to a symbol table with `tok1` as the lookup key.
+```
+tok <<= fields
+```
 
-### Example: Labels
+`fields` is either a **repetition** or a **sequence**.
 
-Labels (specified with the `>>=` operator) can be used to access specific children of a node. Consider the shape for `Addition` nodes from infix, where `Expression` has been labelled:
+**Repetition** — the node has a variable number of children, all matching a set of tokens:
+* `(tok1 | tok2 | ...)++` — zero or more children of one of the listed types.
+  * Lower and upper bounds can be specified as `(...)++[n]` — at least `n` children; `(...)++[n][m]` — between `n` and `m` children inclusive.
+* `~(tok1 | tok2 | ...)` — zero or one child (optional).
 
-`(Add <<= (Lhs >>= Expression) * (Rhs >>= Expression))`
+**Sequence** — the node has a fixed number of children, one per field, joined by `*`:
 
-The labels (`Lhs` and `Rhs`) are other `Tokens`. The left child of an `Add` node `n` can be accessed by `n/Lhs` in subsequent passes.
+`field1 * field2 * ... * fieldN`
 
-### Example: Symbol tables
-A symbol table is a map from the _value_ of one term to another and can, for example, be used to map variables to expressions. Recall the following shape from the well-formedness specification for infix:
+Each field is either:
+* `tok` — one child of type `tok`, accessible by label `tok`.
+* `label >>= tok` — one child of type `tok`, accessible by label `label` (where `label` is a `Token`).
+* `label >>= (tok1 | tok2 | ...)` — one child of one of the listed types, accessible by label `label`. A choice must always be labelled when it appears inside a sequence.
 
-`(Assign <<= Ident * Expression)[Ident]`
+Labels are used for defining symbol table bindings (see below) and for projecting fields out of `Nodes` with `n / tok`.
 
-Nodes of type `Assign` will be bound to the symbol table of its closest ancestor defined with `flag::symtab`. The `Top` node is defined with `flag::symtab` and is the ancestor of all other nodes so there is always at least one symbol table. In the above example, the value of the `Ident` node is the lookup key in the symbol table. Note that the `Assign` node (not the `Ident` node) must be defined with `flag::lookup` for the lookup to work for this example. The same key can be bound to several nodes (possibly of different types) in the same symbol table if the key token type (`Ident` in the infix example) is not defined with `flag::shadowing`.
+### Extending and modifying specifications:
 
-### Random tree generation
-TODO
+`wf1 | wf2` merges two specifications; shapes in `wf2` override any conflicting shapes in `wf1`. This is useful when extending a previous specification:
 
-### Checking well-formedness
-TODO
+```c++
+inline const auto wf_pass_multiply_divide =
+  wf_pass_expressions
+  | (Multiply <<= Expression * Expression)
+  | (Divide <<= Expression * Expression)
+  ;
+```
 
-TODO: lookdown, fresh variables
+Existing shapes can also be removed using `wf - tok`. Note that this does not affect shapes that list `tok` as a child, it only requires that `tok` has zero children (which is the default when no shape is listed for a token). Similarly, choices can be extended or reduced. The following example defines a choice which contains the same tokens as `wf_parse_tokens` but with `String`, `Paren` and `Print` removed and `Expression` added:
+
+```c++
+inline const auto wf_expressions_tokens =
+  (wf_parse_tokens - (String | Paren | Print)) | Expression;
+```
+
+### Symbol table binding:
+
+Symbol table entries are controlled by the well-formedness specification. `(tok <<= fields)[key]` specifies that nodes of type `tok` are bound into their nearest ancestor's symbol table using the value of the child named `key` as the lookup key. `key` must be one of the field labels in the sequence. Note that the `TokenDef` of `tok` must have `flag::lookup` (or `flag::lookdown`) for lookup (or lookdown) to work.
+
+
+### Examples
+
+* Labels (specified with the `>>=` operator) can be used to access specific children of a node. Consider the shape for `Addition` nodes from infix, where each `Expression` has been labelled:
+  ```c++
+  (Add <<= (Lhs >>= Expression) * (Rhs >>= Expression))
+  ```
+  The labels (`Lhs` and `Rhs`) are other `Tokens`. The left child of an `Add` node `n` can be accessed by `n / Lhs` in subsequent passes.
+
+* A symbol table is a map from the _value_ of one term to another and can, for example, be used to map variables to expressions. Recall the following shape from the well-formedness specification for infix:
+  ```
+  (Assign <<= Ident * Expression)[Ident]
+  ```
+  Nodes of type `Assign` will be bound to the symbol table of its closest ancestor defined with `flag::symtab`. The `Top` node is defined with `flag::symtab` and is the ancestor of all other nodes so there is always at least one symbol table. In the above example, the value of the `Ident` node is the lookup key in the symbol table. Note that the `Assign` node (not the `Ident` node) must be defined with `flag::lookup` for the lookup to work for this example. The same key can be bound to several nodes (possibly of different types) in the same symbol table if the key token type (`Ident` in the infix example) is not defined with `flag::shadowing`.
+
+
