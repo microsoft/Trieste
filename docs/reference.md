@@ -121,16 +121,87 @@ The `Parse` object supports optional callbacks for processing files and director
   ";"        term({Equals}) → closes Group, pops Equals → cursor back at File
   ```
 
+## Passes
+
+A `PassDef` bundles a set of rewrite rules with a name, an output WF spec, and a direction. Passes are the pipeline stages between the parser and the final output.
+
+### Declaring a pass
+
+```c++
+PassDef my_pass = {
+  "pass_name",           // name (used in debug output and CLI)
+  wf_after_my_pass,      // output WF spec (checked after this pass runs)
+  dir::topdown,          // direction (optional, default: topdown)
+  {
+    // rewrite rules ...
+  }
+};
+```
+
+All four arguments are optional. The minimal (still useful) form takes just a list of rules:
+
+```c++
+PassDef my_pass = {
+  T(Foo) >> [](Match&) { return Bar; },
+};
+```
+
+`PassDef` implicitly converts to `Pass` (`intrusive_ptr<PassDef>`), which is what `Reader` and `Rewriter` accept.
+
+### Direction
+
+| Flag | Behaviour |
+|------|-----------|
+| `dir::topdown` | Visit nodes top-down, left-to-right. Default. |
+| `dir::bottomup` | Visit nodes bottom-up, left-to-right. |
+| `dir::once` | Visit each position exactly once instead of iterating to fixpoint. |
+
+Flags may be combined: `dir::bottomup | dir::once`. Without `dir::once`, the pass repeats until no rule results in a change in the tree.
+
+### Pre and post hooks
+
+Hooks are callbacks registered on a `PassDef` after construction. All hook functions take a `Node` (the node being entered/left, or the root for the global forms) and return `size_t` — the number of changes made. A non-zero return counts as a change and may cause another pass iteration (unless `dir::once`).
+
+**Global hooks** — run once around the entire pass:
+
+```c++
+my_pass.pre([](Node root) -> size_t {
+  // runs before any rule is applied
+  return 0;
+});
+
+my_pass.post([](Node root) -> size_t {
+  // runs after all rules have converged
+  return 0;
+});
+```
+
+**Per-token hooks** — run each time the rewriter enters or leaves a node of the given type:
+
+```c++
+my_pass.pre(Tok, [](Node n) -> size_t { ... return 0; });
+my_pass.post(Tok, [](Node n) -> size_t { ... return 0; });
+```
+
+Multiple tokens can share a hook:
+
+```c++
+my_pass.pre({Tok1, Tok2}, [](Node n) -> size_t { ... return 0; });
+```
+
+### Conditional execution
+
+`pass.cond(f)` registers a condition. Before each run of the pass, `f` receives the root node and returns `bool`. If it returns `false`, the entire pass is skipped for that iteration:
+
+```c++
+my_pass.cond([](Node root) {
+  return root->contains(SomeTok);
+});
+```
 
 ## Term rewriting
 
-Term rewriting logically moves a cursor through the whole term and applies all rules in every position once or until fixpoint. The visiting order and fixpoint behaviour is set via the direction flags:
-
-* `dir::bottomup` -- Visit nodes bottom up, left to right.
-* `dir::topdown`  -- Visit nodes top down, left to right.
-* `dir::once`     -- Visit each position once instead of until fixpoint.
-
-A rule consists of a pattern and an effect. For each cursor position and rule, the pattern selects zero or more sibling terms that matches the pattern and these terms are replaced by the results of the effect. Pattern matching can bind substructures of the selected terms which can be used in the effect. Unless the pass is `dir::once`, whenever a rule matches some nodes the cursor will reset to before the first child of the current parent node.
+Term rewriting logically moves a cursor through the whole term and applies all rewrite rules in every position once or until fixpoint. A rewrite rule consists of a pattern and an effect. For each cursor position and rule, the pattern selects zero or more sibling terms that matches the pattern and these terms are replaced by the results of the effect. Pattern matching can bind substructures of the selected terms which can be used in the effect. Unless the pass is `dir::once`, whenever a rule matches some nodes the cursor will reset to before the first child of the current parent node.
 
 Effects are typically written as lambdas and a pattern is separated from its effect by `>>`. The following rewrite rule matches a single `Foo` node and replaces it by a `Bar` node:
 
@@ -417,6 +488,94 @@ n->traverse([&](Node&) {
 
 * `std::cout << n` — print the tree in S-expression format to any `std::ostream`.
 * `n->str()` — return the S-expression as a `std::string` (useful inside a debugger).
+
+## Passes
+
+A `PassDef` bundles a set of rewrite rules with a name, an output WF spec, and a direction. Passes are the pipeline stages between the parser and the final output.
+
+### Declaring a pass
+
+```c++
+PassDef my_pass = {
+  "pass_name",           // name (used in debug output and CLI)
+  wf_after_my_pass,      // output WF spec (checked after this pass runs)
+  dir::topdown,          // direction (optional, default: topdown)
+  {
+    // rewrite rules ...
+  }
+};
+```
+
+All four arguments are optional. The minimal form takes just a list of rules:
+
+```c++
+PassDef my_pass = {
+  T(Foo) >> [](Match&) { return Bar; },
+};
+```
+
+`PassDef` implicitly converts to `Pass` (`intrusive_ptr<PassDef>`), which is what `Reader` and `Rewriter` accept.
+
+### Direction
+
+| Flag | Behaviour |
+|------|-----------|
+| `dir::topdown` | Visit nodes top-down, left-to-right. Default. |
+| `dir::bottomup` | Visit nodes bottom-up, left-to-right. |
+| `dir::once` | Visit each position exactly once instead of iterating to fixpoint. |
+
+Flags may be combined: `dir::bottomup | dir::once`. Without `dir::once`, the pass repeats until no rule matches anywhere in the tree.
+
+### Pre and post hooks
+
+Hooks are callbacks registered on a `PassDef` after construction. All hook functions take a `Node` (the node being entered/left, or the root for the global forms) and return `size_t` — the number of changes made. A non-zero return counts as a change and may cause another pass iteration (unless `dir::once`).
+
+**Global hooks** — run once around the entire pass:
+
+```c++
+my_pass.pre([](Node root) -> size_t {
+  // runs before any rule is applied
+  return 0;
+});
+
+my_pass.post([](Node root) -> size_t {
+  // runs after all rules have converged
+  return 0;
+});
+```
+
+**Per-token hooks** — run each time the rewriter enters or leaves a node of the given type:
+
+```c++
+my_pass.pre(Tok, [](Node n) -> size_t { ... return 0; });
+my_pass.post(Tok, [](Node n) -> size_t { ... return 0; });
+```
+
+Multiple tokens can share a hook:
+
+```c++
+my_pass.pre({Tok1, Tok2}, [](Node n) -> size_t { ... return 0; });
+```
+
+### Conditional execution
+
+`pass.cond(f)` registers a condition. Before each run of the pass, `f` receives the root node and returns `bool`. If it returns `false`, the entire pass is skipped for that iteration:
+
+```c++
+my_pass.cond([](Node root) {
+  return root->contains(SomeTok);
+});
+```
+
+### Adding rules after construction
+
+Rules can also be added after the `PassDef` is created:
+
+```c++
+my_pass.rules({
+  T(Foo) >> [](Match&) { return Bar; },
+});
+```
 
 
 
