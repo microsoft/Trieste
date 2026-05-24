@@ -1767,6 +1767,18 @@ int main(int argc, char** argv)
 }
 ```
 
+To run the driver you can use the following command in the `build` directory:
+
+```sh
+./dist/infix/infix_trieste
+```
+
+To execute infix code you can use the infix binary:
+
+```sh
+./dist/infix/infix ../samples/infix/testsuite/examples/simple.infix
+```
+
 Usage:
 
 ```
