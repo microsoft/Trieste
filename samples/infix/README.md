@@ -1851,12 +1851,12 @@ the well-formedness definitions. Usage:
 
 ```
 Run automated tests
-Usage: ./dist/infix/infix_trieste test [OPTIONS] [start] [end]
+./dist/infix/infix_trieste test [OPTIONS] [start] [end] [SUBCOMMAND]
 
 POSITIONALS:
-  start TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs}
+  start TEXT:{expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
                               Start at this pass.
-  end TEXT:{parse,expressions,multiply_divide,add_subtract,trim,check_refs}
+  end TEXT:{expressions,multiply_divide,add_subtract,trim,check_refs,maths,cleanup}
                               End at this pass.
 
 OPTIONS:
@@ -1868,7 +1868,10 @@ OPTIONS:
                               Error, None
   -d,     --max_depth UINT    Maximum depth of AST to test
   -f,     --failfast          Stop on first failure
+          --sequence          Test sequence of passes on generated trees
+          --size_stats        Collect size statistics for ASTs (defaults to log level Info)
   -r,     --max_retries UINT  Maximum number of retries for finding unique trees
+          --gen_bound BOOLEAN Generate bound variable names if possible
 
 SUBCOMMANDS:
   debug_entropy               Test entropy of random number generation, using seed_count seeds
@@ -1885,68 +1888,74 @@ example
 outputs:
 
 ```
-Testing x1000, seed: 2123362925
+Testing x1000, seed: 2868916601
 
 Testing pass: expressions
-
-  errored 861 times.
-    Empty expression: 6
-    Invalid assign: 427
-    Invalid output: 1
-    syntax error: 427
-  passed 139 times.
-  796 hash unique trees (2000 retries).
+  generated 843 hash unique trees (2000 retries).
+  890 stopped by errors.
+    "Empty expression": 6
+    "Expressions cannot contain strings": 1
+    "Invalid assign": 431
+    "syntax error": 452
+  110 survivors.
+  total changes: 3224
 
 Testing pass: multiply_divide
-
-  errored 667 times.
-    No arguments: 667
-  passed 333 times.
-    trivial: 319
-  1000 hash unique trees (1429 retries).
+  generated 1000 hash unique trees (1449 retries).
+  672 stopped by errors.
+    "No arguments": 672
+  328 survivors.
+    306 trivial.
+  total changes: 1548
 
 Testing pass: add_subtract
-
-  errored 856 times.
-    No arguments: 856
-  passed 144 times.
-    trivial: 130
-  1000 hash unique trees (1224 retries).
+  generated 1000 hash unique trees (1234 retries).
+  851 stopped by errors.
+    "No arguments": 851
+  149 survivors.
+    138 trivial.
+  total changes: 9628
 
 Testing pass: trim
-
-  errored 915 times.
-    Only one value allowed per expression: 915
-  passed 85 times.
-    trivial: 76
-  1000 hash unique trees (1079 retries).
+  generated 1000 hash unique trees (1065 retries).
+  912 stopped by errors.
+    "Only one value allowed per expression": 912
+  88 survivors.
+    75 trivial.
+  total changes: 2417
 
 Testing pass: check_refs
-
-  errored 759 times.
-    undefined: 759
-  passed 241 times.
-    trivial: 241
-  1000 hash unique trees (1139 retries).
+  generated 1000 hash unique trees (1154 retries).
+  737 stopped by errors.
+    "undefined": 737
+  263 survivors.
+    248 trivial.
+  total changes: 2694
 
 Testing pass: maths
-
-  errored 342 times.
-    Divide by zero: 342
-  passed 658 times.
-    trivial: 1
-  1000 hash unique trees (1203 retries).
+  generated 1000 hash unique trees (1220 retries).
+  320 stopped by errors.
+    "Divide by zero": 320
+  680 survivors.
+    1 trivial.
+  total changes: 18905
 
 Testing pass: cleanup
-
-  passed 1000 times.
-    trivial: 1
-  1000 hash unique trees (1350 retries).
+  generated 1000 hash unique trees (1268 retries).
+  1000 survivors.
+    1 trivial.
+  total changes: 2081
 ```
 
 This testing can be incredibly helpful in finding errors in the WF
 definitions and the rewrite rules, but also requires that you explicitly
 produce error messages for all possible syntax problems in each pass.
+
+The default options should be good enough for most uses. Trieste tries to
+generate as many unique trees as you have asked for and prefers using symbols
+that are bound in symbol tables in order to generate more realistic trees. By
+default, each pass is tested in isolation, but you can supply the `--sequence`
+option in order to pass surviving trees to subsequent passes.
 
 
 ### `check`
