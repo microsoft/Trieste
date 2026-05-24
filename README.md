@@ -41,9 +41,17 @@ git clone https://github.com/microsoft/trieste
 cd trieste
 mkdir build
 cd build
-cmake -G Ninja .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++-14
+cmake -G Ninja .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++
 ninja install
-./dist/infix/infix test
+./dist/infix/infix_trieste test
+```
+
+If the cmake command above fails, you can try pinning the used clang version but adding the version to the name `clang++-20`
+
+You can run individual files from `samples/infix/testsuite/examples` with this command:
+
+```sh
+./dist/infix/infix ../samples/infix/testsuite/examples/simple.infix
 ```
 
 ## Regex Benchmark (Opt-In)
