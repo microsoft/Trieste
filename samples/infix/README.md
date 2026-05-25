@@ -8,7 +8,7 @@ terms:
 | Name | Description |
 |------|-------------|
 | Term | A subtree             |
-| Node | A node in the tree. Can have 0 to N children. Has one parent. |
+| Node | A node in the tree. Can have 0 to N children. Has one parent. (Except the `Top` node which has no parent.) |
 | Match | Object used for grabbing nodes from a tree pattern match |
 | Location | A string. This can either be a standalone string, or a view into a long string (i.e. an input file) |
 | Token | Something in the program. This can map to something in an input file (e.g. Int, Float, String), a logical grouping term (Operator, Group), or any other tree node which is of use to the system. |
