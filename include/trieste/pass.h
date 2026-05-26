@@ -217,14 +217,16 @@ namespace trieste
       {
         const auto& starts = rule.first.value.get_starts();
         const auto& parents = rule.first.value.get_parents();
+        const bool is_pass_through = rule.first.value.is_pass_through();
 
         //  This is used to add a rule under a specific parent, or to the
         //  default.
         auto add = [&](detail::DefaultMap<
                        std::vector<detail::PatternEffect<Node>>>& rules) {
-          if (starts.empty())
+          if (starts.empty() || is_pass_through)
           {
-            // If there are no starts, then this rule applies to all tokens.
+            // If there are no starts, or the pattern is pass-through (may
+            // consume nothing), then this rule applies to all tokens.
             rules.modify_all([&](std::vector<detail::PatternEffect<Node>>& v) {
               v.push_back(rule);
             });
