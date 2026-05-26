@@ -239,6 +239,7 @@ namespace trieste
             // Union starts.
             new_first = lhs.starts;
             new_first.insert(rhs.starts.begin(), rhs.starts.end());
+            new_pass_through = rhs.pass_through;
           }
         }
         else
@@ -293,6 +294,11 @@ namespace trieste
       const std::set<Token>& get_parents() const
       {
         return parents;
+      }
+
+      bool is_pass_through() const
+      {
+        return pass_through;
       }
     };
 
@@ -1198,6 +1204,11 @@ namespace trieste
       const std::set<Token>& get_parents() const
       {
         return fast_pattern.get_parents();
+      }
+
+      bool is_pass_through() const
+      {
+        return fast_pattern.is_pass_through();
       }
     };
 
