@@ -105,18 +105,18 @@ namespace trieste
     struct SequenceStats
     {
       size_t passes_run_;
-      size_t seed_count_;
       size_t initial_hash_unique_;
+      size_t retries_;
       size_t total_failed_;
       size_t total_errors_;
       std::vector<size_t> changes_per_pass_;
       std::vector<size_t> error_sizes_;
       std::vector<size_t> error_heights_;
 
-      SequenceStats(size_t passes_run, size_t seed_count)
+      SequenceStats(size_t passes_run)
       : passes_run_(passes_run),
-        seed_count_(seed_count),
         initial_hash_unique_(0),
+        retries_(0),
         total_failed_(0),
         total_errors_(0)
       {}
@@ -147,8 +147,8 @@ namespace trieste
         }
 
         logging::Info info;
-        info << "  " << seed_count_ << " initial trees ("
-             << initial_hash_unique_ << " hash unique)." << std::endl;
+        info << "  " << initial_hash_unique_ << " hash unique initial trees "
+             << "(" << retries_ << " retries)." << std::endl;
 
         if (total_failed_ > 0)
           info << "  " << total_failed_ << " well-formedness failures"
@@ -168,12 +168,14 @@ namespace trieste
         }
 
         info << "  " << total_survivors << " survivors ("
-             << (total_survivors * 100.0 / seed_count_) << "%)." << std::endl;
+             << (total_survivors * 100.0 / initial_hash_unique_) << "%)."
+             << std::endl;
 
         if (total_trivial > 0)
           info << "    " << total_trivial
                << " with < 1 change per pass on average ("
-               << (total_trivial * 100.0 / seed_count_) << "%)." << std::endl;
+               << (total_trivial * 100.0 / initial_hash_unique_) << "%)."
+               << std::endl;
 
         if (size_stats)
         {
@@ -212,6 +214,7 @@ namespace trieste
       auto ast =
         wf.gen(generators_, context.current_seed, max_depth_, bound_vars_);
       size_t hash = ast->hash();
+
       while (context.ast_hashes.find(hash) != context.ast_hashes.end() &&
              context.retries < max_retries_)
       {
@@ -221,6 +224,13 @@ namespace trieste
         hash = ast->hash();
         context.retries++;
       }
+
+      if (context.ast_hashes.find(hash) != context.ast_hashes.end())
+      {
+        // We've exhausted our retry budget, so give up on this seed
+        return {};
+      }
+
       context.ast_hashes.insert(hash);
       return ast;
     }
@@ -308,6 +318,9 @@ namespace trieste
         seed_context.current_seed = seed;
 
         auto ast = gen_ast(prev, seed_context);
+
+        if (!ast)
+          continue;
 
         logging::Trace() << "============" << std::endl
                          << "Pass: " << pass->name()
@@ -680,7 +693,7 @@ namespace trieste
         return 1;
       }
       WFContext context;
-      SequenceStats sequence_stats(end_index_ - start_index_ + 1, seed_count_);
+      SequenceStats sequence_stats(end_index_ - start_index_ + 1);
       std::vector<Survivor> survivors;
 
       int ret = 0;
@@ -758,7 +771,10 @@ namespace trieste
         size_t hash_unique = seed_context.ast_hashes.size();
 
         if (sequence_stats.initial_hash_unique_ == 0)
+        {
           sequence_stats.initial_hash_unique_ = hash_unique;
+          sequence_stats.retries_ = seed_context.retries;
+        }
 
         if (hash_unique > 0)
         {
