@@ -203,19 +203,21 @@ namespace trieste
       RunResult result;
     };
 
-    /// @brief Generate an AST that has not been generated before (while
-    /// adhering to the retry budget).
+    /// @brief Generate an AST that has not been generated before while
+    /// adhering to the retry budget.
     /// @param wf The well-formedness rules to guide AST generation.
     /// @param context The seed context containing current seed and retry
     /// information.
-    /// @return The generated AST node.
-    Node gen_ast(const wf::Wellformed& wf, SeedContext& context)
+    /// @return The generated AST node. NULL if retry budget was exhausted.
+    Node gen_fresh_ast(const wf::Wellformed& wf, SeedContext& context)
     {
       auto ast =
         wf.gen(generators_, context.current_seed, max_depth_, bound_vars_);
       size_t hash = ast->hash();
 
-      while (context.ast_hashes.find(hash) != context.ast_hashes.end() &&
+      auto it = context.ast_hashes.find(hash);
+
+      while (it != context.ast_hashes.end() &&
              context.retries < max_retries_)
       {
         context.current_seed = context.retry_seed++;
@@ -223,9 +225,10 @@ namespace trieste
           wf.gen(generators_, context.current_seed, max_depth_, bound_vars_);
         hash = ast->hash();
         context.retries++;
+        it = context.ast_hashes.find(hash);
       }
 
-      if (context.ast_hashes.find(hash) != context.ast_hashes.end())
+      if (it != context.ast_hashes.end())
       {
         // We've exhausted our retry budget, so give up on this seed
         return {};
@@ -317,7 +320,7 @@ namespace trieste
       {
         seed_context.current_seed = seed;
 
-        auto ast = gen_ast(prev, seed_context);
+        auto ast = gen_fresh_ast(prev, seed_context);
 
         if (!ast)
           continue;
