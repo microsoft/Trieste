@@ -217,8 +217,7 @@ namespace trieste
 
       auto it = context.ast_hashes.find(hash);
 
-      while (it != context.ast_hashes.end() &&
-             context.retries < max_retries_)
+      while (it != context.ast_hashes.end() && context.retries < max_retries_)
       {
         context.current_seed = context.retry_seed++;
         ast =
