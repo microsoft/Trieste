@@ -21,9 +21,8 @@ namespace trieste
     CLI::App app;
     Options* options;
 
-  public:
-    Driver(const Reader& reader_, Options* options_ = nullptr)
-    : reader(reader_), app(reader_.language_name()), options(options_)
+public : Driver(const Reader& reader_, Options* options_ = nullptr)
+: reader(reader_), app(reader_.language_name()), options(options_)
     {}
 
     Driver(
@@ -193,8 +192,26 @@ namespace trieste
       check->add_option(
         "-i,--ignore_token",
         ignored_tokens,
-        "Ignore this token when checking patterns against well-formedness "
-        "rules.");
+        "Ignore this token when checking patterns against well-formedness rules.");
+
+      std::vector<std::filesystem::path> sample_files;
+      test->add_option(
+        "--samples",
+        sample_files,
+        "Files to extract sample nodes from for fuzz testing");
+
+      size_t sampling_level = 1;
+      test->add_option(
+        "--sampling-level",
+        sampling_level,
+        "Level of sampling to use for selecting sample nodes");
+
+      size_t sampling_frequency = 50; // Default to 50% sampling frequency
+      test->add_option(
+        "--sampling-frequency",
+        sampling_frequency,
+        "Frequency of using sampled nodes over randomly generated nodes during "
+        "testing (0-100)");
 
       try
       {
@@ -263,6 +280,8 @@ namespace trieste
       }
       else if (*test)
       {
+        Nodes sample_trees;
+
         if (pass_names_no_parse.empty())
         {
           logging::Error() << "No passes available for testing." << std::endl;
@@ -298,6 +317,31 @@ namespace trieste
             test_end_pass = test_start_pass;
         }
 
+        // Sort the sample files so they are loaded in a deterministic
+        // order making fuzzing reproducible.
+        std::sort(sample_files.begin(), sample_files.end());
+
+        for (auto const& sample_path : sample_files)
+        {
+          if (!(std::filesystem::is_regular_file(sample_path) ||
+                std::filesystem::is_symlink(sample_path)))
+          {
+            logging::Output() << "Not sampling " << sample_path << std::endl;
+            continue;
+          }
+
+          Node sample_program = reader.parser().parse(sample_path);
+
+          if (!sample_program)
+          {
+            logging::Error() << "Failed to parse test program from "
+                             << sample_path << std::endl;
+            return 1;
+          }
+
+          sample_trees.push_back(sample_program);
+        }
+
         Fuzzer fuzzer =
           Fuzzer(reader)
             .max_retries(
@@ -311,7 +355,11 @@ namespace trieste
             .bound_vars(bound_vars)
             .token_weights(std::move(parsed_weights))
             .test_sequence(test_sequence)
-            .size_stats(test_size_stats);
+            .size_stats(test_size_stats)
+            .sample_trees(sample_trees)
+            .sampling_level(sampling_level)
+            .sampling_enabled(!sample_trees.empty())
+            .sampling_frequency(sampling_frequency);
 
         if (*entropy)
         {
@@ -322,6 +370,7 @@ namespace trieste
           return fuzzer.test();
         }
       }
+
       else if (*check)
       {
         if (pass_names_no_parse.empty())
