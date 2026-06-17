@@ -197,6 +197,4 @@ namespace infix
   {
     return {"calculate", {maths(), cleanup()}, infix::wf};
   }
-
-
 }
