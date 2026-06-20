@@ -109,7 +109,7 @@ if(TRIESTE_USE_FETCH_CONTENT)
     FetchContent_Declare(
       snmalloc
       GIT_REPOSITORY https://github.com/microsoft/snmalloc
-      GIT_TAG 1c7a93aad54198423944a786da9dad3962134f75
+      GIT_TAG 526c55bdffa17aae20a9a3d24fe68a7a3b8d9894
       EXCLUDE_FROM_ALL
       # per https://gitlab.kitware.com/cmake/cmake/-/issues/17770, do not use GIT_SHALLOW here
       # or it will silently break new builds days later, once the commit hash above no longer
