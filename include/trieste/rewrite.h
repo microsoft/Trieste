@@ -1155,7 +1155,7 @@ namespace trieste
 
       Pattern operator!() const
       {
-        return {intrusive_ptr<Not>::make(pattern), FastPattern::match_pred()};
+        return {intrusive_ptr<Not>::make(pattern), FastPattern::match_any()};
       }
 
       Pattern operator*(Pattern rhs) const

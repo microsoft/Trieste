@@ -48,6 +48,14 @@ add_test(NAME trieste_roundtrip_test COMMAND trieste_roundtrip_test WORKING_DIRE
 
 add_subdirectory(testsuite)
 
+add_executable(trieste_rewrite_test
+  rewrite_test.cc
+)
+enable_warnings(trieste_rewrite_test)
+target_link_libraries(trieste_rewrite_test trieste::trieste)
+
+add_test(NAME trieste_rewrite_test COMMAND trieste_rewrite_test WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_rewrite_test>)
+
 if(TRIESTE_BUILD_REGEX_BENCHMARK)
   include(FetchContent)
 
