@@ -15,6 +15,7 @@ add_test(
     "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/failure_project"
     "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/failure-project-build"
     "-DMARKER_DIR=${CMAKE_CURRENT_BINARY_DIR}/failure-markers"
+    "-DTEST_CONFIG=$<CONFIG>"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/run_failure_test.cmake")
 
 # Verify semicolon-bearing command arguments are rejected at execution.
@@ -44,6 +45,7 @@ add_test(
     ${CMAKE_COMMAND}
     "-DTESTSUITE_CMAKE=${PROJECT_SOURCE_DIR}/cmake/testsuite.cmake"
     "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/multi-suite-update"
+    "-DTEST_CONFIG=$<CONFIG>"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/run_multi_suite_update_test.cmake")
 
 # Verify launch/task JSON, multi-config paths, and prerequisite execution.

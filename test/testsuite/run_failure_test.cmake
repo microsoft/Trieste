@@ -3,6 +3,11 @@
 file(REMOVE_RECURSE "${BINARY_DIR}" "${MARKER_DIR}")
 file(MAKE_DIRECTORY "${MARKER_DIR}")
 
+set(ctest_config_args)
+if(NOT TEST_CONFIG STREQUAL "")
+  list(APPEND ctest_config_args --build-config "${TEST_CONFIG}")
+endif()
+
 execute_process(
   COMMAND
     "${CMAKE_COMMAND}"
@@ -23,6 +28,7 @@ execute_process(
     "${CMAKE_CTEST_COMMAND}"
     --test-dir "${BINARY_DIR}"
     --output-on-failure
+    ${ctest_config_args}
     -j 4
   RESULT_VARIABLE test_result
   OUTPUT_VARIABLE test_stdout

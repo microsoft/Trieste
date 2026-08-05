@@ -5,6 +5,13 @@ file(MAKE_DIRECTORY "${WORK_DIR}/source")
 
 set(source "${WORK_DIR}/source")
 set(binary "${WORK_DIR}/build")
+set(build_config_args)
+set(ctest_config_args)
+if(NOT TEST_CONFIG STREQUAL "")
+  list(APPEND build_config_args --config "${TEST_CONFIG}")
+  list(APPEND ctest_config_args --build-config "${TEST_CONFIG}")
+endif()
+
 file(COPY
   "${CMAKE_CURRENT_LIST_DIR}/fixtures/multi_suite_update/"
   DESTINATION "${source}")
@@ -37,6 +44,7 @@ execute_process(
   COMMAND
     "${CMAKE_COMMAND}" --build "${binary}"
     --target update-dump
+    ${build_config_args}
     -j 4
   RESULT_VARIABLE update_result
   OUTPUT_VARIABLE update_stdout
@@ -52,6 +60,7 @@ execute_process(
   COMMAND
     "${CMAKE_COMMAND}" --build "${binary}"
     --target two-update-dump
+    ${build_config_args}
   RESULT_VARIABLE suite_update_result
   OUTPUT_VARIABLE suite_update_stdout
   ERROR_VARIABLE suite_update_stderr)
@@ -70,6 +79,7 @@ execute_process(
     "${CMAKE_CTEST_COMMAND}"
     --test-dir "${binary}"
     --output-on-failure
+    ${ctest_config_args}
     -j 2
   RESULT_VARIABLE test_result
   OUTPUT_VARIABLE test_stdout
