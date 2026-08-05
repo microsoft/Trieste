@@ -54,6 +54,9 @@ You can run individual files from `samples/infix/testsuite/examples` with this c
 ./dist/infix/infix ../samples/infix/testsuite/examples/simple.infix
 ```
 
+Trieste also provides a CMake framework for golden tests and named command
+graphs. See the [testsuite guide](docs/testsuite.md).
+
 ## Regex Benchmark (Opt-In)
 
 Trieste includes an opt-in benchmark that compares the internal regex engine

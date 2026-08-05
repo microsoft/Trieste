@@ -1,18 +1,14 @@
-# Arguments for testing infix samples
-macro(toolinvoke ARGS testfile outputdir)
-  set(${ARGS} ${testfile})
-endmacro()
+set(TESTSUITE_REGEX "\\.infix$")
+set(TESTSUITE_DEFINE define_infix_test)
 
-# Regular expression to match test files
-# This regex matches files with the .infix extension
-set(TESTSUITE_REGEX ".*\\.infix")
+function(define_infix_test test)
+  cmake_path(GET test PARENT_PATH test_dir)
+  cmake_path(GET test FILENAME test_file)
+  get_filename_component(stem "${test_file}" NAME_WE)
+  set(node "${test_dir}/${stem}_out")
 
-set(TESTSUITE_EXE "$<TARGET_FILE:infix>")
-
-function (test_output_dir out test)
-  # Use get_filename_component to remove the file extension and keep the directory structure
-  get_filename_component(test_dir ${test} DIRECTORY)
-  get_filename_component(test_name ${test} NAME_WE)
-  # Create the output directory relative to the test directory
-  set(${out} "${test_dir}/${test_name}_out" PARENT_SCOPE)
+  testsuite_add_test(
+    NAME "${node}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${test_dir}"
+    COMMAND "$<TARGET_FILE:infix>" "${test_file}")
 endfunction()

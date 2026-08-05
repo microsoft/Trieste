@@ -46,6 +46,8 @@ target_link_libraries(trieste_roundtrip_test trieste::trieste)
 
 add_test(NAME trieste_roundtrip_test COMMAND trieste_roundtrip_test WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_roundtrip_test>)
 
+add_subdirectory(testsuite)
+
 if(TRIESTE_BUILD_REGEX_BENCHMARK)
   include(FetchContent)
 

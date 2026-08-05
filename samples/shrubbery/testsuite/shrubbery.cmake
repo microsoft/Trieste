@@ -1,15 +1,17 @@
-# Arguments for testing shrubbery samples
-macro(toolinvoke ARGS testfile outputdir)
-  set(${ARGS} build ${testfile} -o ${outputdir}/ast.txt)
-endmacro()
+set(TESTSUITE_REGEX "\\.shrubbery$")
+set(TESTSUITE_DEFINE define_shrubbery_test)
 
-# Regular expression to match test files
-set(TESTSUITE_REGEX ".*\\.shrubbery$")
+function(define_shrubbery_test test)
+  cmake_path(GET test PARENT_PATH test_dir)
+  cmake_path(GET test FILENAME test_file)
+  get_filename_component(stem "${test_file}" NAME_WE)
+  set(node "${test_dir}/${stem}_out")
+  testsuite_output_path(ast NODE "${node}" FILE ast.txt)
 
-set(TESTSUITE_EXE "$<TARGET_FILE:shrubbery>")
-
-function (test_output_dir out test)
-  get_filename_component(test_dir ${test} DIRECTORY)
-  get_filename_component(test_name ${test} NAME_WE)
-  set(${out} "${test_dir}/${test_name}_out" PARENT_SCOPE)
+  testsuite_add_test(
+    NAME "${node}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${test_dir}"
+    GOLDENS exit_code.txt stdout.txt stderr.txt ast.txt
+    COMMAND
+      "$<TARGET_FILE:shrubbery>" build "${test_file}" -o "${ast}")
 endfunction()
