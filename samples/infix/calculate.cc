@@ -183,13 +183,6 @@ namespace
       }};
   }
 
-  // clang-format off
-  const auto wf_to_file =
-    infix::wf
-    | (Top <<= File)
-    | (File <<= Path * Calculation)
-    ;
-}
 
 namespace infix
 {
