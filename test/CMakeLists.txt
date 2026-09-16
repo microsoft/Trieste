@@ -56,6 +56,14 @@ target_link_libraries(trieste_rewrite_test trieste::trieste)
 
 add_test(NAME trieste_rewrite_test COMMAND trieste_rewrite_test WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_rewrite_test>)
 
+add_executable(trieste_wf_test
+  wf_test.cc
+)
+enable_warnings(trieste_wf_test)
+target_link_libraries(trieste_wf_test trieste::trieste)
+
+add_test(NAME trieste_wf_test COMMAND trieste_wf_test WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_wf_test>)
+
 if(TRIESTE_BUILD_REGEX_BENCHMARK)
   include(FetchContent)
 

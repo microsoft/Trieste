@@ -434,6 +434,7 @@ namespace trieste
     {
       Token name;
       Choice choice;
+      bool explicit_name = true;
     };
 
     struct Fields
@@ -443,13 +444,29 @@ namespace trieste
 
       TRIESTE_SLOW_PATH Fields(std::vector<Field> fields_, Token binding_)
       : fields{fields_}, binding{binding_}
-      {}
+      {
+        for (std::size_t i = 0; i < fields.size(); ++i)
+        {
+          for (std::size_t j = i + 1; j < fields.size(); ++j)
+          {
+            check_collision(fields[i], fields[j]);
+          }
+        }
+      }
       TRIESTE_SLOW_PATH Fields() = default;
       TRIESTE_SLOW_PATH Fields(const Fields&) = default;
       TRIESTE_SLOW_PATH Fields(Fields&&) = default;
       TRIESTE_SLOW_PATH Fields& operator=(const Fields&) = default;
       TRIESTE_SLOW_PATH Fields& operator=(Fields&&) = default;
       TRIESTE_SLOW_PATH ~Fields() = default;
+
+      void append(const Field& field)
+      {
+        for (const auto& existing : fields)
+          check_collision(existing, field);
+
+        fields.push_back(field);
+      }
 
       size_t index(const Token& field) const
       {
@@ -590,6 +607,19 @@ namespace trieste
                          << std::endl
                          << node->location().str() << node << std::endl;
         return false;
+      }
+
+    private:
+      static void check_collision(const Field& lhs, const Field& rhs)
+      {
+        if (
+          lhs.name == rhs.name &&
+          (lhs.explicit_name || rhs.explicit_name))
+        {
+          const auto name = lhs.name == Token{} ? "<invalid>" : lhs.name.str();
+          throw std::runtime_error(
+            std::string("duplicate WF field name: ") + name);
+        }
       }
     };
 
@@ -920,6 +950,16 @@ namespace trieste
 
     namespace ops
     {
+      inline Field implicit_field(const Token& type)
+      {
+        return Field{type, Choice{std::vector<Token>{type}}, false};
+      }
+
+      inline Field implicit_field(const Token& name, const Choice& choice)
+      {
+        return Field{name, choice, false};
+      }
+
       inline Choice operator|(const Token& type1, const Token& type2)
       {
         return Choice{std::vector<Token>{type1, type2}};
@@ -1033,17 +1073,17 @@ namespace trieste
 
       inline Field operator>>=(const Token& name, const Token& type)
       {
-        return Field{name, Choice{std::vector<Token>{type}}};
+        return Field{name, Choice{std::vector<Token>{type}}, true};
       }
 
       inline Field operator>>=(const Token& name, const Choice& choice)
       {
-        return Field{name, choice};
+        return Field{name, choice, true};
       }
 
       inline Field operator>>=(const Token& name, Choice&& choice)
       {
-        return Field{name, choice};
+        return Field{name, choice, true};
       }
 
       inline Fields operator*(const Field& fst, const Field& snd)
@@ -1068,46 +1108,46 @@ namespace trieste
 
       inline Fields operator*(const Token& fst, const Token& snd)
       {
-        return (fst >>= fst) * (snd >>= snd);
+        return implicit_field(fst) * implicit_field(snd);
       }
 
       inline Fields operator*(const Field& fst, const Token& snd)
       {
-        return fst * (snd >>= snd);
+        return fst * implicit_field(snd);
       }
 
       inline Fields operator*(Field&& fst, const Token& snd)
       {
-        return fst * (snd >>= snd);
+        return fst * implicit_field(snd);
       }
 
       inline Fields operator*(const Token& fst, const Field& snd)
       {
-        return (fst >>= fst) * snd;
+        return implicit_field(fst) * snd;
       }
 
       inline Fields operator*(const Token& fst, Field&& snd)
       {
-        return (fst >>= fst) * snd;
+        return implicit_field(fst) * snd;
       }
 
       inline TRIESTE_SLOW_PATH Fields
       operator*(const Fields& fst, const Field& snd)
       {
-        auto fields = Fields{fst.fields, Invalid};
-        fields.fields.push_back(snd);
+        auto fields = fst;
+        fields.append(snd);
         return fields;
       }
 
       inline TRIESTE_SLOW_PATH Fields operator*(Fields&& fst, const Field& snd)
       {
-        fst.fields.push_back(snd);
+        fst.append(snd);
         return std::move(fst);
       }
 
       inline Fields operator*(Fields&& fst, const Token& snd)
       {
-        return fst * (snd >>= snd);
+        return fst * implicit_field(snd);
       }
 
       inline Shape operator<<=(const Token& type, const Fields& fields)
@@ -1132,17 +1172,17 @@ namespace trieste
 
       inline Shape operator<<=(const Token& type, const Choice& choice)
       {
-        return type <<= (type >>= choice);
+        return type <<= implicit_field(type, choice);
       }
 
       inline Shape operator<<=(const Token& type, Choice&& choice)
       {
-        return type <<= (type >>= choice);
+        return type <<= implicit_field(type, choice);
       }
 
       inline Shape operator<<=(const Token& type1, const Token& type2)
       {
-        return type1 <<= (type2 >>= type2);
+        return type1 <<= implicit_field(type2);
       }
 
       inline Wellformed operator|(const Wellformed& wf1, const Wellformed& wf2)
