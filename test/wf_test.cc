@@ -52,21 +52,16 @@ int main()
     repeated.fields.size() == 3 && repeated.index(FieldName) == 0,
     "repeated implicit fields should remain valid");
   failures += !check(
-    !repeated.fields[0].explicit_name &&
-      !repeated.fields[1].explicit_name &&
+    !repeated.fields[0].explicit_name && !repeated.fields[1].explicit_name &&
       !repeated.fields[2].explicit_name,
     "token product fields should be implicit");
 
   failures += !expect_duplicate(
-    []() { (void)((FieldName >>= ValueA) * FieldName); },
-    FieldName.name);
+    []() { (void)((FieldName >>= ValueA) * FieldName); }, FieldName.name);
   failures += !expect_duplicate(
-    []() { (void)(FieldName * (FieldName >>= ValueA)); },
-    FieldName.name);
+    []() { (void)(FieldName * (FieldName >>= ValueA)); }, FieldName.name);
   failures += !expect_duplicate(
-    []() {
-      (void)((FieldName >>= ValueA) * (FieldName >>= ValueB));
-    },
+    []() { (void)((FieldName >>= ValueA) * (FieldName >>= ValueB)); },
     FieldName.name);
 
   auto choices = ValueA | ValueB;
@@ -92,8 +87,7 @@ int main()
     bound.binding == FieldName && extended.binding == FieldName,
     "appending a field should preserve binding metadata");
   failures += !expect_duplicate(
-    [&bound]() { (void)(bound * (FieldName >>= ValueA)); },
-    FieldName.name);
+    [&bound]() { (void)(bound * (FieldName >>= ValueA)); }, FieldName.name);
   failures += !check(
     bound.fields.size() == 2 && bound.binding == FieldName,
     "a failed append should not modify its source");
@@ -118,9 +112,7 @@ int main()
     "unnamed shape fields should be implicit");
 
   failures += !expect_duplicate(
-    []() {
-      (void)Fields{std::vector<Field>{Field{}, Field{}}, Invalid};
-    },
+    []() { (void)Fields{std::vector<Field>{Field{}, Field{}}, Invalid}; },
     "<invalid>");
 
   if (failures != 0)

@@ -612,9 +612,7 @@ namespace trieste
     private:
       static void check_collision(const Field& lhs, const Field& rhs)
       {
-        if (
-          lhs.name == rhs.name &&
-          (lhs.explicit_name || rhs.explicit_name))
+        if (lhs.name == rhs.name && (lhs.explicit_name || rhs.explicit_name))
         {
           const auto name = lhs.name == Token{} ? "<invalid>" : lhs.name.str();
           throw std::runtime_error(
