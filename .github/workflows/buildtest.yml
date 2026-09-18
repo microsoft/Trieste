@@ -79,7 +79,7 @@ jobs:
     name: ${{matrix.platform}} ${{matrix.build-type}} ${{matrix.standard}} ${{matrix.compiler}} ${{matrix.variant}}
 
     steps:
-    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     
     - name: Install build dependencies
       run: ${{matrix.dependencies}}
@@ -106,7 +106,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     name: vcpkg - ${{ matrix.os }} ${{ matrix.features }}
     steps:
-    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Check version consistency
       shell: bash
@@ -199,7 +199,7 @@ jobs:
     runs-on: ubuntu-24.04
     name: Format Check
     steps:
-    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Install dependencies
       run: sudo apt install ninja-build clang-format-18
