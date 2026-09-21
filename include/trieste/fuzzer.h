@@ -22,7 +22,13 @@ namespace trieste
     size_t start_index_;
     size_t end_index_;
     size_t max_retries_;
-    bool bound_vars_;
+    bool bound_vars_; // Generate bound variable names
+    std::vector<Node> sample_trees_;
+    std::map<Token, std::vector<Node>> sampled_nodes_;
+    size_t sampling_level_;
+    bool sampling_enabled_;
+    // Probability of choosing a sampled node over a generated node
+    size_t sampling_frequency_;
     bool test_sequence_;
     bool size_stats_;
 
@@ -211,8 +217,15 @@ namespace trieste
     /// @return The generated AST node. NULL if retry budget was exhausted.
     Node gen_fresh_ast(const wf::Wellformed& wf, SeedContext& context)
     {
-      auto ast =
-        wf.gen(generators_, context.current_seed, max_depth_, bound_vars_);
+      auto ast = wf.gen(
+        generators_,
+        context.current_seed,
+        max_depth_,
+        bound_vars_,
+        sampled_nodes_,
+        sampling_level_,
+        sampling_enabled_,
+        sampling_frequency_);
       size_t hash = ast->hash();
 
       auto it = context.ast_hashes.find(hash);
@@ -220,8 +233,15 @@ namespace trieste
       while (it != context.ast_hashes.end() && context.retries < max_retries_)
       {
         context.current_seed = context.retry_seed++;
-        ast =
-          wf.gen(generators_, context.current_seed, max_depth_, bound_vars_);
+        ast = wf.gen(
+          generators_,
+          context.current_seed,
+          max_depth_,
+          bound_vars_,
+          sampled_nodes_,
+          sampling_level_,
+          sampling_enabled_,
+          sampling_frequency_);
         hash = ast->hash();
         context.retries++;
         it = context.ast_hashes.find(hash);
@@ -341,7 +361,7 @@ namespace trieste
           if (!logging::Trace::active())
           {
             // We haven't printed what failed with Trace earlier, so do it
-            // now. Regenerate the start Ast for the error message.
+            // now. Regenerate the initial AST for the error message.
             err << "============" << std::endl
                 << "Pass: " << pass->name()
                 << ", seed: " << seed_context.current_seed << std::endl
@@ -350,7 +370,11 @@ namespace trieste
                      generators_,
                      seed_context.current_seed,
                      max_depth_,
-                     bound_vars_)
+                     bound_vars_,
+                     sampled_nodes_,
+                     sampling_level_,
+                     sampling_enabled_,
+                     sampling_frequency_)
                 << "------------" << std::endl
                 << new_ast;
           }
@@ -474,6 +498,81 @@ namespace trieste
       return *std::max_element(v.begin(), v.end());
     }
 
+    void update_sample_nodes(wf::Wellformed wf, Pass& pass)
+    {
+      auto it = sampled_nodes_.find(Top);
+      if (it == sampled_nodes_.end())
+        return;
+
+      // Make a local copy of the Top sample programs so we can clear and
+      // repopulate `sampled_nodes_` without mutating the container we're
+      // iterating over.
+      Nodes sample_progs = it->second;
+      sampled_nodes_.clear();
+      std::vector<Node> errors;
+
+      for (auto& node : sample_progs)
+      {
+        if (!node)
+        {
+          continue;
+        }
+        auto [node_updated, cn, ch] = pass->run(node);
+
+        if (!node_updated)
+          continue;
+
+        // Don't use invalid updated nodes.
+        auto ok = wf.build_st(node_updated);
+        if (!ok || !wf.check(node_updated))
+        {
+          continue;
+        }
+
+        node_updated->get_errors(errors);
+        if (!errors.empty())
+        {
+          errors.clear();
+          continue;
+        }
+
+        // Repopulate sample nodes map for next round.
+        node_updated->traverse([&](auto& n) {
+          if (n != Error)
+            sampled_nodes_[n->type()].emplace_back(n);
+          return true;
+        });
+      }
+    }
+
+    void initialize_samples(WFContext& context)
+    {
+      logging::Debug() << "Processing sample trees up to pass: "
+                       << passes_.at(start_index_ - 1)->name() << std::endl;
+      for (auto& sample_tree : sample_trees_)
+      {
+        sample_tree->traverse([&](auto& n) {
+          sampled_nodes_[n->type()].emplace_back(n);
+          return true;
+        });
+      }
+
+      for (size_t i = 1; i < start_index_; i++)
+      {
+        auto& pass = passes_.at(i - 1);
+        auto& wf = pass->wf();
+        auto& prev = i > 1 ? passes_.at(i - 2)->wf() : *input_wf_;
+
+        context.push_back(prev);
+        context.push_back(wf);
+
+        update_sample_nodes(wf, pass);
+
+        context.pop_front();
+        context.pop_front();
+      }
+    }
+
   public:
     Fuzzer() {}
 
@@ -492,6 +591,10 @@ namespace trieste
       end_index_(passes.size()),
       max_retries_(100),
       bound_vars_(true),
+      sampled_nodes_({}),
+      sampling_level_(0),
+      sampling_enabled_(false),
+      sampling_frequency_(50),
       test_sequence_(false),
       size_stats_(false)
     {}
@@ -508,6 +611,29 @@ namespace trieste
     Fuzzer(const Rewriter& rewriter, GenNodeLocationF generators)
     : Fuzzer(rewriter.passes(), rewriter.input_wf(), generators)
     {}
+
+    std::vector<std::string> pass_names() const
+    {
+      std::vector<std::string> names;
+      std::transform(
+        passes_.begin(),
+        passes_.end(),
+        std::back_inserter(names),
+        [](const auto& pass) { return pass->name(); });
+      return names;
+    }
+
+    // Returns the 1-based index of the named pass (matching the start_index_/
+    // end_index_ convention), or size_t max if no such pass exists.
+    size_t pass_index(const std::string& name) const
+    {
+      for (size_t i = 0; i < passes_.size(); i++)
+      {
+        if (passes_[i]->name() == name)
+          return i + 1;
+      }
+      return std::numeric_limits<size_t>::max();
+    }
 
     size_t max_depth() const
     {
@@ -613,6 +739,46 @@ namespace trieste
       return *this;
     }
 
+    bool bound_vars() const
+    {
+      return bound_vars_;
+    }
+
+    Fuzzer& bound_vars(bool gen_bound_vars)
+    {
+      bound_vars_ = gen_bound_vars;
+      return *this;
+    }
+
+    std::vector<Node> sample_trees() const
+    {
+      return sample_trees_;
+    }
+
+    Fuzzer& sample_trees(Nodes& sample_trees)
+    {
+      sample_trees_ = sample_trees;
+      return *this;
+    }
+
+    Fuzzer& sampling_level(size_t sampling_level)
+    {
+      sampling_level_ = sampling_level;
+      return *this;
+    }
+
+    Fuzzer& sampling_enabled(bool sampling_enabled)
+    {
+      sampling_enabled_ = sampling_enabled;
+      return *this;
+    }
+
+    Fuzzer& sampling_frequency(size_t sampling_frequency)
+    {
+      sampling_frequency_ = sampling_frequency;
+      return *this;
+    }
+
     int debug_entropy()
     {
       const uint8_t NO_BYTES = 4;
@@ -681,12 +847,6 @@ namespace trieste
       return 0;
     }
 
-    Fuzzer& bound_vars(bool gen_bound_vars)
-    {
-      bound_vars_ = gen_bound_vars;
-      return *this;
-    }
-
     int test()
     {
       if (end_index_ < start_index_)
@@ -699,6 +859,13 @@ namespace trieste
       std::vector<Survivor> survivors;
 
       int ret = 0;
+
+      // Get sampled trees up to the starting pass and populate `sampled_nodes_`
+      // for generation.
+      if (sampling_enabled_ && !sample_trees_.empty())
+      {
+        initialize_samples(context);
+      }
 
       for (size_t i = start_index_; i <= end_index_; i++)
       {
@@ -789,6 +956,10 @@ namespace trieste
         }
 
         pass_stats.log(size_stats_);
+        if (i != end_index_)
+        {
+          update_sample_nodes(wf, pass);
+        }
 
         context.pop_front();
         context.pop_front();
