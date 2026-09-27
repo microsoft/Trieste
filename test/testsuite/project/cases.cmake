@@ -14,7 +14,9 @@ function(add_node name)
 endfunction()
 
 function(define_case input)
-  if(SCENARIO STREQUAL "valid")
+  if(SCENARIO STREQUAL "explicit-collections")
+    add_node(explicit)
+  elseif(SCENARIO STREQUAL "valid")
     testsuite_output_path(compile_output NODE compile FILE artifact.txt)
     add_node(run)
     testsuite_add_test(

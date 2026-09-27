@@ -35,10 +35,29 @@ include("${trieste_SOURCE_DIR}/cmake/testsuite.cmake")
 testsuite(my-language)
 ```
 
+By default, the suite loads every adjacent `.cmake` collection. A project with
+multiple suites over one fixture tree should assign collection ownership
+explicitly:
+
+```cmake
+testsuite(
+  compiler
+  COLLECTIONS
+    source-bytecode.cmake
+    ir-bytecode.cmake)
+
+testsuite(runtime COLLECTIONS runtime.cmake)
+```
+
+Collection paths are relative to the suite directory. They must identify
+existing files and must not contain traversal, generator expressions, or
+duplicates. Omitting `COLLECTIONS` preserves implicit adjacent-file discovery
+for existing callers.
+
 ## Collections
 
-Each suite can have multiple collections of tests. Every `.cmake` file next to
-the suite's `CMakeLists.txt` is a collection file:
+Each suite can have multiple collections of tests. With implicit discovery,
+every `.cmake` file next to the suite's `CMakeLists.txt` is a collection file:
 
 ```text
 testsuite/

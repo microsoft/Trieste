@@ -73,6 +73,16 @@ endfunction()
 
 # Verify normal nodes, forward output references, artifacts, and dependencies.
 add_testsuite_config_test(valid valid TRUE "")
+# Load only the named collection when adjacent collections exist.
+add_testsuite_config_test(
+  explicit-collections explicit-collections TRUE "")
+# Reject explicit collection paths that cannot be loaded safely and uniquely.
+add_testsuite_config_test(
+  missing-collection missing-collection FALSE "does not exist")
+add_testsuite_config_test(
+  duplicate-collection duplicate-collection FALSE "Duplicate collection")
+add_testsuite_config_test(
+  unsafe-collection unsafe-collection FALSE "unsafe path component")
 # Reject duplicate node names within one suite.
 add_testsuite_config_test(
   duplicate duplicate FALSE "Duplicate test node name")
