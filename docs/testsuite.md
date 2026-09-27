@@ -105,6 +105,7 @@ function(define_tests source)
       stdout.txt
       stderr.txt
     ARTIFACTS "${stem}.bc"
+    LABELS frontend:source backend:bytecode
     COMMAND
       "$<TARGET_FILE:compiler>" "${source}" -o "${bytecode}")
 
@@ -155,9 +156,18 @@ endfunction()
 | `ARTIFACTS` | Required transient files which are never copied to the source tree. |
 | `TIMEOUT` | Positive command timeout in seconds; defaults to 20. |
 | `VALIDATOR` | Optional CMake script executed with `OUTPUT_DIR` set. |
+| `LABELS` | Additional CTest labels; the suite name remains an automatic label. |
 
 If `GOLDENS` is omitted, it defaults to `exit_code.txt`, `stdout.txt`, and
 `stderr.txt`. An explicit list must include `exit_code.txt`.
+
+Labels describe registered nodes for CTest selection and reporting; they do
+not alter graph registration or execution. Repeated labels are deduplicated.
+Multiple `-L` options select intersections, for example:
+
+```sh
+ctest --test-dir build -L '^frontend:source$' -L '^backend:bytecode$'
+```
 
 The harness normalizes relative `NAME`, `DEPENDS`, `GOLDENS`, and `ARTIFACTS`
 paths. It rejects absolute paths, traversal outside the suite, duplicate

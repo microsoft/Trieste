@@ -76,6 +76,8 @@ add_testsuite_config_test(valid valid TRUE "")
 # Load only the named collection when adjacent collections exist.
 add_testsuite_config_test(
   explicit-collections explicit-collections TRUE "")
+# Preserve the suite label and deduplicate additional node labels.
+add_testsuite_config_test(node-labels node-labels TRUE "")
 # Reject explicit collection paths that cannot be loaded safely and uniquely.
 add_testsuite_config_test(
   missing-collection missing-collection FALSE "does not exist")

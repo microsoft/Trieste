@@ -16,6 +16,12 @@ endfunction()
 function(define_case input)
   if(SCENARIO STREQUAL "explicit-collections")
     add_node(explicit)
+  elseif(SCENARIO STREQUAL "node-labels")
+    testsuite_add_test(
+      NAME labeled
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+      LABELS frontend:vc backend:vbc frontend:vc
+      COMMAND "${CMAKE_COMMAND}" -E true)
   elseif(SCENARIO STREQUAL "valid")
     testsuite_output_path(compile_output NODE compile FILE artifact.txt)
     add_node(run)

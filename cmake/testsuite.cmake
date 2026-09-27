@@ -168,7 +168,7 @@ function(testsuite_add_test)
     NODE
     ""
     "NAME;WORKING_DIRECTORY;TIMEOUT;VALIDATOR"
-    "DEPENDS;GOLDENS;ARTIFACTS"
+    "DEPENDS;GOLDENS;ARTIFACTS;LABELS"
     ${metadata})
   if(NODE_UNPARSED_ARGUMENTS OR NODE_KEYWORDS_MISSING_VALUES)
     message(FATAL_ERROR
@@ -320,10 +320,12 @@ function(testsuite_add_test)
       "-DNODE_CONFIG_FILE=${config_file}"
       -DMODE=VERIFY
       -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/execute_test_node.cmake")
+  set(test_labels "${suite}" ${NODE_LABELS})
+  list(REMOVE_DUPLICATES test_labels)
   set_tests_properties(
     "${public_test}" PROPERTIES
     FIXTURES_SETUP "${verified_fixture}"
-    LABELS "${suite}")
+    LABELS "${test_labels}")
   if(required_fixtures)
     set_tests_properties(
       "${public_test}" PROPERTIES
