@@ -168,7 +168,7 @@ function(testsuite_add_test)
     NODE
     ""
     "NAME;WORKING_DIRECTORY;TIMEOUT;VALIDATOR"
-    "DEPENDS;GOLDENS;ARTIFACTS"
+    "DEPENDS;GOLDENS;ARTIFACTS;LABELS"
     ${metadata})
   if(NODE_UNPARSED_ARGUMENTS OR NODE_KEYWORDS_MISSING_VALUES)
     message(FATAL_ERROR
@@ -320,10 +320,12 @@ function(testsuite_add_test)
       "-DNODE_CONFIG_FILE=${config_file}"
       -DMODE=VERIFY
       -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/execute_test_node.cmake")
+  set(test_labels "${suite}" ${NODE_LABELS})
+  list(REMOVE_DUPLICATES test_labels)
   set_tests_properties(
     "${public_test}" PROPERTIES
     FIXTURES_SETUP "${verified_fixture}"
-    LABELS "${suite}")
+    LABELS "${test_labels}")
   if(required_fixtures)
     set_tests_properties(
       "${public_test}" PROPERTIES
@@ -556,8 +558,14 @@ endfunction()
 #   include (${CMAKE_SOURCE_DIR}/cmake/testsuite.cmake)
 #   testsuite(infix)
 #
-# testsuite() loads each adjacent .cmake collection. A collection selects
-# candidates with TESTSUITE_REGEX.
+# Callers with multiple suites in one source directory can select collections
+# explicitly:
+#
+#   testsuite(infix COLLECTIONS compiler.cmake examples.cmake)
+#
+# By default, testsuite() loads each adjacent .cmake collection. COLLECTIONS
+# replaces discovery with an explicit list relative to the suite directory. A
+# collection selects candidates with TESTSUITE_REGEX.
 #
 # TESTSUITE_DEFINE names a callback which registers nodes with
 # testsuite_add_test(). Nodes have suite-local NAMEs, COMMANDs, exact GOLDENS,
@@ -565,6 +573,13 @@ endfunction()
 # testsuite_output_path() to pass a producer's generated artifact to a
 # dependent node. See docs/testsuite.md for the complete API.
 function(testsuite name)
+  cmake_parse_arguments(SUITE "" "" "COLLECTIONS" ${ARGN})
+  if(SUITE_UNPARSED_ARGUMENTS OR SUITE_KEYWORDS_MISSING_VALUES)
+    message(FATAL_ERROR
+      "Invalid testsuite(${name}) arguments: "
+      "${SUITE_UNPARSED_ARGUMENTS}${SUITE_KEYWORDS_MISSING_VALUES}")
+  endif()
+
   if(TARGET "${name}-update-dump")
     message(FATAL_ERROR "testsuite(${name}) called more than once. "
                         "Remove duplicate or use a different name.")
@@ -597,8 +612,35 @@ function(testsuite name)
     "${output_root}")
 
   # Phase 1: discover candidates once, then let each collection select files
-  # and register nodes through its TESTSUITE_DEFINE callback.
-  file (GLOB test_collections CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cmake)
+  # and register nodes through its TESTSUITE_DEFINE callback. Explicit
+  # collection ownership lets multiple suites share one fixture tree without
+  # registering one another's pipelines.
+  if(DEFINED SUITE_COLLECTIONS)
+    set(test_collections)
+    foreach(collection IN LISTS SUITE_COLLECTIONS)
+      _testsuite_normalize_relative_path(
+        normalized_collection "Collection path" "${collection}")
+      if(normalized_collection IN_LIST test_collections)
+        message(FATAL_ERROR
+          "Duplicate collection '${normalized_collection}' in suite '${name}'.")
+      endif()
+      if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${normalized_collection}")
+        message(FATAL_ERROR
+          "Collection '${normalized_collection}' does not exist in suite '${name}'.")
+      endif()
+      if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${normalized_collection}")
+        message(FATAL_ERROR
+          "Collection '${normalized_collection}' in suite '${name}' is a directory.")
+      endif()
+      list(APPEND test_collections "${normalized_collection}")
+    endforeach()
+  else()
+    file(
+      GLOB test_collections
+      CONFIGURE_DEPENDS
+      RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
+      "*.cmake")
+  endif()
   file (GLOB_RECURSE all_files CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *)
 
   foreach(test_collection ${test_collections})

@@ -35,10 +35,29 @@ include("${trieste_SOURCE_DIR}/cmake/testsuite.cmake")
 testsuite(my-language)
 ```
 
+By default, the suite loads every adjacent `.cmake` collection. A project with
+multiple suites over one fixture tree should assign collection ownership
+explicitly:
+
+```cmake
+testsuite(
+  compiler
+  COLLECTIONS
+    source-bytecode.cmake
+    ir-bytecode.cmake)
+
+testsuite(runtime COLLECTIONS runtime.cmake)
+```
+
+Collection paths are relative to the suite directory. They must identify
+existing files and must not contain traversal, generator expressions, or
+duplicates. Omitting `COLLECTIONS` preserves implicit adjacent-file discovery
+for existing callers.
+
 ## Collections
 
-Each suite can have multiple collections of tests. Every `.cmake` file next to
-the suite's `CMakeLists.txt` is a collection file:
+Each suite can have multiple collections of tests. With implicit discovery,
+every `.cmake` file next to the suite's `CMakeLists.txt` is a collection file:
 
 ```text
 testsuite/
@@ -86,6 +105,7 @@ function(define_tests source)
       stdout.txt
       stderr.txt
     ARTIFACTS "${stem}.bc"
+    LABELS frontend:source backend:bytecode
     COMMAND
       "$<TARGET_FILE:compiler>" "${source}" -o "${bytecode}")
 
@@ -136,9 +156,18 @@ endfunction()
 | `ARTIFACTS` | Required transient files which are never copied to the source tree. |
 | `TIMEOUT` | Positive command timeout in seconds; defaults to 20. |
 | `VALIDATOR` | Optional CMake script executed with `OUTPUT_DIR` set. |
+| `LABELS` | Additional CTest labels; the suite name remains an automatic label. |
 
 If `GOLDENS` is omitted, it defaults to `exit_code.txt`, `stdout.txt`, and
 `stderr.txt`. An explicit list must include `exit_code.txt`.
+
+Labels describe registered nodes for CTest selection and reporting; they do
+not alter graph registration or execution. Repeated labels are deduplicated.
+Multiple `-L` options select intersections, for example:
+
+```sh
+ctest --test-dir build -L '^frontend:source$' -L '^backend:bytecode$'
+```
 
 The harness normalizes relative `NAME`, `DEPENDS`, `GOLDENS`, and `ARTIFACTS`
 paths. It rejects absolute paths, traversal outside the suite, duplicate
