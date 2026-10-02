@@ -148,6 +148,13 @@ namespace trieste
       test->add_option(
         "--gen_bound", bound_vars, "Generate bound variable names if possible");
 
+      std::vector<std::tuple<std::string, size_t>> test_weights;
+      test->add_option(
+        "--weights",
+        test_weights,
+        "Token weight pairs for generation. Use: --weights <token> <weight> "
+        "[<token> <weight> ...]");
+
       // Subcommand to test entropy of random number generation.
       auto entropy = test->add_subcommand(
         "debug_entropy",
@@ -262,6 +269,19 @@ namespace trieste
           return 1;
         }
 
+        wf::TokenWeights parsed_weights;
+        for (auto [name, weight] : test_weights)
+        {
+          auto token = detail::find_token(name);
+          if (token == Invalid)
+          {
+            logging::Error()
+              << "Unknown token in weights: " << name << std::endl;
+            return 1;
+          }
+          parsed_weights[token] = weight;
+        }
+
         logging::Output() << "Testing x" << test_seed_count
                           << ", seed: " << test_seed << std::endl;
 
@@ -289,6 +309,7 @@ namespace trieste
             .end_index(reader.pass_index(test_end_pass))
             .start_seed(test_seed)
             .bound_vars(bound_vars)
+            .token_weights(std::move(parsed_weights))
             .test_sequence(test_sequence)
             .size_stats(test_size_stats);
 

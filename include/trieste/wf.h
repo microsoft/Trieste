@@ -25,6 +25,7 @@ namespace trieste
   namespace wf
   {
     using TokenTerminalDistance = std::map<Token, std::size_t>;
+    using TokenWeights = std::map<Token, std::size_t>;
     using SymtabKeys = std::pair<std::vector<Token>, size_t>;
 
     struct Gen
@@ -35,8 +36,11 @@ namespace trieste
       size_t target_depth;
       size_t ceiling_depth;
       double alpha;
+      TokenWeights token_weights_;
       std::map<Token, std::pair<std::vector<Token>, size_t>> binding_keys;
       bool gen_bound_vars;
+      std::map<const std::vector<Token>*, std::vector<double>>
+        weighted_offsets_cache_;
 
       /* The generator chooses which token to emit next. It makes this choice
        * using a weighted probability distribution, where the weights are based
@@ -80,15 +84,122 @@ namespace trieste
         return std::find(tokens.begin(), tokens.end(), t) != tokens.end();
       }
 
-      Token choose(const std::vector<Token>& tokens, std::size_t depth)
+      Gen& token_weights(TokenWeights token_weights)
       {
+        token_weights_ = std::move(token_weights);
+        return *this;
+      }
+
+      std::size_t weight_for(const Token& token) const
+      {
+        auto it = token_weights_.find(token);
+        if (it == token_weights_.end())
+          return 1;
+
+        return it->second;
+      }
+
+      [[noreturn]] void throw_no_candidates(
+        const std::vector<Token>& tokens,
+        Token parent,
+        std::size_t depth,
+        const std::string& reason) const
+      {
+        std::ostringstream err;
+        err << "Cannot choose token for parent " << parent.str() << " at depth "
+            << depth << ": " << reason << std::endl;
+        err << "tokens={";
+        std::string delim = "";
+        for (auto const& token : tokens)
+        {
+          err << delim << token.str() << ":" << weight_for(token);
+          delim = ", ";
+        }
+        err << "}";
+        throw std::runtime_error(err.str());
+      }
+
+      // Samples from an already-computed cumulative distribution, i.e. one
+      // that has already had std::partial_sum applied to it.
+      Token choose_from_cumulative(
+        const std::vector<Token>& tokens,
+        const std::vector<double>& cumulative,
+        Token parent,
+        std::size_t depth)
+      {
+        if (cumulative.empty() || cumulative.back() <= 0.0)
+          throw_no_candidates(
+            tokens, parent, depth, "no positive effective weights");
+
+        // instead of normalising the distribution, scale the random value by
+        // the sum of the weights
+        double value = static_cast<double>(rand() - rand.min()) /
+          static_cast<double>(rand.max() - rand.min()) * cumulative.back();
+
+        // finding the first element greater than the uniform random number is
+        // the same as performing a weighted sampling of the distribution
+        auto it = std::lower_bound(cumulative.begin(), cumulative.end(), value);
+
+        return tokens[std::distance(cumulative.begin(), it)];
+      }
+
+      Token choose_weighted(
+        const std::vector<Token>& tokens,
+        std::vector<double> offsets,
+        Token parent,
+        std::size_t depth)
+      {
+        // compute the cumulative distribution of the given offsets
+        std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
+        return choose_from_cumulative(tokens, offsets, parent, depth);
+      }
+
+      // The token-weight-only distribution for a given candidate list is the
+      // same every time it is used (it only depends on the static token
+      // weights, not on depth), so it is computed once per candidate list and
+      // cached for the lifetime of this Gen.
+      const std::vector<double>&
+      cumulative_weighted_offsets(const std::vector<Token>& tokens)
+      {
+        auto found = weighted_offsets_cache_.find(&tokens);
+        if (found != weighted_offsets_cache_.end())
+          return found->second;
+
+        std::vector<double> offsets;
+        offsets.reserve(tokens.size());
+        std::transform(
+          tokens.begin(),
+          tokens.end(),
+          std::back_inserter(offsets),
+          [&](const Token& t) { return static_cast<double>(weight_for(t)); });
+        std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
+
+        return weighted_offsets_cache_.emplace(&tokens, std::move(offsets))
+          .first->second;
+      }
+
+      Token
+      choose(const std::vector<Token>& tokens, std::size_t depth, Token parent)
+      {
+        if (tokens.empty())
+          throw_no_candidates(tokens, parent, depth, "empty token list");
+
         if (tokens.size() == 1)
         {
+          if (!token_weights_.empty() && weight_for(tokens[0]) == 0)
+            throw_no_candidates(
+              tokens, parent, depth, "single token has zero effective weight");
           return tokens[0];
         }
 
         if (depth <= target_depth)
         {
+          if (!token_weights_.empty())
+          {
+            return choose_from_cumulative(
+              tokens, cumulative_weighted_offsets(tokens), parent, depth);
+          }
+
           std::size_t choice = rand() % tokens.size();
           return tokens[choice];
         }
@@ -147,20 +258,14 @@ namespace trieste
           return tokens[std::distance(offsets.begin(), max)];
         }
 
-        // compute the cumulative distribution of P(d | c, p)
-        std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
+        if (!token_weights_.empty())
+        {
+          // scale the offsets by the token weights
+          for (size_t i = 0; i < offsets.size(); i++)
+            offsets[i] *= static_cast<double>(weight_for(tokens[i]));
+        }
 
-        // instead of normalizing the cumulative distribution, scale the random
-        // number to the sum of the probabilities
-        double value = static_cast<double>(rand() - rand.min()) /
-          static_cast<double>(rand.max() - rand.min()) * offsets.back();
-
-        // finding the first element greater than the uniform random number is
-        // the same as performing a weighted sampling of the P(c | d, p)
-        // distribution
-        auto it = std::lower_bound(offsets.begin(), offsets.end(), value);
-
-        return tokens[std::distance(offsets.begin(), it)];
+        return choose_weighted(tokens, std::move(offsets), parent, depth);
       }
 
       Result next()
@@ -304,7 +409,7 @@ namespace trieste
 
       void gen(Gen& g, size_t depth, Node node) const
       {
-        Token type = g.choose(types, depth);
+        Token type = g.choose(types, depth, node->type());
 
         // We may need a fresh location, so the child needs to be in the AST by
         // the time we call g.location().
@@ -420,7 +525,13 @@ namespace trieste
         for (i = 0; i < min_len; ++i)
           choice.gen(g, depth, node);
 
-        if (depth >= g.target_depth)
+        const auto weight_sum = std::accumulate(
+          choice.types.begin(),
+          choice.types.end(),
+          size_t{0},
+          [&](size_t acc, const Token& t) { return acc + g.weight_for(t); });
+
+        if (depth >= g.target_depth || weight_sum == 0)
         {
           return;
         }
@@ -801,9 +912,12 @@ namespace trieste
       }
 
     public:
-      Node
-      gen(GenNodeLocationF gloc, Seed seed, size_t target_depth, bool gen_bound)
-        const
+      Node gen(
+        GenNodeLocationF gloc,
+        Seed seed,
+        size_t target_depth,
+        bool gen_bound,
+        TokenWeights token_weights = {}) const
       {
         // Collect map of tokens to their binding token and the corresponding
         // index
@@ -812,12 +926,13 @@ namespace trieste
           populate_binding_keys(binding_keys);
 
         auto g = Gen(
-          compute_minimum_distance_to_terminal(target_depth),
-          gloc,
-          seed,
-          target_depth,
-          binding_keys,
-          gen_bound);
+                   compute_minimum_distance_to_terminal(target_depth),
+                   gloc,
+                   seed,
+                   target_depth,
+                   binding_keys,
+                   gen_bound)
+                   .token_weights(std::move(token_weights));
         auto top = NodeDef::create(Top);
         ast::detail::top_node() = top;
         gen_node(g, 0, top);

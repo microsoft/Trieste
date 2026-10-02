@@ -64,6 +64,14 @@ target_link_libraries(trieste_wf_test trieste::trieste)
 
 add_test(NAME trieste_wf_test COMMAND trieste_wf_test WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_wf_test>)
 
+add_executable(trieste_token_weights_test
+  token_weights_test.cc
+)
+enable_warnings(trieste_token_weights_test)
+target_link_libraries(trieste_token_weights_test trieste::trieste)
+
+add_test(NAME trieste_token_weights_test COMMAND trieste_token_weights_test WORKING_DIRECTORY $<TARGET_FILE_DIR:trieste_token_weights_test>)
+
 if(TRIESTE_BUILD_REGEX_BENCHMARK)
   include(FetchContent)
 

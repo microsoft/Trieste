@@ -743,8 +743,12 @@ Configuration is done via the builder pattern:
 | `.max_retries(n)` | 100 | Retries to find a hash-unique tree before reusing. |
 | `.start_index(n)` | 1 | First pass to test (1-based). |
 | `.end_index(n)` | last | Last pass to test (1-based). |
+| `.token_weights(TokenWeights)` | `{}` | Bias which tokens are chosen during generation; see below. |
+| `.size_stats(bool)` | `false` | Collect and log tree size/height statistics for passing and failing trees. |
 
 Note the the `Driver` defaults to using `seed_count` times two as `max_retries`.
+
+`TokenWeights` is a `std::map<Token, std::size_t>`. A token with no entry has an implicit weight of `1`; higher weights make a token more likely to be chosen among its siblings, and a weight of `0` excludes it entirely. If every candidate at some position has weight `0` (including the case of a single candidate with weight `0`), generation throws, since no valid tree can be produced from that point.
 
 ### Running
 
