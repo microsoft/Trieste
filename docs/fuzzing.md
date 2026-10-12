@@ -64,6 +64,9 @@ flag `-f` to stop after the first error.
 | `--gen_bound` | Whether generated trees should try to reuse an existing bound name instead of a fresh one, so lookups get exercised too (default on). |
 | `--weights <tok> <n> [<tok> <n> ...]` | Bias generation towards or away from specific tokens; see [Token weights](#token-weights). |
 | `-l, --log_level` | `Trace`, `Debug`, `Info`, `Warning`, `Output`, `Error`, or `None`. `Trace` prints every generated tree and its output, not just failures. |
+| `--samples` | Files with sample programs to use in program generation. |
+| `--sampling-level` | Number of levels sliced from a sample tree in program generation. Defaults to 1. |
+| `--sampling-frequency` | Chance of preferring a sample node over random generation (0-100). Defaults to 50. |
 
 ## Reproducing a failure
 
@@ -106,6 +109,22 @@ my_tool test debug_entropy
 This samples the random number generator itself across `seed_count` seeds and
 reports the entropy of the values produced. This is a sanity check on randomness,
 not on any WF spec so most users won't need it.
+
+## Using samples
+
+Using sample programs during fuzzing increases the likelihood of generating valid trees or valid subtrees. This is especially helpful when fuzzing early passes, which typically operate on less structured trees. Sampling has been shown to improve code coverage of fuzzing across several Trieste projects.
+
+To run the fuzzer with samples, provide one or more sample files:
+
+```
+my_tool test --samples examples/*.my_ext
+```
+
+When sampling is enabled, the fuzzer parses the sample files and may run them through all passes up to the selected starting pass. Each sample tree, and all of its subtrees, is stored in a map keyed by the type of its root node (token).
+
+Starting from the `Top` node, we generate the tree top-down: for each node, we choose its children by randomly picking one of the valid tokens (or token sequences) defined in the well-formedness specification. If sampling is enabled, we may instead copy a randomly chosen node of that type from the sample map, based on the sampling frequency (50% by default).
+
+The `--sampling-level` flag controls how much of a sampled subtree is copied. At the default level of 1, we copy the sampled node's children but not their descendants. At higher levels, we copy descendants down to that depth, or the whole subtree if it is shallower. A level of 0 copies the entire sampled subtre; to avoid reproducing complete sample programs, the `Top` node's children are then always generated from the well-formedness specification.
 
 ## Related: pattern checking
 
