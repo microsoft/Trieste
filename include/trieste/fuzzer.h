@@ -23,12 +23,12 @@ namespace trieste
     size_t end_index_;
     size_t max_retries_;
     bool bound_vars_;
+    wf::TokenWeights token_weights_;
     std::vector<Node> sample_trees_;
     std::map<Token, std::vector<Node>> sampled_nodes_;
     size_t sampling_level_;
     bool sampling_enabled_;
     size_t sampling_frequency_;
-    wf::TokenWeights token_weights_;
     bool test_sequence_;
     bool size_stats_;
 
@@ -373,6 +373,7 @@ namespace trieste
                      seed_context.current_seed,
                      max_depth_,
                      bound_vars_,
+                     token_weights_,
                      sampled_nodes_,
                      sampling_level_,
                      sampling_enabled_,
@@ -850,11 +851,6 @@ namespace trieste
       return 0;
     }
 
-    Fuzzer& bound_vars(bool gen_bound_vars)
-    {
-      bound_vars_ = gen_bound_vars;
-      return *this;
-    }
 
     Fuzzer& token_weights(wf::TokenWeights token_weights)
     {

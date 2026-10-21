@@ -59,8 +59,8 @@ namespace trieste
       double alpha;
       TokenWeights token_weights_;
       std::map<Token, SymtabKeys> binding_keys;
-      Sampling sampling;
       bool gen_bound_vars;
+      Sampling sampling;
       std::map<const std::vector<Token>*, std::vector<double>>
         weighted_offsets_cache_;
 
@@ -1099,7 +1099,7 @@ namespace trieste
         Seed seed,
         size_t target_depth,
         bool gen_bound,
-        TokenWeights token_weights = {}
+        TokenWeights token_weights,
         std::map<trieste::Token, trieste::Nodes>& sampled_nodes,
         size_t sampling_level,
         bool sampling_enabled,
@@ -1138,7 +1138,7 @@ namespace trieste
       {
         std::map<trieste::Token, trieste::Nodes> empty_nodes;
         return gen(
-          gloc, seed, target_depth, gen_bound, empty_nodes, 0, false, 0);
+          gloc, seed, target_depth, gen_bound, {} , empty_nodes, 0, false, 0);
       }
 
       std::size_t min_dist_to_terminal(
