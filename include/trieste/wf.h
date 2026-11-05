@@ -1115,17 +1115,17 @@ namespace trieste
         }
 
         auto g = Gen(
-          compute_minimum_distance_to_terminal(target_depth),
-          gloc,
-          seed,
-          target_depth,
-          binding_keys,
-          gen_bound,
-          sampled_nodes,
-          sampling_level,
-          sampling_enabled,
-          sampling_frequency)
-          .token_weights(std::move(token_weights));
+                   compute_minimum_distance_to_terminal(target_depth),
+                   gloc,
+                   seed,
+                   target_depth,
+                   binding_keys,
+                   gen_bound,
+                   sampled_nodes,
+                   sampling_level,
+                   sampling_enabled,
+                   sampling_frequency)
+                   .token_weights(std::move(token_weights));
         auto top = NodeDef::create(Top);
         ast::detail::top_node() = top;
         gen_node(g, 0, top);
@@ -1138,7 +1138,7 @@ namespace trieste
       {
         std::map<trieste::Token, trieste::Nodes> empty_nodes;
         return gen(
-          gloc, seed, target_depth, gen_bound, {} , empty_nodes, 0, false, 0);
+          gloc, seed, target_depth, gen_bound, {}, empty_nodes, 0, false, 0);
       }
 
       std::size_t min_dist_to_terminal(

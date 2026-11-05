@@ -851,7 +851,6 @@ namespace trieste
       return 0;
     }
 
-
     Fuzzer& token_weights(wf::TokenWeights token_weights)
     {
       token_weights_ = std::move(token_weights);

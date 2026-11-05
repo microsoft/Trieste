@@ -16,9 +16,8 @@ int main(int argc, char** argv)
 
   std::string transform;
   app.add_option("transform", transform, "Transform to test")
-    ->check(
-      CLI::IsMember(
-        {"reader", "writer", "event_writer", "to_json", "reader_to_json"}))
+    ->check(CLI::IsMember(
+      {"reader", "writer", "event_writer", "to_json", "reader_to_json"}))
     ->required(true);
 
   uint32_t seed = std::random_device()();

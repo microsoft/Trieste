@@ -21,8 +21,9 @@ namespace trieste
     CLI::App app;
     Options* options;
 
-public : Driver(const Reader& reader_, Options* options_ = nullptr)
-: reader(reader_), app(reader_.language_name()), options(options_)
+  public:
+    Driver(const Reader& reader_, Options* options_ = nullptr)
+    : reader(reader_), app(reader_.language_name()), options(options_)
     {}
 
     Driver(
@@ -192,7 +193,8 @@ public : Driver(const Reader& reader_, Options* options_ = nullptr)
       check->add_option(
         "-i,--ignore_token",
         ignored_tokens,
-        "Ignore this token when checking patterns against well-formedness rules.");
+        "Ignore this token when checking patterns against well-formedness "
+        "rules.");
 
       std::vector<std::filesystem::path> sample_files;
       test->add_option(
