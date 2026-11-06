@@ -8,7 +8,6 @@
 #include "regex.h"
 
 #include <algorithm>
-#include <cmath>
 #include <deque>
 #include <numeric>
 #include <variant>
@@ -45,8 +44,7 @@ namespace trieste
       : sampled_nodes(sampled_nodes_),
         sampling_level(sampling_level_),
         sampling_enabled(sampling_enabled_),
-        sampling_period(
-          sampling_frequency_ > 0 ? std::floor(100.0 / sampling_frequency_) : 0)
+        sampling_period(sampling_frequency_ > 0 ? 100 / sampling_frequency_ : 0)
       {}
     };
     struct Gen
