@@ -33,8 +33,7 @@ namespace trieste
       size_t
         sampling_level; // 0: subtree sampling, 1..n: subtree height sampling
       bool sampling_enabled;
-      size_t sampling_period; // use a sample roughly 1-in-`sampling_period`
-                              // draws; 0 = never
+      size_t sampling_frequency; // percentage of draws that use a sample
 
       Sampling(
         std::map<trieste::Token, trieste::Nodes>& sampled_nodes_,
@@ -44,7 +43,7 @@ namespace trieste
       : sampled_nodes(sampled_nodes_),
         sampling_level(sampling_level_),
         sampling_enabled(sampling_enabled_),
-        sampling_period(sampling_frequency_ > 0 ? 100 / sampling_frequency_ : 0)
+        sampling_frequency(std::min<size_t>(sampling_frequency_, 100))
       {}
     };
     struct Gen
@@ -319,10 +318,7 @@ namespace trieste
 
       bool use_sample()
       {
-        // A frequency of 0 (period 0) means never sample
-        if (sampling.sampling_period == 0)
-          return false;
-        return next() % sampling.sampling_period == 0;
+        return next() % 100 < sampling.sampling_frequency;
       }
 
       bool subtree_sampling()

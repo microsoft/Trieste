@@ -60,11 +60,13 @@ int main(int argc, char** argv)
     "Level of sampling to use for selecting sample nodes");
 
   size_t sampling_frequency = 50; // Default to 50% sampling frequency
-  app.add_option(
-    "--sampling-frequency",
-    sampling_frequency,
-    "Frequency of using sampled nodes over randomly generated nodes during "
-    "testing (0-100)");
+  app
+    .add_option(
+      "--sampling-frequency",
+      sampling_frequency,
+      "Frequency of using sampled nodes over randomly generated nodes during "
+      "testing (0-100)")
+    ->check(CLI::Range(0, 100));
 
   auto bound_vars = true;
   app.add_option(
