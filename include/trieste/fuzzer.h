@@ -966,7 +966,9 @@ namespace trieste
         }
 
         pass_stats.log(size_stats_);
-        if (i != end_index_)
+        // No new trees are generated in sequence mode after the first pass, so
+        // we don't need to update the sample nodes.
+        if (!test_sequence_ && i != end_index_)
         {
           update_sample_nodes(wf, pass);
         }
