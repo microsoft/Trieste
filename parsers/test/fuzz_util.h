@@ -8,9 +8,10 @@
 namespace trieste
 {
   // Load sample trees for fuzz testing from `path`, which may be a single file
-  // or a directory walked recursively for files with extension `ext`. Parse
-  // failures are logged and skipped (both for single files and directory
-  // entries); an empty/non-existent path yields no samples.
+  // or a directory walked recursively for files with extension `ext`. Samples
+  // that fail to parse or are not well-formed are skipped with a warning (both
+  // for single files and directory entries); an empty/non-existent path yields
+  // no samples.
   inline Nodes load_sample_trees(
     Reader& reader, const std::filesystem::path& path, std::string_view ext)
   {
@@ -38,10 +39,11 @@ namespace trieste
 
     for (const auto& p : files)
     {
-      if (Node sample_program = reader.parser().parse(p))
+      Node sample_program = reader.parser().parse(p);
+      if (is_valid_sample(reader.parser(), sample_program))
         sample_trees.push_back(sample_program);
       else
-        logging::Error() << "Failed to parse " << p << std::endl;
+        logging::Warn() << "Skipping invalid sample " << p << std::endl;
     }
 
     logging::Info() << "Collected " << sample_trees.size()

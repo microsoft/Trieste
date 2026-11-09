@@ -336,11 +336,11 @@ namespace trieste
 
           Node sample_program = reader.parser().parse(sample_path);
 
-          if (!sample_program)
+          if (!is_valid_sample(reader.parser(), sample_program))
           {
-            logging::Error() << "Failed to parse test program from "
-                             << sample_path << std::endl;
-            return 1;
+            logging::Warn()
+              << "Skipping invalid sample " << sample_path << std::endl;
+            continue;
           }
 
           sample_trees.push_back(sample_program);

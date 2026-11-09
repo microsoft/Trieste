@@ -9,6 +9,31 @@
 
 namespace trieste
 {
+  /**
+   * Returns true if `ast`, as produced by `parser`, can be used as a sample
+   * tree for fuzzing: it must be non-null, contain no Error nodes, and be
+   * well-formed with respect to the parser's WF. Parse() returns a Top node
+   * even when parsing fails, so a null check alone is not sufficient.
+   */
+  inline bool is_valid_sample(const Parse& parser, Node ast)
+  {
+    if (!ast)
+      return false;
+
+    auto& wf = parser.wf();
+    WFContext context(wf);
+
+    if (!wf.build_st(ast))
+      return false;
+
+    Nodes errors;
+    ast->get_errors(errors);
+    if (!errors.empty())
+      return false;
+
+    return wf.check(ast);
+  }
+
   class Fuzzer
   {
   private:
