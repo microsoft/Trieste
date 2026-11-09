@@ -502,11 +502,13 @@ namespace trieste
         size_t choice = rand() % samples.size();
         auto sample = samples[choice];
 
-        // sampling_level 0 means clone the entire subtree; otherwise clone that
-        // many levels and leave the rest to be generated.
+        // Sampling_level 0 = entire subtree; otherwise clone sampling_level
+        // levels. Clone_depth first clone the node it is given, so
+        // each child gets a budget of sampling_level - 1 further levels.
         constexpr size_t full_subtree = std::numeric_limits<size_t>::max();
-        size_t levels =
-          sampling.sampling_level == 0 ? full_subtree : sampling.sampling_level;
+        size_t levels = sampling.sampling_level == 0 ?
+          full_subtree :
+          sampling.sampling_level - 1;
 
         // Copy children from sample
         for (auto& child : *sample)
