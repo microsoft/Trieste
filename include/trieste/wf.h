@@ -1126,13 +1126,24 @@ namespace trieste
         return top;
       }
 
-      Node
-      gen(GenNodeLocationF gloc, Seed seed, size_t target_depth, bool gen_bound)
-        const
+      Node gen(
+        GenNodeLocationF gloc,
+        Seed seed,
+        size_t target_depth,
+        bool gen_bound,
+        TokenWeights token_weights = {}) const
       {
         std::map<trieste::Token, trieste::Nodes> empty_nodes;
         return gen(
-          gloc, seed, target_depth, gen_bound, {}, empty_nodes, 0, false, 0);
+          gloc,
+          seed,
+          target_depth,
+          gen_bound,
+          std::move(token_weights),
+          empty_nodes,
+          0,
+          false,
+          0);
       }
 
       std::size_t min_dist_to_terminal(
