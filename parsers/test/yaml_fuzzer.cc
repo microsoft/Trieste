@@ -86,11 +86,10 @@ int main(int argc, char** argv)
   Reader reader = yaml::reader();
   Reader reader_tojson = yaml::reader() >>= yaml::to_json();
 
-  // Determine which reader to use for parsing sample files.
-  Reader& sample_reader =
-    (transform == "reader_to_json") ? reader_tojson : reader;
-
-  Nodes sample_trees = load_sample_trees(sample_reader, sample_files, ".yaml");
+  ReadMode mode = transform == "reader" || transform == "reader_to_json" ?
+    ReadMode::ParseOnly :
+    ReadMode::Full;
+  Nodes sample_trees = load_sample_trees(reader, sample_files, ".yaml", mode);
 
   Fuzzer fuzzer;
   if (transform == "reader")

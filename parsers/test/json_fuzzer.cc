@@ -80,7 +80,9 @@ int main(int argc, char** argv)
   logging::Output() << "Testing x" << count << ", seed: " << seed << std::endl;
 
   Reader reader = json::reader();
-  Nodes sample_trees = load_sample_trees(reader, sample_files, ".json");
+  ReadMode mode =
+    (transform == "reader") ? ReadMode::ParseOnly : ReadMode::Full;
+  Nodes sample_trees = load_sample_trees(reader, sample_files, ".json", mode);
 
   Fuzzer fuzzer;
   if (transform == "reader")
