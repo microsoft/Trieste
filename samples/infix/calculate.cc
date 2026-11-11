@@ -53,7 +53,6 @@ namespace
     return std::stod(text);
   }
 
-  inline const auto MathsOp = T(Add) / T(Subtract) / T(Multiply) / T(Divide);
 
   PassDef maths()
   {
