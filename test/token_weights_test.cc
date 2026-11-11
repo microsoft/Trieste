@@ -13,6 +13,7 @@ namespace
     auto ok = true;
     auto gloc = [](Rand&, Node) { return Location(); };
     std::vector<Token> choices = {WeightA, WeightB};
+    std::map<Token, Nodes> no_samples; // Sampling is disabled in these tests
 
     // Zero-weight tokens should never be selected when a positive candidate
     // exists in the probabilistic branches.
@@ -23,7 +24,11 @@ namespace
                  123,
                  5,
                  {},
-                 false)
+                 false,
+                 no_samples,
+                 0,
+                 false,
+                 0)
                  .token_weights(wf::TokenWeights{{WeightA, 0}, {WeightB, 5}});
 
       for (size_t i = 0; i < 64; i++)
@@ -46,7 +51,11 @@ namespace
                  321,
                  5,
                  {},
-                 false)
+                 false,
+                 no_samples,
+                 0,
+                 false,
+                 0)
                  .token_weights(wf::TokenWeights{{WeightA, 0}, {WeightB, 0}});
 
       bool threw = false;
@@ -69,10 +78,18 @@ namespace
 
     // A singleton choice with zero weight should also fail.
     {
-      auto g =
-        wf::Gen(
-          wf::TokenTerminalDistance{{WeightA, 1}}, gloc, 111, 5, {}, false)
-          .token_weights(wf::TokenWeights{{WeightA, 0}});
+      auto g = wf::Gen(
+                 wf::TokenTerminalDistance{{WeightA, 1}},
+                 gloc,
+                 111,
+                 5,
+                 {},
+                 false,
+                 no_samples,
+                 0,
+                 false,
+                 0)
+                 .token_weights(wf::TokenWeights{{WeightA, 0}});
 
       bool threw = false;
       try
@@ -101,7 +118,11 @@ namespace
                  222,
                  1,
                  {},
-                 false)
+                 false,
+                 no_samples,
+                 0,
+                 false,
+                 0)
                  .token_weights(wf::TokenWeights{{WeightA, 0}, {WeightB, 100}});
 
       if (g.choose(choices, 2, Top) != WeightA)
