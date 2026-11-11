@@ -1,5 +1,6 @@
 add_executable(infix_trieste
   reader.cc
+  calculate.cc
   writers.cc
   infix_trieste.cc
   parse.cc
@@ -18,6 +19,7 @@ add_test(NAME infix_check COMMAND infix_trieste check -w)
 
 add_executable(infix
   reader.cc
+  calculate.cc
   writers.cc
   infix.cc
   parse.cc
