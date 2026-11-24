@@ -563,6 +563,15 @@ namespace trieste
 
         auto ok = accepts_type(node->type());
 
+        if (ok && is_reference(node->type()) && node->lookup().empty())
+        {
+          logging::Error() << node->location().origin_linecol()
+                           << ": unbound reference to `"
+                           << node->location().view() << "`" << std::endl
+                           << node->location().str() << node << std::endl;
+          return false;
+        }
+
         if (!ok)
         {
           // Note log will be output on end of scope.
@@ -1277,6 +1286,86 @@ namespace trieste
         for (auto& child : *node)
         {
           gen_node(g, depth + 1, child);
+        }
+      }
+
+      /**
+       * Validates this specification, throwing std::runtime_error if it is
+       * malformed. This is meant to be called once, when the specification is
+       * put to use, rather than on every check.
+       */
+      void validate() const
+      {
+        validate_references();
+      }
+
+      /**
+       * Validates the reference tokens (`&Token`) of this specification.
+       * Throws std::runtime_error if
+       *  - a reference token is not a leaf, or
+       *  - no shape has a binding key that can hold the reference token, so the
+       *    reference could never be bound.
+       */
+      void validate_references() const
+      {
+        std::set<Token> refs;
+        std::set<Token> keys;
+
+        auto add_refs = [&](const Choice& choice) {
+          refs.insert(choice.refs.begin(), choice.refs.end());
+        };
+
+        for (auto& [type, shape] : shapes)
+        {
+          std::visit(
+            [&](auto& s) {
+              using ShapeType = std::decay_t<decltype(s)>;
+              if constexpr (std::is_same_v<ShapeType, Fields>)
+              {
+                for (auto& field : s.fields)
+                  add_refs(field.choice);
+
+                if (s.binding != Invalid && s.binding != Include)
+                {
+                  auto key = s.index(s.binding);
+                  if (key < s.fields.size())
+                  {
+                    auto& types = s.fields[key].choice.types;
+                    keys.insert(types.begin(), types.end());
+                  }
+                }
+              }
+              else
+              {
+                add_refs(s.choice);
+              }
+            },
+            shape);
+        }
+
+        for (auto& ref : refs)
+        {
+          auto find = shapes.find(ref);
+          if (find != shapes.end())
+          {
+            auto leaf = std::visit(
+              [](auto& s) {
+                using ShapeType = std::decay_t<decltype(s)>;
+                if constexpr (std::is_same_v<ShapeType, Fields>)
+                  return s.fields.empty();
+                else
+                  return s.max_len == 0;
+              },
+              find->second);
+
+            if (!leaf)
+              throw std::runtime_error(
+                std::string("WF reference token must be a leaf: ") + ref.str());
+          }
+
+          if (keys.find(ref) == keys.end())
+            throw std::runtime_error(
+              std::string("WF reference token is never bound: ") + ref.str());
         }
       }
 

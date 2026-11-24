@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <trieste/trieste.h>
 #include <trieste/wf.h>
 
 using namespace trieste;
@@ -14,6 +15,25 @@ namespace
   inline const auto Parent = TokenDef("wf-test-parent");
   inline const auto ValueA = TokenDef("wf-test-value-a");
   inline const auto ValueB = TokenDef("wf-test-value-b");
+  inline const auto RefScope = TokenDef("wf-test-ref-scope", flag::symtab);
+  inline const auto RefBind = TokenDef("wf-test-ref-bind", flag::lookup);
+  inline const auto RefUse = TokenDef("wf-test-ref-use");
+  inline const auto RefKey = TokenDef("wf-test-ref-key", flag::print);
+  inline const auto RefNum = TokenDef("wf-test-ref-num", flag::print);
+
+  template<typename F>
+  bool throws(F&& fn)
+  {
+    try
+    {
+      fn();
+    }
+    catch (const std::runtime_error&)
+    {
+      return true;
+    }
+    return false;
+  }
 
   bool check(bool condition, const std::string& message)
   {
@@ -176,6 +196,58 @@ int main()
     auto both = ValueA | &ValueA;
     failures += !check(
       both.is_reference(ValueA), "`Foo | &Foo` should behave like `&Foo`");
+  }
+
+  // Checking references.
+  {
+    // clang-format off
+    auto wf =
+      (RefScope <<= (RefBind | RefUse)++)
+      | (RefBind <<= RefKey * RefNum)[RefKey]
+      | (RefUse <<= &RefKey)
+      ;
+    // clang-format on
+    wf.validate();
+
+    auto make = [&](const char* bound, const char* used) {
+      auto scope = NodeDef::create(RefScope);
+      scope->push_back(RefBind << (RefKey ^ bound) << (RefNum ^ "1"));
+      scope->push_back(RefUse << (RefKey ^ used));
+      return scope;
+    };
+
+    auto good = make("x", "x");
+    failures += !check(
+      wf.build_st(good) && wf.check(good), "bound reference should be valid");
+
+    auto bad = make("x", "y");
+    failures += !check(
+      wf.build_st(bad) && !wf.check(bad),
+      "unbound reference should be invalid");
+
+    // The reference precedes the binding, but the scope is not defbeforeuse.
+    auto fwd = NodeDef::create(RefScope);
+    fwd->push_back(RefUse << (RefKey ^ "x"));
+    fwd->push_back(RefBind << (RefKey ^ "x") << (RefNum ^ "1"));
+    failures += !check(
+      wf.build_st(fwd) && wf.check(fwd), "forward reference should be valid");
+
+    // Non-leaf reference token.
+    failures += !check(
+      throws([&]() {
+        auto nonleaf = (RefScope <<= RefUse++) | (RefBind <<= RefKey)[RefKey] |
+          (RefUse <<= &RefBind) | (RefBind <<= RefKey * RefNum)[RefKey];
+        nonleaf.validate();
+      }),
+      "non-leaf reference token should be rejected");
+
+    // Reference token that nothing binds.
+    failures += !check(
+      throws([&]() {
+        auto unbound = (RefScope <<= RefUse++) | (RefUse <<= &RefKey);
+        unbound.validate();
+      }),
+      "reference token that is never bound should be rejected");
   }
 
   if (failures != 0)
