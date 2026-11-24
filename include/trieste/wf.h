@@ -69,6 +69,22 @@ namespace trieste
         compute_generatable;
       std::map<std::set<Token>, std::set<Token>> generatable_cache_;
 
+      // A node whose location is assigned after the whole tree is generated.
+      // A "must" hole is a reference that has to be bound. A "may" hole is a
+      // position that may reuse a bound name (see gen_bound_vars).
+      struct Hole
+      {
+        Node node;
+        bool must;
+        bool has_preferred = false;
+        Location preferred = {};
+      };
+      std::vector<Hole> holes;
+
+      // All binder nodes (with flag::lookup) created so far, whether their key
+      // has been generated yet or not.
+      Nodes binders;
+
       /* The generator chooses which token to emit next. It makes this choice
        * using a weighted probability distribution, where the weights are based
        * on the distance to the nearest terminal node in the token graph.
@@ -446,36 +462,79 @@ namespace trieste
           parent->type() & flag::shadowing);
       }
 
-      // The symbol table keys, in the scope of `node`, that could be bound by a
-      // reference created as a child of `node`. Symbols whose node is an
-      // ancestor of `node` are skipped, as they are still being generated.
-      Nodes visible_keys(Node node)
+      // The scopes visible from a node created as a child of `node`.
+      static std::set<const NodeDef*> child_scope_chain(Node node)
       {
-        std::set<const NodeDef*> ancestors;
-        for (auto p = node.get(); p; p = p->parent_unsafe())
-          ancestors.insert(p);
-
-        Nodes keys;
         Node st = (node->type() & flag::symtab) ? node : node->scope();
-        while (st)
+        return scope_chain(st);
+      }
+
+      static std::set<const NodeDef*> scope_chain(Node st)
+      {
+        std::set<const NodeDef*> chain;
+        for (; st; st = st->scope())
+          chain.insert(st.get());
+        return chain;
+      }
+
+      // Whether `b` precedes (in the sense of NodeDef::precedes) a node that
+      // will be appended as the last child of `node`.
+      static bool precedes_new_child(const Node& b, const Node& node)
+      {
+        // An ancestor of the new child does not precede it.
+        for (auto p = node.get(); p; p = p->parent_unsafe())
         {
-          Nodes symbols;
-          st->get_symbols(symbols, [&](auto& n) {
-            return (n->type() & flag::lookup) &&
-              binding_keys.find(n->type()) != binding_keys.end() &&
-              ancestors.find(n.get()) == ancestors.end();
-          });
-
-          for (auto& sym : symbols)
-          {
-            auto key_index = binding_keys.at(sym->type()).second;
-            if (key_index < sym->size())
-              keys.push_back(sym->at(key_index));
-          }
-
-          st = st->scope();
+          if (p == b.get())
+            return false;
         }
-        return keys;
+
+        // Anything already below `node` is to the left of its last child.
+        for (auto p = b->parent_unsafe(); p; p = p->parent_unsafe())
+        {
+          if (p == node.get())
+            return true;
+        }
+
+        return b->precedes(node);
+      }
+
+      // The token that the binder `b` binds: its key if that has been
+      // generated, otherwise the only token its key field can be.
+      Token binder_key_type(const Node& b) const
+      {
+        auto& [types, key_index] = binding_keys.at(b->type());
+
+        if (key_index < b->size())
+          return b->at(key_index)->type();
+
+        if (
+          types.empty() ||
+          std::any_of(types.begin(), types.end(), [&](auto& t) {
+            return t != types.front();
+          }))
+          return Invalid;
+
+        return types.front();
+      }
+
+      // Whether the binder `b` makes a reference of type `type` resolvable at
+      // a position whose visible scopes are `chain`, following the rules of
+      // NodeDef::lookup. `precedes` says whether `b` precedes that position.
+      template<typename F>
+      bool binder_counts(
+        const Node& b,
+        Token type,
+        const std::set<const NodeDef*>& chain,
+        F&& precedes) const
+      {
+        if (binder_key_type(b) != type)
+          return false;
+
+        auto st = b->scope();
+        if (!st || chain.find(st.get()) == chain.end())
+          return false;
+
+        return !(st->type() & flag::defbeforeuse) || precedes();
       }
 
       bool is_in_scope(Location loc, Node scope)
@@ -485,17 +544,138 @@ namespace trieste
       }
 
     public:
-      // The reference tokens that currently have something bound that they
-      // could refer to, for a node created as a child of `node`.
+      bool is_binder(Token type) const
+      {
+        return (type & flag::lookup) &&
+          binding_keys.find(type) != binding_keys.end();
+      }
+
+      // Keep track of binders, so that references can be resolved to them.
+      void register_node(const Node& node)
+      {
+        if (is_binder(node->type()))
+          binders.push_back(node);
+      }
+
+      // How often (in percent) a fresh name is used where a bound name could
+      // be reused, when at least one bound name exists.
+      static constexpr size_t fresh_percentage = 10;
+
+      // Decides whether to reuse one of `n` bound names rather than a fresh
+      // name, and if so which one (in `index`). This always draws exactly one
+      // random number.
+      bool pick_bound(size_t n, size_t& index)
+      {
+        auto r = static_cast<size_t>(next());
+        if (n == 0 || r % 100 < fresh_percentage)
+          return false;
+
+        index = (r / 100) % n;
+        return true;
+      }
+
+      void add_hole(const Node& node, bool must)
+      {
+        holes.push_back({node, must});
+      }
+
+      void add_hole(const Node& node, const Location& preferred)
+      {
+        holes.push_back({node, true, true, preferred});
+      }
+
+      // The reference tokens that have a binder (existing or promised) that a
+      // reference created as a child of `node` can resolve to.
       std::set<Token> bound_ref_tokens(Node node)
       {
         std::set<Token> bound;
-        for (auto& key : visible_keys(node))
+        auto chain = child_scope_chain(node);
+
+        for (auto& b : binders)
         {
-          if (ref_tokens.find(key->type()) != ref_tokens.end())
-            bound.insert(key->type());
+          auto type = binder_key_type(b);
+          if (
+            ref_tokens.find(type) == ref_tokens.end() ||
+            bound.find(type) != bound.end())
+            continue;
+
+          if (binder_counts(b, type, chain, [&]() {
+                return precedes_new_child(b, node);
+              }))
+            bound.insert(type);
         }
         return bound;
+      }
+
+      // Whether the existing node `ref` can be resolved to a binder (existing
+      // or promised) of its type.
+      bool can_resolve(const Node& ref)
+      {
+        auto chain = scope_chain(ref->scope());
+        return std::any_of(binders.begin(), binders.end(), [&](auto& b) {
+          return binder_counts(
+            b, ref->type(), chain, [&]() { return b->precedes(ref); });
+        });
+      }
+
+      // Assigns locations to all holes. This happens once the whole tree has
+      // been generated, so that a hole can use anything that is bound around
+      // it, including later siblings where the scope allows it.
+      void fill_holes()
+      {
+        for (auto& hole : holes)
+        {
+          auto& node = hole.node;
+
+          // The hole's location is empty until it is assigned here.
+          if (hole.has_preferred && !node->lookup_as(hole.preferred).empty())
+          {
+            node->set_location(hole.preferred);
+            continue;
+          }
+
+          // Collect the bound names that lookup resolves from this node.
+          std::vector<Location> candidates;
+          for (auto& b : binders)
+          {
+            auto key_index = binding_keys.at(b->type()).second;
+            if (key_index >= b->size())
+              continue;
+
+            auto key = b->at(key_index);
+            if (key->type() != node->type())
+              continue;
+
+            if (!node->lookup_as(key->location()).empty())
+              candidates.push_back(key->location());
+          }
+
+          if (hole.must)
+          {
+            if (candidates.empty())
+              throw std::logic_error(
+                std::string("No bound symbol available for reference ") +
+                node->type().str());
+
+            node->set_location(candidates[next() % candidates.size()]);
+            continue;
+          }
+
+          size_t choice;
+          if (pick_bound(candidates.size(), choice))
+          {
+            node->set_location(candidates[choice]);
+            continue;
+          }
+
+          auto scope = node->parent()->scope();
+          auto fresh = fresh_location(node);
+          while (is_in_scope(fresh, scope))
+            fresh = fresh_location(node);
+          node->set_location(fresh);
+        }
+
+        holes.clear();
       }
 
       // The tokens that can be generated when the given reference tokens are
@@ -510,25 +690,6 @@ namespace trieste
           .first->second;
       }
 
-      // Pick the location of something already bound for a reference of the
-      // given type, created as a child of `node`.
-      Location gen_ref_location(Token type, Node node)
-      {
-        Nodes candidates;
-        for (auto& key : visible_keys(node))
-        {
-          if (key->type() == type)
-            candidates.push_back(key);
-        }
-
-        if (candidates.empty())
-          throw std::runtime_error(
-            std::string("No bound symbol available for reference ") +
-            type.str());
-
-        return candidates[next() % candidates.size()]->location();
-      }
-
       Location fresh_location(Node child)
       {
         return gloc(rand, child);
@@ -540,11 +701,23 @@ namespace trieste
       Location gen_location(Node parent, Node child)
       {
         auto type = child->type();
+
+        // A position that may reuse a bound name, but is not itself a binding
+        // key, is assigned once the whole tree has been generated.
+        if (
+          gen_bound_vars && should_gen_bound(parent, type) &&
+          !is_symtab_key(parent->size() - 1, type, parent->type()))
+        {
+          add_hole(child, false);
+          return {};
+        }
+
         Nodes symbols = get_symbols_from_type(type, child->scope());
-        // Adding +1 to allow for fresh location with a small probability
-        auto rand_symbol = static_cast<size_t>(next() % (symbols.size() + 1));
         // Prefer location from a symbol table if gen_bound_vars is enabled.
-        if (rand_symbol < symbols.size() && should_gen_bound(parent, type))
+        size_t rand_symbol;
+        if (
+          pick_bound(symbols.size(), rand_symbol) &&
+          should_gen_bound(parent, type))
         {
           auto sym = symbols[rand_symbol];
           auto key_index = binding_keys.at(sym->type()).second;
@@ -779,9 +952,11 @@ namespace trieste
         // the time we call g.location().
         auto child = NodeDef::create(type);
         node->push_back(child);
+        g.register_node(child);
 
+        // A reference gets its location once the whole tree is generated.
         if (is_reference(type))
-          child->set_location(g.gen_ref_location(type, node));
+          g.add_hole(child, true);
         else
           child->set_location(g.gen_location(node, child));
       }
@@ -1343,6 +1518,7 @@ namespace trieste
         auto top = NodeDef::create(Top);
         ast::detail::top_node() = top;
         gen_node(g, 0, top);
+        g.fill_holes();
         return top;
       }
 
@@ -1437,6 +1613,94 @@ namespace trieste
         return distance;
       }
 
+      // Whether a `child` at `index` of a `parent` is a reference (`&Token`).
+      bool
+      is_ref_position(const Node& parent, size_t index, const Node& child) const
+      {
+        auto find = shapes.find(parent->type());
+        if (find == shapes.end())
+          return false;
+
+        return std::visit(
+          [&](auto& s) {
+            using ShapeType = std::decay_t<decltype(s)>;
+            if constexpr (std::is_same_v<ShapeType, Fields>)
+              return index < s.fields.size() &&
+                s.fields[index].choice.is_reference(child->type());
+            else
+              return s.choice.is_reference(child->type());
+          },
+          find->second);
+      }
+
+      // Registers the binders and references of the subtree just cloned from a
+      // sample into `node`, and checks that every reference in it can be
+      // resolved and that every continuation can be generated. If not, the
+      // sample is removed again and false is returned.
+      bool
+      accept_sample(Gen& g, const Node& node, const Nodes& continuations) const
+      {
+        auto binders_before = g.binders.size();
+        Nodes refs;
+
+        node->traverse([&](Node& current) {
+          for (size_t i = 0; i < current->size(); ++i)
+          {
+            auto child = current->at(i);
+            g.register_node(child);
+            if (is_ref_position(current, i, child))
+              refs.push_back(child);
+          }
+          return true;
+        });
+
+        auto ok = true;
+        if (g.refs_enabled())
+        {
+          ok = std::all_of(refs.begin(), refs.end(), [&](auto& ref) {
+            return g.can_resolve(ref);
+          });
+
+          ok =
+            ok &&
+            std::all_of(
+              continuations.begin(), continuations.end(), [&](auto& cont) {
+                return shapes.find(cont->type()) == shapes.end() ||
+                  g.generatable(g.bound_ref_tokens(cont)).count(cont->type()) !=
+                  0;
+              });
+        }
+
+        if (ok)
+        {
+          // Replace each sampled reference by a node without a location, so
+          // that it can be assigned later. The sampled location is kept if it
+          // can be resolved.
+          for (auto& ref : refs)
+          {
+            auto hole = NodeDef::create(ref->type());
+            ref->parent()->replace(ref, hole);
+            g.add_hole(hole, ref->location());
+          }
+          return true;
+        }
+
+        // Undo the sample: forget its binders, unbind its keys and remove it.
+        g.binders.resize(binders_before);
+        node->traverse([&](Node& current) {
+          auto find = g.binding_keys.find(current->type());
+          if (current != node && find != g.binding_keys.end())
+          {
+            auto key_index = find->second.second;
+            if (key_index < current->size())
+              current->unbind(current->at(key_index)->location());
+          }
+          return true;
+        });
+        node->erase(node->begin(), node->end());
+        return false;
+      }
+
       void gen_node(Gen& g, size_t depth, Node node) const
       {
         if (!node)
@@ -1449,22 +1713,27 @@ namespace trieste
           return;
 
         Nodes continuations;
-        // TODO: Sampled subtrees are cloned without going through the choices
-        // that make sure references are bound, so sampling is not used for
-        // specifications with references.
         if (
-          g.sampling_enabled() && !g.refs_enabled() &&
+          g.sampling_enabled() &&
           depth < g.ceiling_depth && // Guarantees termination
           g.has_sample_nodes(node->type()) && g.use_sample() &&
           !(depth == 0 && g.subtree_sampling())) // Avoid copying entire sample
         {
           g.gen_sample(node, continuations);
-          // Continue generating next layer
-          for (auto child : continuations)
+
+          if (accept_sample(g, node, continuations))
           {
-            gen_node(g, depth + g.sampling_level(), child);
+            // Continue generating next layer
+            for (auto child : continuations)
+            {
+              gen_node(g, depth + g.sampling_level(), child);
+            }
+            return;
           }
-          return;
+
+          // The sample would leave a reference that can never be bound, so
+          // generate this node from the specification instead.
+          continuations.clear();
         }
 
         // Generate based on WF

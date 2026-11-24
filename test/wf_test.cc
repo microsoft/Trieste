@@ -19,8 +19,31 @@ namespace
   inline const auto RefBind = TokenDef("wf-test-ref-bind", flag::lookup);
   inline const auto RefUse = TokenDef("wf-test-ref-use");
   inline const auto RefExpr = TokenDef("wf-test-ref-expr");
+  inline const auto RefOrdered =
+    TokenDef("wf-test-ref-ordered", flag::symtab | flag::defbeforeuse);
+  inline const auto RefName = TokenDef("wf-test-ref-name");
+
   inline const auto RefKey = TokenDef("wf-test-ref-key", flag::print);
   inline const auto RefNum = TokenDef("wf-test-ref-num", flag::print);
+
+  // Counts the references (RefKey children of `parent`) in a tree, and how
+  // many of them come before the first binder in tree order.
+  std::pair<size_t, size_t> count_refs(Node ast, Token parent)
+  {
+    size_t refs = 0;
+    size_t before_bind = 0;
+    bool seen_bind = false;
+    ast->traverse([&](Node& n) {
+      seen_bind = seen_bind || (n == RefBind);
+      if (n == RefKey && n->parent() == parent)
+      {
+        refs++;
+        before_bind += !seen_bind;
+      }
+      return true;
+    });
+    return {refs, before_bind};
+  }
 
   template<typename F>
   bool throws(F&& fn)
@@ -257,45 +280,141 @@ int main()
       return Location("v" + std::to_string(rand() % 1000));
     };
 
-    // The reference is a child of a sibling of the binders. Siblings are all
-    // chosen before any of them is expanded, so a reference that is a direct
-    // sibling of its binder (`RefScope <<= (RefBind | &RefKey)++`) is never
-    // generated. As a child, it is chosen after the earlier siblings have
-    // been expanded and bound.
-    // clang-format off
-    auto wf =
-      (Top <<= RefScope)
-      | (RefScope <<= (RefBind | RefExpr)++)
-      | (RefBind <<= RefKey * RefNum)[RefKey]
-      | (RefExpr <<= (&RefKey | RefNum))
-      ;
-    // clang-format on
-
-    size_t refs = 0;
-    bool before_bind = false;
-    for (Seed seed = 1; seed <= 300; ++seed)
-    {
-      auto ast = wf.gen(gloc, seed, 6, false);
-
-      // Traversal is in tree order, so a reference must come after a binder.
-      bool seen_bind = false;
-      ast->traverse([&](Node& n) {
-        seen_bind = seen_bind || (n == RefBind);
-        if (n == RefKey && n->parent() == RefExpr)
-        {
-          refs++;
-          before_bind = before_bind || !seen_bind;
-        }
-        return true;
-      });
-
-      failures += !check(
+    auto well_formed = [&](const Wellformed& wf, Node ast, Seed seed) {
+      return check(
         wf.build_st(ast) && wf.check(ast),
         "generated tree should be well-formed (seed " + std::to_string(seed) +
           ")");
+    };
+
+    // Generates trees for a scope token `scope` containing binders and
+    // `user`s, checks that they are well-formed, and counts references (and
+    // those that come before every binder).
+    auto gen_refs = [&](Token scope, Token user, const Choice& user_choice) {
+      // clang-format off
+      auto wf =
+        (Top <<= scope)
+        | (scope <<= (RefBind | user)++)
+        | (RefBind <<= RefKey * RefNum)[RefKey]
+        | (user <<= user_choice)
+        ;
+      // clang-format on
+
+      size_t refs = 0;
+      size_t forward = 0;
+      for (Seed seed = 1; seed <= 300; ++seed)
+      {
+        auto ast = wf.gen(gloc, seed, 6, false);
+        auto [r, f] = count_refs(ast, user);
+        refs += r;
+        forward += f;
+        failures += !well_formed(wf, ast, seed);
+      }
+      return std::make_pair(refs, forward);
+    };
+
+    // References are filled in once the whole tree is generated, and a
+    // binder counts as soon as it is created, so a reference can be a direct
+    // sibling of its binder.
+    {
+      auto [refs, forward] = gen_refs(RefScope, RefUse, Choice{&RefKey});
+      failures += !check(refs > 0, "sibling references should be generated");
     }
-    failures += !check(refs > 0, "references should be generated sometimes");
-    failures += !check(!before_bind, "references should come after a binding");
+
+    // All siblings are created before any is expanded, so a nested reference
+    // can refer to a later sibling when the scope is not defbeforeuse.
+    {
+      auto [refs, forward] = gen_refs(RefScope, RefExpr, &RefKey | RefNum);
+      failures += !check(refs > 0, "nested references should be generated");
+      failures += !check(forward > 0, "forward references should be generated");
+    }
+
+    // With defbeforeuse, a reference must come after its binder.
+    {
+      auto [refs, forward] = gen_refs(RefOrdered, RefExpr, &RefKey | RefNum);
+      failures += !check(refs > 0, "ordered references should be generated");
+      failures += !check(
+        forward == 0, "references should follow their binder (defbeforeuse)");
+    }
+
+    // With gen_bound, positions that may be bound are filled in at the end,
+    // sometimes with a bound name and sometimes with a fresh one.
+    {
+      // clang-format off
+      auto wf =
+        (Top <<= RefScope)
+        | (RefScope <<= (RefBind | RefName)++)
+        | (RefBind <<= RefKey * RefNum)[RefKey]
+        | (RefName <<= RefKey)
+        ;
+      // clang-format on
+
+      size_t bound_names = 0;
+      size_t fresh_names = 0;
+      size_t unfilled = 0;
+      for (Seed seed = 1; seed <= 300; ++seed)
+      {
+        auto ast = wf.gen(gloc, seed, 6, true);
+        wf.build_st(ast);
+        ast->traverse([&](Node& n) {
+          if (n == RefKey && n->parent() == RefName)
+          {
+            unfilled += n->location().view().empty();
+            if (n->lookup().empty())
+              fresh_names++;
+            else
+              bound_names++;
+          }
+          return true;
+        });
+      }
+      failures += !check(bound_names > 0, "gen_bound should reuse bound names");
+      failures +=
+        !check(fresh_names > 0, "gen_bound should use fresh names too");
+      failures +=
+        !check(unfilled == 0, "every gen_bound hole should be filled");
+    }
+
+    // Sampled references are kept if they can be resolved, and replaced
+    // otherwise. A sample that would leave a reference that can never be
+    // bound is not used.
+    {
+      // clang-format off
+      auto wf =
+        (Top <<= RefScope)
+        | (RefScope <<= (RefBind | RefExpr)++)
+        | (RefBind <<= RefKey * RefNum)[RefKey]
+        | (RefExpr <<= (&RefKey | RefNum))
+        ;
+      // clang-format on
+
+      auto scope = NodeDef::create(RefScope);
+      scope->push_back(RefBind << (RefKey ^ "x") << (RefNum ^ "1"));
+      scope->push_back(RefExpr << (RefKey ^ "x"));
+      scope->push_back(RefExpr << (RefKey ^ "nope"));
+      auto lonely = NodeDef::create(RefScope);
+      lonely->push_back(RefExpr << (RefKey ^ "nope"));
+      std::map<Token, Nodes> samples{
+        {RefScope, {scope, lonely}}, {RefExpr, {RefExpr << (RefKey ^ "nope")}}};
+
+      size_t kept = 0;
+      for (size_t level = 0; level <= 2; ++level)
+      {
+        for (Seed seed = 1; seed <= 100; ++seed)
+        {
+          auto ast =
+            wf.gen(gloc, seed, 6, false, {}, samples, level, true, 100);
+          failures += !well_formed(wf, ast, seed);
+          ast->traverse([&](Node& n) {
+            kept +=
+              (n == RefKey && n->location().view() == "x" &&
+               n->parent() == RefExpr);
+            return true;
+          });
+        }
+      }
+      failures += !check(kept > 0, "resolvable sampled references are kept");
+    }
 
     // Nothing can ever be bound before the only possible reference, so no
     // tree can be generated.
