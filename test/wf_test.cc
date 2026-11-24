@@ -115,6 +115,69 @@ int main()
     []() { (void)Fields{std::vector<Field>{Field{}, Field{}}, Invalid}; },
     "<invalid>");
 
+  // Reference tokens (`&Token`): DSL only, checking/generation ignore them.
+  {
+    auto ref_shape = Parent <<= &ValueA;
+    auto& ref_fields = std::get<Fields>(ref_shape.shape);
+    failures += !check(
+      ref_fields.fields.size() == 1 && ref_fields.fields[0].name == ValueA &&
+        !ref_fields.fields[0].explicit_name &&
+        ref_fields.fields[0].choice.is_reference(ValueA),
+      "&Token shape should be an implicit field named after the token");
+
+    auto plain_shape = Parent <<= ValueA;
+    failures += !check(
+      !std::get<Fields>(plain_shape.shape)
+         .fields[0]
+         .choice.is_reference(ValueA),
+      "plain tokens should not be references");
+
+    auto mixed = &ValueA | ValueB;
+    failures += !check(
+      mixed.types.size() == 2 && mixed.is_reference(ValueA) &&
+        !mixed.is_reference(ValueB),
+      "references should be tracked per alternative");
+
+    auto mixed2 = ValueB | &ValueA;
+    auto mixed3 = (&ValueA | ValueB) | OtherName;
+    failures += !check(
+      mixed2.is_reference(ValueA) && !mixed2.is_reference(ValueB) &&
+        mixed3.is_reference(ValueA) && !mixed3.is_reference(OtherName),
+      "references should survive combining choices");
+
+    auto removed = mixed - ValueA;
+    failures += !check(
+      removed.types.size() == 1 && removed.refs.empty(),
+      "removing a token should remove its reference mark");
+
+    auto seq = (&ValueA)++;
+    auto opt = ~&ValueA;
+    failures += !check(
+      seq.choice.is_reference(ValueA) && opt.choice.is_reference(ValueA) &&
+        opt.max_len == 1,
+      "reference tokens should work in sequences");
+
+    auto named = (FieldName >>= &ValueA) * (OtherName >>= (&ValueA | ValueB));
+    failures += !check(
+      named.fields[0].choice.is_reference(ValueA) &&
+        named.fields[1].choice.is_reference(ValueA) &&
+        !named.fields[1].choice.is_reference(ValueB),
+      "named fields should keep reference marks");
+
+    auto product = (&ValueA) * ValueB * (&OtherName);
+    failures += !check(
+      product.fields.size() == 3 &&
+        product.fields[0].choice.is_reference(ValueA) &&
+        !product.fields[1].choice.is_reference(ValueB) &&
+        product.fields[2].choice.is_reference(OtherName),
+      "token products should keep reference marks");
+
+    // A token that is both a reference and plain is treated as a reference.
+    auto both = ValueA | &ValueA;
+    failures += !check(
+      both.is_reference(ValueA), "`Foo | &Foo` should behave like `&Foo`");
+  }
+
   if (failures != 0)
   {
     std::cerr << failures << " WF test(s) failed" << std::endl;

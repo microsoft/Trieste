@@ -515,12 +515,31 @@ namespace trieste
           clone_depth(levels, node, child, continuations);
       }
     };
+    /**
+     * A token marked as a reference in a well-formedness specification, written
+     * `&Token` when `wf::ops` is in scope. A reference is a leaf node whose
+     * location is expected to be bound in a symbol table in scope.
+     */
+    struct RefToken
+    {
+      Token token;
+    };
+
     struct Choice
     {
       std::vector<Token> types;
 
+      // The subset of `types` that were marked as references (`&Token`).
+      std::set<Token> refs;
+
       TRIESTE_SLOW_PATH Choice() = default;
       TRIESTE_SLOW_PATH Choice(std::vector<Token> types_) : types{types_} {}
+      TRIESTE_SLOW_PATH Choice(std::vector<Token> types_, std::set<Token> refs_)
+      : types{types_}, refs{refs_}
+      {}
+      TRIESTE_SLOW_PATH Choice(const RefToken& ref)
+      : types{ref.token}, refs{ref.token}
+      {}
       TRIESTE_SLOW_PATH Choice(const Choice&) = default;
       TRIESTE_SLOW_PATH Choice(Choice&&) = default;
       TRIESTE_SLOW_PATH Choice& operator=(const Choice&) = default;
@@ -530,6 +549,11 @@ namespace trieste
       bool accepts_type(const Token& type) const
       {
         return std::find(types.begin(), types.end(), type) != types.end();
+      }
+
+      bool is_reference(const Token& type) const
+      {
+        return refs.find(type) != refs.end();
       }
 
       bool check(Node node) const
@@ -1296,9 +1320,19 @@ namespace trieste
         return Field{type, Choice{std::vector<Token>{type}}, false};
       }
 
+      inline Field implicit_field(const RefToken& ref)
+      {
+        return Field{ref.token, Choice{ref}, false};
+      }
+
       inline Field implicit_field(const Token& name, const Choice& choice)
       {
         return Field{name, choice, false};
+      }
+
+      inline RefToken operator&(const Token& type)
+      {
+        return RefToken{type};
       }
 
       inline Choice operator|(const Token& type1, const Token& type2)
@@ -1309,7 +1343,7 @@ namespace trieste
       inline TRIESTE_SLOW_PATH Choice
       operator|(const Token& type, const Choice& choice)
       {
-        Choice result{choice.types};
+        Choice result{choice.types, choice.refs};
         result.types.push_back(type);
         return result;
       }
@@ -1324,9 +1358,10 @@ namespace trieste
       inline TRIESTE_SLOW_PATH Choice
       operator|(const Choice& choice1, const Choice& choice2)
       {
-        Choice result{choice1.types};
+        Choice result{choice1.types, choice1.refs};
         result.types.insert(
           result.types.end(), choice2.types.begin(), choice2.types.end());
+        result.refs.insert(choice2.refs.begin(), choice2.refs.end());
         return result;
       }
 
@@ -1335,6 +1370,7 @@ namespace trieste
       {
         choice2.types.insert(
           choice2.types.end(), choice1.types.begin(), choice1.types.end());
+        choice2.refs.insert(choice1.refs.begin(), choice1.refs.end());
         return std::move(choice2);
       }
 
@@ -1353,20 +1389,55 @@ namespace trieste
         return choice2 | choice1;
       }
 
+      // Combinations involving reference tokens (`&Token`).
+      inline Choice operator|(const RefToken& ref, const RefToken& other)
+      {
+        const Choice lhs{ref};
+        const Choice rhs{other};
+        return lhs | rhs;
+      }
+
+      inline Choice operator|(const RefToken& ref, const Token& type)
+      {
+        const Choice lhs{ref};
+        const Choice rhs{std::vector<Token>{type}};
+        return lhs | rhs;
+      }
+
+      inline Choice operator|(const Token& type, const RefToken& ref)
+      {
+        const Choice lhs{std::vector<Token>{type}};
+        const Choice rhs{ref};
+        return lhs | rhs;
+      }
+
+      inline Choice operator|(const RefToken& ref, const Choice& choice)
+      {
+        const Choice lhs{ref};
+        return lhs | choice;
+      }
+
+      inline Choice operator|(const Choice& choice, const RefToken& ref)
+      {
+        const Choice rhs{ref};
+        return choice | rhs;
+      }
+
       inline TRIESTE_SLOW_PATH Choice
       operator-(const Choice& choice, const Token& type)
       {
-        Choice result{choice.types};
+        Choice result{choice.types, choice.refs};
         result.types.erase(
           std::remove(result.types.begin(), result.types.end(), type),
           result.types.end());
+        result.refs.erase(type);
         return result;
       }
 
       inline TRIESTE_SLOW_PATH Choice
       operator-(const Choice& choice1, const Choice& choice2)
       {
-        Choice result{choice1.types};
+        Choice result{choice1.types, choice1.refs};
         result.types.erase(
           std::remove_if(
             result.types.begin(),
@@ -1376,6 +1447,8 @@ namespace trieste
                 choice2.types.end();
             }),
           result.types.end());
+        for (auto& t : choice2.types)
+          result.refs.erase(t);
         return result;
       }
 
@@ -1397,6 +1470,16 @@ namespace trieste
         return Sequence{choice, 0, std::numeric_limits<size_t>::max()};
       }
 
+      inline Sequence operator++(const RefToken& ref, int)
+      {
+        return Sequence{Choice{ref}, 0, std::numeric_limits<size_t>::max()};
+      }
+
+      inline Sequence operator~(const RefToken& ref)
+      {
+        return Sequence{Choice{ref}, 0, 1};
+      }
+
       inline Sequence operator~(const Token& type)
       {
         return Sequence{Choice{std::vector<Token>{type}}, 0, 1};
@@ -1415,6 +1498,11 @@ namespace trieste
       inline Field operator>>=(const Token& name, const Token& type)
       {
         return Field{name, Choice{std::vector<Token>{type}}, true};
+      }
+
+      inline Field operator>>=(const Token& name, const RefToken& ref)
+      {
+        return Field{name, Choice{ref}, true};
       }
 
       inline Field operator>>=(const Token& name, const Choice& choice)
@@ -1491,6 +1579,37 @@ namespace trieste
         return fst * implicit_field(snd);
       }
 
+      // Combinations involving reference tokens (`&Token`).
+      inline Fields operator*(const RefToken& fst, const RefToken& snd)
+      {
+        return implicit_field(fst) * implicit_field(snd);
+      }
+
+      inline Fields operator*(const RefToken& fst, const Token& snd)
+      {
+        return implicit_field(fst) * implicit_field(snd);
+      }
+
+      inline Fields operator*(const Token& fst, const RefToken& snd)
+      {
+        return implicit_field(fst) * implicit_field(snd);
+      }
+
+      inline Fields operator*(const RefToken& fst, const Field& snd)
+      {
+        return implicit_field(fst) * snd;
+      }
+
+      inline Fields operator*(const Field& fst, const RefToken& snd)
+      {
+        return fst * implicit_field(snd);
+      }
+
+      inline Fields operator*(const Fields& fst, const RefToken& snd)
+      {
+        return fst * implicit_field(snd);
+      }
+
       inline Shape operator<<=(const Token& type, const Fields& fields)
       {
         return Shape{type, fields};
@@ -1519,6 +1638,11 @@ namespace trieste
       inline Shape operator<<=(const Token& type, Choice&& choice)
       {
         return type <<= implicit_field(type, choice);
+      }
+
+      inline Shape operator<<=(const Token& type, const RefToken& ref)
+      {
+        return type <<= implicit_field(ref);
       }
 
       inline Shape operator<<=(const Token& type1, const Token& type2)
