@@ -58,7 +58,7 @@ namespace
   inline const auto wf_pass_check_refs =
     wf_pass_trim
     | (Expression <<= wf_check_refs_tokens)
-    | (Ref <<= Ident)
+    | (Ref <<= &Ident)
     ;
   // clang-format on
 

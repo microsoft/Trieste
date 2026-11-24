@@ -61,6 +61,14 @@ namespace trieste
       std::map<const std::vector<Token>*, std::vector<double>>
         weighted_offsets_cache_;
 
+      // Tokens that are marked as references (`&Token`) somewhere in the WF.
+      std::set<Token> ref_tokens;
+      // Given the reference tokens that can currently be bound, computes the
+      // tokens that can still be generated (see Wellformed::generatable).
+      std::function<std::set<Token>(const std::set<Token>&)>
+        compute_generatable;
+      std::map<std::set<Token>, std::set<Token>> generatable_cache_;
+
       /* The generator chooses which token to emit next. It makes this choice
        * using a weighted probability distribution, where the weights are based
        * on the distance to the nearest terminal node in the token graph.
@@ -116,6 +124,20 @@ namespace trieste
       {
         token_weights_ = std::move(token_weights);
         return *this;
+      }
+
+      Gen& references(
+        std::set<Token> ref_tokens_,
+        std::function<std::set<Token>(const std::set<Token>&)> generatable_)
+      {
+        ref_tokens = std::move(ref_tokens_);
+        compute_generatable = std::move(generatable_);
+        return *this;
+      }
+
+      bool refs_enabled() const
+      {
+        return !ref_tokens.empty();
       }
 
       std::size_t weight_for(const Token& token) const
@@ -186,13 +208,9 @@ namespace trieste
       // same every time it is used (it only depends on the static token
       // weights, not on depth), so it is computed once per candidate list and
       // cached for the lifetime of this Gen.
-      const std::vector<double>&
-      cumulative_weighted_offsets(const std::vector<Token>& tokens)
+      std::vector<double> compute_cumulative_weighted_offsets(
+        const std::vector<Token>& tokens) const
       {
-        auto found = weighted_offsets_cache_.find(&tokens);
-        if (found != weighted_offsets_cache_.end())
-          return found->second;
-
         std::vector<double> offsets;
         offsets.reserve(tokens.size());
         std::transform(
@@ -201,13 +219,28 @@ namespace trieste
           std::back_inserter(offsets),
           [&](const Token& t) { return static_cast<double>(weight_for(t)); });
         std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
+        return offsets;
+      }
 
-        return weighted_offsets_cache_.emplace(&tokens, std::move(offsets))
+      const std::vector<double>&
+      cumulative_weighted_offsets(const std::vector<Token>& tokens)
+      {
+        auto found = weighted_offsets_cache_.find(&tokens);
+        if (found != weighted_offsets_cache_.end())
+          return found->second;
+
+        return weighted_offsets_cache_
+          .emplace(&tokens, compute_cumulative_weighted_offsets(tokens))
           .first->second;
       }
 
-      Token
-      choose(const std::vector<Token>& tokens, std::size_t depth, Token parent)
+      // If `cacheable` is false, `tokens` is a temporary list (its address is
+      // not stable), so nothing may be cached against it.
+      Token choose(
+        const std::vector<Token>& tokens,
+        std::size_t depth,
+        Token parent,
+        bool cacheable = true)
       {
         if (tokens.empty())
           throw_no_candidates(tokens, parent, depth, "empty token list");
@@ -224,6 +257,13 @@ namespace trieste
         {
           if (!token_weights_.empty())
           {
+            if (!cacheable)
+              return choose_from_cumulative(
+                tokens,
+                compute_cumulative_weighted_offsets(tokens),
+                parent,
+                depth);
+
             return choose_from_cumulative(
               tokens, cumulative_weighted_offsets(tokens), parent, depth);
           }
@@ -406,6 +446,38 @@ namespace trieste
           parent->type() & flag::shadowing);
       }
 
+      // The symbol table keys, in the scope of `node`, that could be bound by a
+      // reference created as a child of `node`. Symbols whose node is an
+      // ancestor of `node` are skipped, as they are still being generated.
+      Nodes visible_keys(Node node)
+      {
+        std::set<const NodeDef*> ancestors;
+        for (auto p = node.get(); p; p = p->parent_unsafe())
+          ancestors.insert(p);
+
+        Nodes keys;
+        Node st = (node->type() & flag::symtab) ? node : node->scope();
+        while (st)
+        {
+          Nodes symbols;
+          st->get_symbols(symbols, [&](auto& n) {
+            return (n->type() & flag::lookup) &&
+              binding_keys.find(n->type()) != binding_keys.end() &&
+              ancestors.find(n.get()) == ancestors.end();
+          });
+
+          for (auto& sym : symbols)
+          {
+            auto key_index = binding_keys.at(sym->type()).second;
+            if (key_index < sym->size())
+              keys.push_back(sym->at(key_index));
+          }
+
+          st = st->scope();
+        }
+        return keys;
+      }
+
       bool is_in_scope(Location loc, Node scope)
       {
         auto symbols = get_symbols_from_loc(loc, scope);
@@ -413,6 +485,50 @@ namespace trieste
       }
 
     public:
+      // The reference tokens that currently have something bound that they
+      // could refer to, for a node created as a child of `node`.
+      std::set<Token> bound_ref_tokens(Node node)
+      {
+        std::set<Token> bound;
+        for (auto& key : visible_keys(node))
+        {
+          if (ref_tokens.find(key->type()) != ref_tokens.end())
+            bound.insert(key->type());
+        }
+        return bound;
+      }
+
+      // The tokens that can be generated when the given reference tokens are
+      // the ones that can be bound.
+      const std::set<Token>& generatable(const std::set<Token>& bound)
+      {
+        auto found = generatable_cache_.find(bound);
+        if (found != generatable_cache_.end())
+          return found->second;
+
+        return generatable_cache_.emplace(bound, compute_generatable(bound))
+          .first->second;
+      }
+
+      // Pick the location of something already bound for a reference of the
+      // given type, created as a child of `node`.
+      Location gen_ref_location(Token type, Node node)
+      {
+        Nodes candidates;
+        for (auto& key : visible_keys(node))
+        {
+          if (key->type() == type)
+            candidates.push_back(key);
+        }
+
+        if (candidates.empty())
+          throw std::runtime_error(
+            std::string("No bound symbol available for reference ") +
+            type.str());
+
+        return candidates[next() % candidates.size()]->location();
+      }
+
       Location fresh_location(Node child)
       {
         return gloc(rand, child);
@@ -556,6 +672,41 @@ namespace trieste
         return refs.find(type) != refs.end();
       }
 
+      // Whether `type` can be generated, given the reference tokens that can
+      // currently be bound and the tokens that can be generated as a result.
+      bool can_generate(
+        const Token& type,
+        const std::set<Token>& bound,
+        const std::set<Token>& generatable) const
+      {
+        if (is_reference(type))
+          return bound.find(type) != bound.end();
+
+        return generatable.find(type) != generatable.end();
+      }
+
+      // Collects the alternatives that can currently be generated as a child of
+      // `node`. Returns false if that is all of them, in which case `out` is
+      // not filled in. Alternatives that cannot be generated are references
+      // to something that is not bound, and tokens that require such a
+      // reference.
+      bool available_types(Gen& g, Node node, std::vector<Token>& out) const
+      {
+        if (!g.refs_enabled())
+          return false;
+
+        auto bound = g.bound_ref_tokens(node);
+        auto& generatable = g.generatable(bound);
+
+        for (auto& type : types)
+        {
+          if (can_generate(type, bound, generatable))
+            out.push_back(type);
+        }
+
+        return out.size() != types.size();
+      }
+
       bool check(Node node) const
       {
         if (node == Error)
@@ -618,13 +769,21 @@ namespace trieste
 
       void gen(Gen& g, size_t depth, Node node) const
       {
-        Token type = g.choose(types, depth, node->type());
+        std::vector<Token> available;
+        auto filtered = available_types(g, node, available);
+        Token type = filtered ?
+          g.choose(available, depth, node->type(), false) :
+          g.choose(types, depth, node->type());
 
         // We may need a fresh location, so the child needs to be in the AST by
         // the time we call g.location().
         auto child = NodeDef::create(type);
         node->push_back(child);
-        child->set_location(g.gen_location(node, child));
+
+        if (is_reference(type))
+          child->set_location(g.gen_ref_location(type, node));
+        else
+          child->set_location(g.gen_location(node, child));
       }
     };
 
@@ -734,9 +893,13 @@ namespace trieste
         for (i = 0; i < min_len; ++i)
           choice.gen(g, depth, node);
 
+        std::vector<Token> available;
+        auto filtered = choice.available_types(g, node, available);
+        const auto& types = filtered ? available : choice.types;
+
         const auto weight_sum = std::accumulate(
-          choice.types.begin(),
-          choice.types.end(),
+          types.begin(),
+          types.end(),
           size_t{0},
           [&](size_t acc, const Token& t) { return acc + g.weight_for(t); });
 
@@ -1107,9 +1270,12 @@ namespace trieste
               using ShapeType = std::decay_t<decltype(shape)>;
               if constexpr (std::is_same_v<ShapeType, Fields>)
               {
-                if (shape.binding != Invalid)
+                if (shape.binding != Invalid && shape.binding != Include)
                 {
                   auto key_index = shape.index(shape.binding);
+                  if (key_index >= shape.fields.size())
+                    return;
+
                   auto& types = shape.fields.at(key_index).choice.types;
                   if (!types.empty())
                   {
@@ -1137,24 +1303,43 @@ namespace trieste
         // Collect map of tokens to their binding token and the corresponding
         // index in the children vector. This is used to preferentially generate
         // bound variables that are in scope.
+        std::set<Token> ref_tokens;
+        {
+          std::set<Token> keys;
+          collect_references(ref_tokens, keys);
+        }
+
         auto binding_keys = std::map<trieste::Token, SymtabKeys>{};
-        if (gen_bound || sampling_enabled)
+        if (gen_bound || sampling_enabled || !ref_tokens.empty())
         {
           populate_binding_keys(binding_keys);
         }
 
-        auto g = Gen(
-                   compute_minimum_distance_to_terminal(target_depth),
-                   gloc,
-                   seed,
-                   target_depth,
-                   binding_keys,
-                   gen_bound,
-                   sampled_nodes,
-                   sampling_level,
-                   sampling_enabled,
-                   sampling_frequency)
-                   .token_weights(std::move(token_weights));
+        // References can only be generated once something is bound, so some
+        // tokens may not be generatable at all.
+        if (
+          !ref_tokens.empty() && shapes.find(Top) != shapes.end() &&
+          generatable({}).count(Top) == 0)
+          throw std::runtime_error(
+            "Cannot generate a tree: every tree requires a reference to "
+            "something that is bound before it is used.");
+
+        auto g =
+          Gen(
+            compute_minimum_distance_to_terminal(target_depth),
+            gloc,
+            seed,
+            target_depth,
+            binding_keys,
+            gen_bound,
+            sampled_nodes,
+            sampling_level,
+            sampling_enabled,
+            sampling_frequency)
+            .token_weights(std::move(token_weights))
+            .references(ref_tokens, [this](const std::set<Token>& bound) {
+              return generatable(bound);
+            });
         auto top = NodeDef::create(Top);
         ast::detail::top_node() = top;
         gen_node(g, 0, top);
@@ -1264,8 +1449,11 @@ namespace trieste
           return;
 
         Nodes continuations;
+        // TODO: Sampled subtrees are cloned without going through the choices
+        // that make sure references are bound, so sampling is not used for
+        // specifications with references.
         if (
-          g.sampling_enabled() &&
+          g.sampling_enabled() && !g.refs_enabled() &&
           depth < g.ceiling_depth && // Guarantees termination
           g.has_sample_nodes(node->type()) && g.use_sample() &&
           !(depth == 0 && g.subtree_sampling())) // Avoid copying entire sample
@@ -1299,18 +1487,11 @@ namespace trieste
         validate_references();
       }
 
-      /**
-       * Validates the reference tokens (`&Token`) of this specification.
-       * Throws std::runtime_error if
-       *  - a reference token is not a leaf, or
-       *  - no shape has a binding key that can hold the reference token, so the
-       *    reference could never be bound.
-       */
-      void validate_references() const
+      // Collects the tokens marked as references (`&Token`) in this
+      // specification, and the tokens that can be symbol table keys.
+      void
+      collect_references(std::set<Token>& refs, std::set<Token>& keys) const
       {
-        std::set<Token> refs;
-        std::set<Token> keys;
-
         auto add_refs = [&](const Choice& choice) {
           refs.insert(choice.refs.begin(), choice.refs.end());
         };
@@ -1342,6 +1523,103 @@ namespace trieste
             },
             shape);
         }
+      }
+
+      /**
+       * Computes the tokens that can be generated when only the given
+       * reference tokens can be bound. A reference alternative (`&Token`) can
+       * be generated only if its token is in `bound`. A token with a shape can
+       * be generated if every mandatory field has an alternative that can be
+       * generated. A token with no shape is a leaf and can always be
+       * generated.
+       */
+      std::set<Token> generatable(const std::set<Token>& bound) const
+      {
+        std::set<Token> result;
+
+        // All tokens without a shape are leaves.
+        for (auto& [type, shape] : shapes)
+        {
+          std::visit(
+            [&](auto& s) {
+              using ShapeType = std::decay_t<decltype(s)>;
+              auto add_leaves = [&](const Choice& choice) {
+                for (auto& t : choice.types)
+                  if (shapes.find(t) == shapes.end())
+                    result.insert(t);
+              };
+
+              if constexpr (std::is_same_v<ShapeType, Fields>)
+              {
+                for (auto& field : s.fields)
+                  add_leaves(field.choice);
+              }
+              else
+              {
+                add_leaves(s.choice);
+              }
+            },
+            shape);
+        }
+
+        auto any = [&](const Choice& choice) {
+          return std::any_of(
+            choice.types.begin(), choice.types.end(), [&](auto& t) {
+              return choice.can_generate(t, bound, result);
+            });
+        };
+
+        // Find the least fixed point, so that cycles (such as an expression
+        // that contains expressions) need a way to terminate.
+        bool changed = true;
+        while (changed)
+        {
+          changed = false;
+          for (auto& [type, shape] : shapes)
+          {
+            if (result.find(type) != result.end())
+              continue;
+
+            auto ok = std::visit(
+              [&](auto& s) {
+                using ShapeType = std::decay_t<decltype(s)>;
+                if constexpr (std::is_same_v<ShapeType, Fields>)
+                {
+                  return std::all_of(
+                    s.fields.begin(), s.fields.end(), [&](auto& field) {
+                      return any(field.choice);
+                    });
+                }
+                else
+                {
+                  return s.min_len == 0 || any(s.choice);
+                }
+              },
+              shape);
+
+            if (ok)
+            {
+              result.insert(type);
+              changed = true;
+            }
+          }
+        }
+
+        return result;
+      }
+
+      /**
+       * Validates the reference tokens (`&Token`) of this specification.
+       * Throws std::runtime_error if
+       *  - a reference token is not a leaf, or
+       *  - no shape has a binding key that can hold the reference token, so the
+       *    reference could never be bound.
+       */
+      void validate_references() const
+      {
+        std::set<Token> refs;
+        std::set<Token> keys;
+        collect_references(refs, keys);
 
         for (auto& ref : refs)
         {

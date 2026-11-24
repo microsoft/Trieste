@@ -18,6 +18,7 @@ namespace
   inline const auto RefScope = TokenDef("wf-test-ref-scope", flag::symtab);
   inline const auto RefBind = TokenDef("wf-test-ref-bind", flag::lookup);
   inline const auto RefUse = TokenDef("wf-test-ref-use");
+  inline const auto RefExpr = TokenDef("wf-test-ref-expr");
   inline const auto RefKey = TokenDef("wf-test-ref-key", flag::print);
   inline const auto RefNum = TokenDef("wf-test-ref-num", flag::print);
 
@@ -248,6 +249,66 @@ int main()
         unbound.validate();
       }),
       "reference token that is never bound should be rejected");
+  }
+
+  // Generating references.
+  {
+    auto gloc = [](Rand& rand, Node) {
+      return Location("v" + std::to_string(rand() % 1000));
+    };
+
+    // The reference is a child of a sibling of the binders. Siblings are all
+    // chosen before any of them is expanded, so a reference that is a direct
+    // sibling of its binder (`RefScope <<= (RefBind | &RefKey)++`) is never
+    // generated. As a child, it is chosen after the earlier siblings have
+    // been expanded and bound.
+    // clang-format off
+    auto wf =
+      (Top <<= RefScope)
+      | (RefScope <<= (RefBind | RefExpr)++)
+      | (RefBind <<= RefKey * RefNum)[RefKey]
+      | (RefExpr <<= (&RefKey | RefNum))
+      ;
+    // clang-format on
+
+    size_t refs = 0;
+    bool before_bind = false;
+    for (Seed seed = 1; seed <= 300; ++seed)
+    {
+      auto ast = wf.gen(gloc, seed, 6, false);
+
+      // Traversal is in tree order, so a reference must come after a binder.
+      bool seen_bind = false;
+      ast->traverse([&](Node& n) {
+        seen_bind = seen_bind || (n == RefBind);
+        if (n == RefKey && n->parent() == RefExpr)
+        {
+          refs++;
+          before_bind = before_bind || !seen_bind;
+        }
+        return true;
+      });
+
+      failures += !check(
+        wf.build_st(ast) && wf.check(ast),
+        "generated tree should be well-formed (seed " + std::to_string(seed) +
+          ")");
+    }
+    failures += !check(refs > 0, "references should be generated sometimes");
+    failures += !check(!before_bind, "references should come after a binding");
+
+    // Nothing can ever be bound before the only possible reference, so no
+    // tree can be generated.
+    // clang-format off
+    auto unbound =
+      (Top <<= RefUse)
+      | (RefBind <<= RefKey * RefNum)[RefKey]
+      | (RefUse <<= &RefKey)
+      ;
+    // clang-format on
+    failures += !check(
+      throws([&]() { (void)unbound.gen(gloc, 1, 4, false); }),
+      "a tree that requires an unbound reference cannot be generated");
   }
 
   if (failures != 0)

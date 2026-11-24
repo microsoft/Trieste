@@ -8,7 +8,7 @@ namespace
   // clang-format off
   inline const auto wf_pass_maths = 
     infix::wf 
-    | (Assign <<= Ident * Literal) 
+    | (Assign <<= Ident * Literal)[Ident]
     | (Output <<= String * Literal) 
     | (Literal <<= wf_literal)
     ;
@@ -24,11 +24,6 @@ namespace
     ;
   // clang-format on  
   
-  bool exists(const Node& n)
-  {
-    return !n->lookup().empty();
-  }
-
   bool can_replace(const Node& n)
   {
     auto defs = n->lookup();
@@ -147,18 +142,6 @@ namespace
 
         T(Expression) << (T(Int) / T(Float))[Rhs] >>
           [](Match& _) { return Literal << _(Rhs); },
-
-        // errors
-
-        T(Expression) << (T(Ref) << T(Ident)(
-          [](auto& n) { return !exists(n.front()); })) >>
-          [](Match&) {
-            // NB this case shouldn't happen at all
-            // during this pass and as such is not
-            // an error, but currently occurs during
-            // generative testing.
-            return Literal << (Int ^ "0");
-          },
       }};
   }
 
