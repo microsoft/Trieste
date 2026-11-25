@@ -304,7 +304,9 @@ int main()
       size_t forward = 0;
       for (Seed seed = 1; seed <= 300; ++seed)
       {
-        auto ast = wf.gen(gloc, seed, 6, false);
+        constexpr int TARGET_DEPTH = 6;
+        constexpr bool GEN_BOUND = false;
+        auto ast = wf.gen(gloc, seed, TARGET_DEPTH, GEN_BOUND);
         auto [r, f] = count_refs(ast, user);
         refs += r;
         forward += f;
@@ -354,7 +356,9 @@ int main()
       size_t unfilled = 0;
       for (Seed seed = 1; seed <= 300; ++seed)
       {
-        auto ast = wf.gen(gloc, seed, 6, true);
+        constexpr int TARGET_DEPTH = 6;
+        constexpr bool GEN_BOUND = true;
+        auto ast = wf.gen(gloc, seed, TARGET_DEPTH, GEN_BOUND);
         wf.build_st(ast);
         ast->traverse([&](Node& n) {
           if (n == RefKey && n->parent() == RefName)
@@ -402,8 +406,21 @@ int main()
       {
         for (Seed seed = 1; seed <= 100; ++seed)
         {
-          auto ast =
-            wf.gen(gloc, seed, 6, false, {}, samples, level, true, 100);
+          constexpr int TARGET_DEPTH = 6;
+          constexpr bool GEN_BOUND = false;
+          const trieste::wf::TokenWeights weights = {};
+          constexpr bool ENABLE_SAMPLING = true;
+          constexpr int FREQUENCY = 100;
+          auto ast = wf.gen(
+            gloc,
+            seed,
+            TARGET_DEPTH,
+            GEN_BOUND,
+            weights,
+            samples,
+            level,
+            ENABLE_SAMPLING,
+            FREQUENCY);
           failures += !well_formed(wf, ast, seed);
           ast->traverse([&](Node& n) {
             kept +=

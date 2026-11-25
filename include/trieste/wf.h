@@ -873,6 +873,7 @@ namespace trieste
 
         for (auto& type : types)
         {
+          /// TODO: Are we doing double work here? Can't we just check generatable?
           if (can_generate(type, bound, generatable))
             out.push_back(type);
         }
@@ -955,7 +956,7 @@ namespace trieste
         g.register_node(child);
 
         // A reference gets its location once the whole tree is generated.
-        if (is_reference(type))
+        if (g.refs_enabled() && is_reference(type))
           g.add_hole(child, true);
         else
           child->set_location(g.gen_location(node, child));
@@ -1473,7 +1474,8 @@ namespace trieste
         std::map<trieste::Token, trieste::Nodes>& sampled_nodes,
         size_t sampling_level,
         bool sampling_enabled,
-        size_t sampling_frequency) const
+        size_t sampling_frequency,
+        bool respect_refs = true) const
       {
         // Collect map of tokens to their binding token and the corresponding
         // index in the children vector. This is used to preferentially generate
@@ -1483,6 +1485,11 @@ namespace trieste
           std::set<Token> keys;
           collect_references(ref_tokens, keys);
         }
+
+        // Without respect_refs, references are generated like any other node
+        // (for evaluation purposes).
+        if (!respect_refs)
+          ref_tokens.clear();
 
         auto binding_keys = std::map<trieste::Token, SymtabKeys>{};
         if (gen_bound || sampling_enabled || !ref_tokens.empty())
@@ -1648,7 +1655,7 @@ namespace trieste
           {
             auto child = current->at(i);
             g.register_node(child);
-            if (is_ref_position(current, i, child))
+            if (g.refs_enabled() && is_ref_position(current, i, child))
               refs.push_back(child);
           }
           return true;
@@ -1684,6 +1691,11 @@ namespace trieste
           }
           return true;
         }
+
+        logging::Debug()
+          << "Sample contained bindings which could not be satisfied (aborting):"
+          << std::endl
+          << node->str();
 
         // Undo the sample: forget its binders, unbind its keys and remove it.
         g.binders.resize(binders_before);

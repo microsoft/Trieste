@@ -48,6 +48,7 @@ namespace trieste
     size_t end_index_;
     size_t max_retries_;
     bool bound_vars_;
+    bool respect_refs_;
     wf::TokenWeights token_weights_;
     std::vector<Node> sample_trees_;
     std::map<Token, std::vector<Node>> sampled_nodes_;
@@ -251,7 +252,8 @@ namespace trieste
         sampled_nodes_,
         sampling_level_,
         sampling_enabled_,
-        sampling_frequency_);
+        sampling_frequency_,
+        respect_refs_);
       size_t hash = ast->hash();
 
       auto it = context.ast_hashes.find(hash);
@@ -268,7 +270,8 @@ namespace trieste
           sampled_nodes_,
           sampling_level_,
           sampling_enabled_,
-          sampling_frequency_);
+          sampling_frequency_,
+          respect_refs_);
         hash = ast->hash();
         context.retries++;
         it = context.ast_hashes.find(hash);
@@ -402,7 +405,8 @@ namespace trieste
                      sampled_nodes_,
                      sampling_level_,
                      sampling_enabled_,
-                     sampling_frequency_)
+                     sampling_frequency_,
+                     respect_refs_)
                 << "------------" << std::endl
                 << new_ast;
           }
@@ -619,6 +623,7 @@ namespace trieste
       end_index_(passes.size()),
       max_retries_(100),
       bound_vars_(true),
+      respect_refs_(true),
       token_weights_({}),
       sampled_nodes_({}),
       sampling_level_(0),
@@ -776,6 +781,17 @@ namespace trieste
     Fuzzer& bound_vars(bool gen_bound_vars)
     {
       bound_vars_ = gen_bound_vars;
+      return *this;
+    }
+
+    bool respect_refs() const
+    {
+      return respect_refs_;
+    }
+
+    Fuzzer& respect_refs(bool respect_refs)
+    {
+      respect_refs_ = respect_refs;
       return *this;
     }
 
