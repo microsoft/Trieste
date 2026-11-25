@@ -1369,7 +1369,10 @@ as part of the `infix` namespace:
     | (Assign <<= Ident * Expression)[Ident]
     | (Output <<= String * Expression)
     | (Expression <<= (Add | Subtract | Multiply | Divide | Ref | Float | Int))
-    | (Ref <<= Ident)
+    // &Ident indicates that this field is a reference. A node inhabiting such a
+    // field must be bound in a symbol table in the current scope. Trees where
+    // this does not hold will be rejected.
+    | (Ref <<= &Ident)
     | (Add <<= Expression * Expression)
     | (Subtract <<= Expression * Expression)
     | (Multiply <<= Expression * Expression)
@@ -1884,6 +1887,17 @@ OPTIONS:
           --size_stats        Collect size statistics for ASTs (defaults to log level Info)
   -r,     --max_retries UINT  Maximum number of retries for finding unique trees
           --gen_bound BOOLEAN Generate bound variable names if possible
+          --respect_refs BOOLEAN
+                              Only generate references (&Foo in a WF) to bound names
+          --weights [TEXT,UINT] ...
+                              Token weight pairs for generation. Use: --weights <token>
+                              <weight> [<token> <weight> ...]
+          --samples TEXT ...  Files to extract sample nodes from for fuzz testing
+          --sampling-level UINT
+                              Level of sampling to use for selecting sample nodes
+          --sampling-frequency UINT:INT in [0 - 100]
+                              Frequency of using sampled nodes over randomly generated nodes
+                              during testing (0-100)
 
 SUBCOMMANDS:
   debug_entropy               Test entropy of random number generation, using seed_count seeds
@@ -1965,9 +1979,11 @@ produce error messages for all possible syntax problems in each pass.
 
 The default options should be good enough for most uses. Trieste tries to
 generate as many unique trees as you have asked for and prefers using symbols
-that are bound in symbol tables in order to generate more realistic trees. By
-default, each pass is tested in isolation, but you can supply the `--sequence`
-option in order to pass surviving trees to subsequent passes.
+that are bound in symbol tables in order to generate more realistic trees (for
+references, like `&Ident`, they *must* be bound). By default, each pass is
+tested in isolation, but you can supply the `--sequence` option in order to pass
+surviving trees to subsequent passes. See the
+[documentation](../../docs/fuzzing.md) of the fuzzer for further information.
 
 
 ### `check`

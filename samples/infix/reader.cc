@@ -58,6 +58,9 @@ namespace
   inline const auto wf_pass_check_refs =
     wf_pass_trim
     | (Expression <<= wf_check_refs_tokens)
+    // &Ident indicates that this field is a reference. A node inhabiting such a
+    // field must be bound in a symbol table in the current scope. Trees where
+    // this does not hold will be rejected.
     | (Ref <<= &Ident)
     ;
   // clang-format on
