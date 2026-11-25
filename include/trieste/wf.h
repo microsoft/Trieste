@@ -873,7 +873,6 @@ namespace trieste
 
         for (auto& type : types)
         {
-          /// TODO: Are we doing double work here? Can't we just check generatable?
           if (can_generate(type, bound, generatable))
             out.push_back(type);
         }
