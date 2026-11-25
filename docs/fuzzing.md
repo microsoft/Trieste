@@ -61,7 +61,8 @@ flag `-f` to stop after the first error.
 | `--sequence` | Instead of generating a fresh tree per pass, run each pass on the survivors of the previous one. This exercises passes on trees actually shaped by earlier passes, rather than on every tree the WF spec alone admits. |
 | `--size_stats` | Collect and log tree size/height statistics (turns on `Info`-level logging if no log level is set). |
 | `-r, --max_retries` | How many times to retry generation, with a new seed, if it produces a tree identical (by hash) to one already generated for this pass (default `seed_count * 2`). Once exhausted, that iteration is skipped. |
-| `--gen_bound` | Whether generated trees should try to reuse an existing bound name instead of a fresh one, so lookups get exercised too (default on). |
+| `--gen_bound <bool>` | Whether generated trees should try to reuse an existing bound name instead of a fresh one, so lookups get exercised too (default on). A fresh name is still picked 10% of the time when a bound one exists. |
+| `--respect_refs <bool>` | Only generate references (`&tok`) to bound names (default on). With `false`, references are generated like any other leaf, so unbound references show up as WF errors. |
 | `--weights <tok> <n> [<tok> <n> ...]` | Bias generation towards or away from specific tokens; see [Token weights](#token-weights). |
 | `-l, --log_level` | `Trace`, `Debug`, `Info`, `Warning`, `Output`, `Error`, or `None`. `Trace` prints every generated tree and its output, not just failures. |
 | `--samples` | Files with sample programs to use in program generation. |
@@ -122,9 +123,9 @@ my_tool test --samples examples/*.my_ext
 
 When sampling is enabled, the fuzzer parses the sample files and may run them through all passes up to the selected starting pass. Each sample tree, and all of its subtrees, is stored in a map keyed by the type of its root node (token).
 
-Starting from the `Top` node, we generate the tree top-down: for each node, we choose its children by randomly picking one of the valid tokens (or token sequences) defined in the well-formedness specification. If sampling is enabled, we may instead copy a randomly chosen node of that type from the sample map, based on the sampling frequency (50% by default).
+Starting from the `Top` node, we generate the tree top-down: for each node, we choose its children by randomly picking one of the valid tokens (or token sequences) defined in the well-formedness specification. If sampling is enabled, we may instead copy a randomly chosen node of that type from the sample map, based on the sampling frequency (50% by default). A sampled binding key of a binder with `flag::shadowing` is given a fresh name if the sampled name is already in scope. A sampled reference (`&tok`) keeps its name, but if any reference in a sample cannot be resolved, the whole sample is discarded and the node is generated from the well-formedness specification instead.
 
-The `--sampling-level` flag controls how much of a sampled subtree is copied. At the default level of 1, we copy the sampled node's children but not their descendants. At higher levels, we copy descendants down to that depth, or the whole subtree if it is shallower. A level of 0 copies the entire sampled subtre; to avoid reproducing complete sample programs, the `Top` node's children are then always generated from the well-formedness specification.
+The `--sampling-level` flag controls how much of a sampled subtree is copied. At the default level of 1, we copy the sampled node's children but not their descendants. At higher levels, we copy descendants down to that depth, or the whole subtree if it is shallower. A level of 0 copies the entire sampled subtree; to avoid reproducing complete sample programs, the `Top` node's children are then always generated from the well-formedness specification.
 
 ## Related: pattern checking
 

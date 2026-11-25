@@ -19,7 +19,7 @@ namespace
       (Top <<= Calculation)
     | (Calculation <<= (Assign | Output)++)
     // [Ident] here indicates that the Ident node is a symbol that should
-    // be stored in the symbol table  
+    // be stored in the symbol table
     | (Assign <<= Ident * Expression)[Ident]
     | (Output <<= String * Expression)
     // [1] here indicates that there should be at least one token

@@ -56,14 +56,14 @@ infix operators. All variables are constants (i.e. their values do not
 change) and the only action the program can take is to print a result
 to the console.
 
-The language is defined by the following grammar (we assume standard 
+The language is defined by the following grammar (we assume standard
 syntax for $string$, $number$ and $variable$):
 
 $$
 \begin{align}
 Calc &\rightarrow Assign \ |\ Output\ |\ Assign\ Calc\ |\ Output\ Calc\\
 Assign &\rightarrow variable\ \texttt{=}\ Expr \ ";" \\
-Output &\rightarrow \texttt{print}\ string \ Expr \ ";"\\ 
+Output &\rightarrow \texttt{print}\ string \ Expr \ ";"\\
 Expr &\rightarrow Expr\ Op\ Expr\ |\ Operand\ |\ Open\ Expr\ Close\\
 Operand &\rightarrow number\ |\ variable\\
 Op &\rightarrow \texttt{+}\ |\ \texttt{-}\ |\ \texttt{*}\ |\ \texttt{/}\\
@@ -132,10 +132,10 @@ Either at the level of a single file, a directory of files, or a
 whole directory structure with subdirectories. An important point is
 that whatever level the parser runs at, it will return a single tree
 containing the tokens from all files. For `infix` we'll be operating at
-the level of a single file, for simplicity.  The second argument, 
+the level of a single file, for simplicity.  The second argument,
 `wf_parser`, is the well-formed definition for the output of the parsing
 step. We will return to this definition after seeing some example parse
-trees for the `infix` language. 
+trees for the `infix` language.
 
 We then need to set up the Trieste `Rule` objects which turn text into
 tokens. The constructor for a `Rule` is:
@@ -160,7 +160,7 @@ p("start", // this indicates the 'mode' these rules are associated with
 
     // Int.
     "[[:digit:]]+\\b" >> [](auto& m) { m.add(Int); },
-    
+
     // String. s
     R"("[^"]*")" >> [](auto& m) { m.add(String); },
 
@@ -179,17 +179,17 @@ p("start", // this indicates the 'mode' these rules are associated with
     // ...
   });
 ```
-Here, the overloaded `>>` operator takes a RegEx and an `effect` as arguments 
+Here, the overloaded `>>` operator takes a RegEx and an `effect` as arguments
 and returns a `Rule` object. The `()` operator (called on the `Parse` object `p`
 in the code example above) is overloaded in the `Parse` class and is called with
-a string (representing a 'mode') and the list of `Rule`s as arguments which are 
+a string (representing a 'mode') and the list of `Rule`s as arguments which are
 added to the `Parse` object. A mode is simply a string, used for controlling
 the application of the rules. Currently, only the 'start' mode is used.
 
 ### Tokens
 
 The parser rules match strings from the input program to tokens, which
-must be defined for the language we are parsing. For our running example, 
+must be defined for the language we are parsing. For our running example,
 the tokens (e.g. `Int`, `Print`) are defined as `TokenDef` objects:
 
 ``` c++
@@ -199,8 +199,8 @@ inline const auto Add = TokenDef("+");
 inline const auto Equals = TokenDef("equals");
 
 ```
-A `TokenDef` can be given a flag as a second argument. 
-For example, the `flag::print` indicates that, when outputting 
+A `TokenDef` can be given a flag as a second argument.
+For example, the `flag::print` indicates that, when outputting
 the tree, this token should also output the raw string from the
 input file.
 
@@ -242,7 +242,7 @@ the token to the current `Group`. Let's look at the following line:
 print "5 + 10" 5 + 10;
 ```
 
-Let's look at this step by step (we'll show Whitespace once but will skip it afterwards for space). 
+Let's look at this step by step (we'll show Whitespace once but will skip it afterwards for space).
 The current position of the cursor in the tree is indicated by the ^ symbol:
 
 
@@ -415,7 +415,7 @@ graph TD;
 Note that the `term` command, triggered by the semi-colon, ends the
 `Group` node. In addition to the `add` and `term` functions operating on tokens
 we have seen this far, we will look at the effects of the functions `push`, `pop`
-and `seq` while parsing. 
+and `seq` while parsing.
 
 
 ### Parsing example with `push` and `pop`
@@ -637,7 +637,7 @@ Let's look at the rule definitions again in detail:
 ```
 
 These rules, for parsing assignments, are different from the other parsing rules for
-the infix language. The first rule calls `seq`. This command indicates that we are 
+the infix language. The first rule calls `seq`. This command indicates that we are
 entering into a sequence of groups. Let's look at how we parse this line:
 
 ``` typescript
@@ -843,7 +843,7 @@ output an error indicating what is wrong with the tree.
 ### Pass 1: Expressions
 
 Our first pass will take the raw tokens from the parser and organize
-them into mathematical expressions. We will do this by specifying a 
+them into mathematical expressions. We will do this by specifying a
 `PassDef` object, which has the following constructor:
 
 ``` c++
@@ -857,7 +857,7 @@ PassDef(
 The first argument is a name for the pass, `wf` is the well-formedness rules
 for the pass and the `direction` flag specifies the direction of the
 tree traversal (top-down, bottom-up or once). `r` in this case are rules
-which change the current tree using a `Pattern`, which matches to a 
+which change the current tree using a `Pattern`, which matches to a
 subtree, and `Effect`:
 
 ``` c++
@@ -867,9 +867,9 @@ using Effect = std::function<T(Match&)>;
 which is a function that takes a `Match` object (i.e. a term matching
 the pattern) and produces an updated subtree. Naturally, we have some
 nice semantic sugar to keep us from having to call these constructors
-manually. Let's look at some example rewrite rules for this pass. 
-The first rule can be read as "If we find a `Top` node with a `File` 
-node as its child, replace the `File` node with a `Calculation` node 
+manually. Let's look at some example rewrite rules for this pass.
+The first rule can be read as "If we find a `Top` node with a `File`
+node as its child, replace the `File` node with a `Calculation` node
 with the `File` content":
 
 ``` c++
@@ -906,13 +906,13 @@ In(Expression) * (T(Paren) << T(Group)[Group]) >>
 
 ```
 The general shape of a rule is `Pattern >> Effect`, which produces a `PatternEffect`.
-In a pattern, `T(Foo)` matches a single node `Foo`, and `C * D` matches pattern `C` followed 
+In a pattern, `T(Foo)` matches a single node `Foo`, and `C * D` matches pattern `C` followed
 by pattern `D`. `P << C` means that the pattern `C` matches the children of whatever node
 is matched by pattern `P`. `In(Foo)` indicates that the parent node where the current
-pattern matches is a `Foo` node. This parent node will not be part of the `Match` object: 
-only subsequent terms in the pattern are part of the `Match` and can be replaced by 
+pattern matches is a `Foo` node. This parent node will not be part of the `Match` object:
+only subsequent terms in the pattern are part of the `Match` and can be replaced by
 the effect. We can also bind patterns to variables to conveniently refer to constituent parts
-of a `Pattern`. For instance, `T(Foo)[V]` creates a pattern match of type `Foo` bound to 
+of a `Pattern`. For instance, `T(Foo)[V]` creates a pattern match of type `Foo` bound to
 the name `V`. Note that the name `V` also is a `Token` (for performance reasons) but
 does not have to be the same token as it is binding.
 
@@ -975,7 +975,7 @@ defined by an `Assign` node will take precedence over any other
 which exists.
 
 We must also specify what it means for a tree to be well-formed after
-the `expressions` pass: 
+the `expressions` pass:
 
 ``` c++
 inline const auto wf_expressions_tokens =
@@ -1011,10 +1011,10 @@ static Driver d(
 ```
 
 We first provide a name for our language, and then a reference to
-some command line options (none in this case). The `parser()` 
+some command line options (none in this case). The `parser()`
 function returns the `Parse` object that we specified before.
 We then include our rewrite passes, where the `PassDef` returned
-by the function `expressions()` is the only one defined thus far. 
+by the function `expressions()` is the only one defined thus far.
 
 ### Passes 2 and 3: Operator precedence
 
@@ -1360,7 +1360,9 @@ in the tree is valid.
 
 At this stage we have successfully constructed an AST for an `infix` program.
 Users of our code need to know what this final form is, so we should export it
-as part of the `infix` namespace:
+as part of the `infix` namespace. Since we have resolved all uses of `Ident`
+nodes, we can mark it as a *reference*, giving automatic checking that future
+passes do not accidentally introduce unbound names:
 
 ``` c++
   const auto wf =
@@ -1481,7 +1483,7 @@ output stream and a node, and as language implementer you then have fully freedo
 turn the node it provides into a file.  Here is our first example, in which
 we create a fully-parenthesized version of the input:
 
-```c++ 
+```c++
   Writer writer(const std::filesystem::path& path)
   {
     return {
@@ -1555,7 +1557,7 @@ And a snippet from `write_postfix`:
       {
         return true;
       }
-      
+
       os << " " << node->location().view();
 
       return false;
@@ -2044,8 +2046,8 @@ auto err(Node node, const std::string& msg)
 }
 ```
 In addition to the rewrite rules for valid expressions (pass 1) we saw before,
-we should define `Error` rules. Since the rules are matched in order, 
-the first rule below matches `Paren` nodes with no children (a 
+we should define `Error` rules. Since the rules are matched in order,
+the first rule below matches `Paren` nodes with no children (a
 previous rule will have handled those *with* children). A few examples
 of `Error` rules for the expression pass:
 
