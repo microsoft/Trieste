@@ -208,7 +208,7 @@ namespace trieste
         sample_files,
         "Files to extract sample nodes from for fuzz testing");
 
-      size_t sampling_level = 2;
+      size_t sampling_level = 1;
       test->add_option(
         "--sampling-level",
         sampling_level,
