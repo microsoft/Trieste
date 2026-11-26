@@ -509,11 +509,11 @@ namespace trieste
         if (key_index < b->size())
           return b->at(key_index)->type();
 
+        // The key field must be exactly one token for the binder to count.
         if (
           types.empty() ||
-          std::any_of(types.begin(), types.end(), [&](auto& t) {
-            return t != types.front();
-          }))
+          std::adjacent_find(
+            types.begin(), types.end(), std::not_equal_to<>()) != types.end())
           return Invalid;
 
         return types.front();
