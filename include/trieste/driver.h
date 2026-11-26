@@ -148,6 +148,12 @@ namespace trieste
       test->add_option(
         "--gen_bound", bound_vars, "Generate bound variable names if possible");
 
+      auto respect_refs = true;
+      test->add_option(
+        "--respect_refs",
+        respect_refs,
+        "Only generate references (&Foo in a WF) to bound names");
+
       std::vector<std::tuple<std::string, size_t>> test_weights;
       test->add_option(
         "--weights",
@@ -357,6 +363,7 @@ namespace trieste
             .end_index(reader.pass_index(test_end_pass))
             .start_seed(test_seed)
             .bound_vars(bound_vars)
+            .respect_refs(respect_refs)
             .token_weights(std::move(parsed_weights))
             .test_sequence(test_sequence)
             .size_stats(test_size_stats)

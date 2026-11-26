@@ -37,7 +37,7 @@ namespace infix
     | (Assign <<= Ident * Expression)[Ident]
     | (Output <<= String * Expression)
     | (Expression <<= (Add | Subtract | Multiply | Divide | Ref | Float | Int))
-    | (Ref <<= Ident)
+    | (Ref <<= &Ident)
     | (Add <<= Expression * Expression)
     | (Subtract <<= Expression * Expression)
     | (Multiply <<= Expression * Expression)

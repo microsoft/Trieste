@@ -51,7 +51,9 @@ namespace trieste
       const wf::Wellformed& wf,
       dir::flag direction = dir::topdown)
     : name_(name), wf_(wf), direction_(direction)
-    {}
+    {
+      wf_.validate();
+    }
 
     PassDef(dir::flag direction = dir::topdown) : direction_(direction) {}
 
@@ -75,6 +77,7 @@ namespace trieste
       const std::initializer_list<detail::PatternEffect<Node>>& r)
     : name_(name), wf_(wf), direction_(dir::topdown), rules_(r)
     {
+      wf_.validate();
       compile_rules();
     }
 
@@ -85,6 +88,7 @@ namespace trieste
       const std::initializer_list<detail::PatternEffect<Node>>& r)
     : name_(name), wf_(wf), direction_(direction), rules_(r)
     {
+      wf_.validate();
       compile_rules();
     }
 

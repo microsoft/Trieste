@@ -377,6 +377,9 @@ Each field is either:
 
 Labels are used for defining symbol table bindings (see below) and for projecting fields out of `Nodes` with `n / tok`.
 
+Any token in a field can be marked as a reference (`&tok`), meaning that the corresponding node must be bound in a symbol table.
+
+
 ### Extending and modifying specifications:
 
 `wf1 | wf2` merges two specifications; shapes in `wf2` override any conflicting shapes in `wf1`. This is useful when extending a previous specification:
@@ -400,6 +403,18 @@ inline const auto wf_expressions_tokens =
 
 Symbol table entries are controlled by the well-formedness specification. `(tok <<= fields)[key]` specifies that nodes of type `tok` are bound into their nearest ancestor's symbol table using the value of the child named `key` as the lookup key. `key` must be one of the field labels in the sequence. Note that the `TokenDef` of `tok` must have `flag::lookup` (or `flag::lookdown`) for lookup (or lookdown) to work.
 
+A node in a field marked as a reference (`&tok`) must be bound in the current
+scope, meaning that `lookup()` on the node must return at least one definition
+(so `flag::defbeforeuse`, shadowing and includes all apply). A tree with an
+unbound reference fails the WF check. Since only the WF of the pass being
+checked matters, a pass opts in by using `&` in its output WF; earlier passes
+can still produce unbound names, for example to report them as `Error` nodes.
+
+References are restricted in two ways, which are checked when a `PassDef` is
+constructed with the WF (an exception is thrown otherwise):
+* A reference token must be a leaf, i.e. it may not have a shape of its own.
+* Some binder in the WF must use the reference token as its key, i.e.
+  `(tok2 <<= ... * tok * ...)[tok]` for a reference `&tok`.
 
 ### Examples
 
@@ -711,6 +726,16 @@ p.gen({
 
 Each generator is a `std::function<std::string(Rand&)>`. Tokens without a registered generator get a fresh synthetic location (`ast::fresh()`), which is fine for structural tokens.
 
+### References
+
+Fields marked as references (`&tok`) are only given names that are bound in
+scope. Names are assigned once the whole tree has been generated, so a
+reference can use a binder that appears later in the tree, unless the scope is
+`flag::defbeforeuse`. If nothing that a reference could use is bound at some
+position, the reference is not generated there, and neither is any token that
+would require it. If no tree can be generated at all (because `Top` requires a
+reference to something that can never be bound first), generation throws.
+
 ### Construction
 
 | Constructor | Description |
@@ -739,7 +764,8 @@ Configuration is done via the builder pattern:
 | `.max_depth(n)` | 10 | Maximum depth of generated ASTs. |
 | `.failfast(bool)` | `false` | Stop after the first WF failure. |
 | `.test_sequence(bool)` | `false` | Feed survivors from pass N as input to pass N+1 rather than regenerating. |
-| `.bound_vars(bool)` | `true` | Generate symbol-table references that are bound when possible. |
+| `.bound_vars(bool)` | `true` | Generate symbol-table references that are bound when possible (a fresh name is still picked 10% of the time when a bound one exists). |
+| `.respect_refs(bool)` | `true` | Only generate references (`&tok`) to bound names. With `false`, references are generated like any other leaf, so unbound references show up as WF errors. This does not affect WF checking. |
 | `.max_retries(n)` | 100 | Retries to find a hash-unique tree before reusing. |
 | `.start_index(n)` | 1 | First pass to test (1-based). |
 | `.end_index(n)` | last | Last pass to test (1-based). |

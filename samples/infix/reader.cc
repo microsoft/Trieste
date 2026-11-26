@@ -19,7 +19,7 @@ namespace
       (Top <<= Calculation)
     | (Calculation <<= (Assign | Output)++)
     // [Ident] here indicates that the Ident node is a symbol that should
-    // be stored in the symbol table  
+    // be stored in the symbol table
     | (Assign <<= Ident * Expression)[Ident]
     | (Output <<= String * Expression)
     // [1] here indicates that there should be at least one token
@@ -58,7 +58,10 @@ namespace
   inline const auto wf_pass_check_refs =
     wf_pass_trim
     | (Expression <<= wf_check_refs_tokens)
-    | (Ref <<= Ident)
+    // &Ident indicates that this field is a reference. A node inhabiting such a
+    // field must be bound in a symbol table in the current scope. Trees where
+    // this does not hold will be rejected.
+    | (Ref <<= &Ident)
     ;
   // clang-format on
 

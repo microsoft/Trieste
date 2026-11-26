@@ -560,6 +560,12 @@ namespace trieste
 
     Nodes lookup(Node until = {})
     {
+      return lookup_as(location_, until);
+    }
+
+    Nodes lookup_as(const Location& loc, Node until = {})
+    {
+      // This is what lookup() would return if this node's location was `loc`.
       Nodes result;
       auto st = scope();
 
@@ -567,7 +573,7 @@ namespace trieste
       {
         // If the type of the symbol table is flag::defbeforeuse, then the
         // definition has to appear earlier in the same file.
-        st->get_symbols(location_, result, [&](auto& n) {
+        st->get_symbols(loc, result, [&](auto& n) {
           return (n->type() & flag::lookup) &&
             (!(st->type() & flag::defbeforeuse) || n->precedes(this));
         });
@@ -627,6 +633,30 @@ namespace trieste
         !std::any_of(entry.begin(), entry.end(), [](auto& n) {
                return n->type() & flag::shadowing;
              });
+    }
+
+    void unbind(const Location& loc)
+    {
+      // Remove this node's binding of the location from the enclosing scope.
+      auto st = scope();
+
+      if (!st)
+        return;
+
+      auto& symbols = st->symtab_->symbols;
+      auto it = symbols.find(loc);
+
+      if (it == symbols.end())
+        return;
+
+      auto& entry = it->second;
+      entry.erase(
+        std::remove_if(
+          entry.begin(), entry.end(), [&](auto& n) { return n.get() == this; }),
+        entry.end());
+
+      if (entry.empty())
+        symbols.erase(it);
     }
 
     void include()

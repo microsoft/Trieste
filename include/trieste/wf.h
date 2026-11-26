@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <deque>
 #include <numeric>
+#include <optional>
 #include <variant>
 
 /* Notes on how to use the Well-formedness checker:
@@ -60,6 +61,31 @@ namespace trieste
       Sampling sampling;
       std::map<const std::vector<Token>*, std::vector<double>>
         weighted_offsets_cache_;
+
+      // Tokens that are marked as references (`&Token`) somewhere in the WF.
+      std::set<Token> ref_tokens_;
+      // Given the reference tokens that can currently be bound, computes the
+      // tokens that can still be generated (see
+      // Wellformed::generatable_tokens).
+      std::function<std::set<Token>(const std::set<Token>&)>
+        compute_generatable;
+      std::map<std::set<Token>, std::set<Token>> generatable_cache_;
+
+      // A node whose location is assigned after the whole tree is generated.
+      // A reference hole (`is_ref`) has to be bound. Any other hole is a
+      // position that may reuse a bound name (see gen_bound_vars). A sampled
+      // reference prefers to keep its sampled location.
+      struct Hole
+      {
+        Node node;
+        bool is_ref;
+        std::optional<Location> preferred = std::nullopt;
+      };
+      std::vector<Hole> holes;
+
+      // All binder nodes (with flag::lookup) created so far, whether their key
+      // has been generated yet or not.
+      Nodes binders;
 
       /* The generator chooses which token to emit next. It makes this choice
        * using a weighted probability distribution, where the weights are based
@@ -116,6 +142,20 @@ namespace trieste
       {
         token_weights_ = std::move(token_weights);
         return *this;
+      }
+
+      Gen& ref_tokens(
+        std::set<Token> ref_tokens,
+        std::function<std::set<Token>(const std::set<Token>&)> generatable_)
+      {
+        ref_tokens_ = std::move(ref_tokens);
+        compute_generatable = std::move(generatable_);
+        return *this;
+      }
+
+      bool respect_refs() const
+      {
+        return !ref_tokens_.empty();
       }
 
       std::size_t weight_for(const Token& token) const
@@ -186,13 +226,9 @@ namespace trieste
       // same every time it is used (it only depends on the static token
       // weights, not on depth), so it is computed once per candidate list and
       // cached for the lifetime of this Gen.
-      const std::vector<double>&
-      cumulative_weighted_offsets(const std::vector<Token>& tokens)
+      std::vector<double> compute_cumulative_weighted_offsets(
+        const std::vector<Token>& tokens) const
       {
-        auto found = weighted_offsets_cache_.find(&tokens);
-        if (found != weighted_offsets_cache_.end())
-          return found->second;
-
         std::vector<double> offsets;
         offsets.reserve(tokens.size());
         std::transform(
@@ -201,13 +237,28 @@ namespace trieste
           std::back_inserter(offsets),
           [&](const Token& t) { return static_cast<double>(weight_for(t)); });
         std::partial_sum(offsets.begin(), offsets.end(), offsets.begin());
+        return offsets;
+      }
 
-        return weighted_offsets_cache_.emplace(&tokens, std::move(offsets))
+      const std::vector<double>&
+      cumulative_weighted_offsets(const std::vector<Token>& tokens)
+      {
+        auto found = weighted_offsets_cache_.find(&tokens);
+        if (found != weighted_offsets_cache_.end())
+          return found->second;
+
+        return weighted_offsets_cache_
+          .emplace(&tokens, compute_cumulative_weighted_offsets(tokens))
           .first->second;
       }
 
-      Token
-      choose(const std::vector<Token>& tokens, std::size_t depth, Token parent)
+      // If `cacheable` is false, `tokens` is a temporary list (its address is
+      // not stable), so nothing may be cached against it.
+      Token choose(
+        const std::vector<Token>& tokens,
+        std::size_t depth,
+        Token parent,
+        bool cacheable = true)
       {
         if (tokens.empty())
           throw_no_candidates(tokens, parent, depth, "empty token list");
@@ -224,6 +275,13 @@ namespace trieste
         {
           if (!token_weights_.empty())
           {
+            if (!cacheable)
+              return choose_from_cumulative(
+                tokens,
+                compute_cumulative_weighted_offsets(tokens),
+                parent,
+                depth);
+
             return choose_from_cumulative(
               tokens, cumulative_weighted_offsets(tokens), parent, depth);
           }
@@ -406,6 +464,81 @@ namespace trieste
           parent->type() & flag::shadowing);
       }
 
+      // The scopes visible from a node created as a child of `parent`.
+      static std::set<const NodeDef*> scope_chain_for_new_child(Node parent)
+      {
+        Node st = (parent->type() & flag::symtab) ? parent : parent->scope();
+        return scope_chain_from(st);
+      }
+
+      static std::set<const NodeDef*> scope_chain_from(Node st)
+      {
+        std::set<const NodeDef*> chain;
+        for (; st; st = st->scope())
+          chain.insert(st.get());
+        return chain;
+      }
+
+      // Whether `b` precedes (in the sense of NodeDef::precedes) a node that
+      // will be appended as the last child of `parent`.
+      static bool precedes_next_child_of(const Node& b, const Node& parent)
+      {
+        // An ancestor of the new child does not precede it.
+        for (auto p = parent.get(); p; p = p->parent_unsafe())
+        {
+          if (p == b.get())
+            return false;
+        }
+
+        // Anything already below `parent` is to the left of its last child.
+        for (auto p = b->parent_unsafe(); p; p = p->parent_unsafe())
+        {
+          if (p == parent.get())
+            return true;
+        }
+
+        return b->precedes(parent);
+      }
+
+      // The token that the binder `b` binds: its key if that has been
+      // generated, otherwise the only token its key field can be.
+      Token binder_key_type(const Node& b) const
+      {
+        auto& [types, key_index] = binding_keys.at(b->type());
+
+        if (key_index < b->size())
+          return b->at(key_index)->type();
+
+        // The key field must be exactly one token for the binder to count.
+        if (
+          types.empty() ||
+          std::adjacent_find(
+            types.begin(), types.end(), std::not_equal_to<>()) != types.end())
+          return Invalid;
+
+        return types.front();
+      }
+
+      // Whether the binder `b` makes a reference of type `type` resolvable at
+      // a position whose visible scopes are `chain`, following the rules of
+      // NodeDef::lookup. `precedes` says whether `b` precedes that position.
+      template<typename F>
+      bool binder_provides(
+        const Node& b,
+        Token type,
+        const std::set<const NodeDef*>& chain,
+        F&& precedes) const
+      {
+        if (binder_key_type(b) != type)
+          return false;
+
+        auto st = b->scope();
+        if (!st || chain.find(st.get()) == chain.end())
+          return false;
+
+        return !(st->type() & flag::defbeforeuse) || precedes();
+      }
+
       bool is_in_scope(Location loc, Node scope)
       {
         auto symbols = get_symbols_from_loc(loc, scope);
@@ -413,6 +546,160 @@ namespace trieste
       }
 
     public:
+      bool is_binder(Token type) const
+      {
+        return (type & flag::lookup) &&
+          binding_keys.find(type) != binding_keys.end();
+      }
+
+      // Keep track of binders, so that references can be resolved to them.
+      void register_if_binder(const Node& node)
+      {
+        if (is_binder(node->type()))
+          binders.push_back(node);
+      }
+
+      // How often (in percent) a fresh name is used where a bound name could
+      // be reused, when at least one bound name exists.
+      static constexpr size_t FRESH_NAME_PERCENTAGE = 10;
+
+      // Decides whether to reuse one of `n` bound names rather than a fresh
+      // name, and if so returns the index of the one to reuse. This always
+      // draws exactly one random number.
+      std::optional<size_t> pick_bound_index(size_t n)
+      {
+        auto r = static_cast<size_t>(next());
+        if (n == 0 || r % 100 < FRESH_NAME_PERCENTAGE)
+          return std::nullopt;
+
+        return (r / 100) % n;
+      }
+
+      // A reference that has to be bound.
+      void add_ref_hole(const Node& node)
+      {
+        holes.push_back({node, true});
+      }
+
+      // A position that may reuse a bound name.
+      void add_maybe_bound_hole(const Node& node)
+      {
+        holes.push_back({node, false});
+      }
+
+      // A sampled reference, which keeps its sampled location if possible.
+      void add_sampled_ref_hole(const Node& node, const Location& preferred)
+      {
+        holes.push_back({node, true, preferred});
+      }
+
+      // The reference tokens that have a binder (existing or promised) that a
+      // reference created as a child of `node` can resolve to.
+      std::set<Token> available_ref_tokens(Node node)
+      {
+        std::set<Token> available;
+        auto chain = scope_chain_for_new_child(node);
+
+        for (auto& b : binders)
+        {
+          auto type = binder_key_type(b);
+          if (
+            ref_tokens_.find(type) == ref_tokens_.end() ||
+            available.find(type) != available.end())
+            continue;
+
+          if (binder_provides(b, type, chain, [&]() {
+                return precedes_next_child_of(b, node);
+              }))
+            available.insert(type);
+        }
+        return available;
+      }
+
+      // Whether the existing node `ref` can be resolved to a binder (existing
+      // or promised) of its type.
+      bool will_resolve(const Node& ref)
+      {
+        auto chain = scope_chain_from(ref->scope());
+        return std::any_of(binders.begin(), binders.end(), [&](auto& b) {
+          return binder_provides(
+            b, ref->type(), chain, [&]() { return b->precedes(ref); });
+        });
+      }
+
+      // Assigns locations to all holes. This happens once the whole tree has
+      // been generated, so that a hole can use anything that is bound around
+      // it, including later siblings where the scope allows it.
+      void fill_holes()
+      {
+        for (auto& hole : holes)
+        {
+          auto& node = hole.node;
+
+          // The hole's location is empty until it is assigned here.
+          if (hole.preferred && !node->lookup_as(*hole.preferred).empty())
+          {
+            node->set_location(*hole.preferred);
+            continue;
+          }
+
+          // Collect the bound names that lookup resolves from this node.
+          std::vector<Location> candidates;
+          for (auto& b : binders)
+          {
+            auto key_index = binding_keys.at(b->type()).second;
+            if (key_index >= b->size())
+              continue;
+
+            auto key = b->at(key_index);
+            if (key->type() != node->type())
+              continue;
+
+            if (!node->lookup_as(key->location()).empty())
+              candidates.push_back(key->location());
+          }
+
+          if (hole.is_ref)
+          {
+            if (candidates.empty())
+              throw std::logic_error(
+                std::string("No bound symbol available for reference ") +
+                node->type().str());
+
+            node->set_location(candidates[next() % candidates.size()]);
+            continue;
+          }
+
+          if (auto choice = pick_bound_index(candidates.size()))
+          {
+            node->set_location(candidates[*choice]);
+            continue;
+          }
+
+          auto scope = node->parent()->scope();
+          auto fresh = fresh_location(node);
+          while (is_in_scope(fresh, scope))
+            fresh = fresh_location(node);
+          node->set_location(fresh);
+        }
+
+        holes.clear();
+      }
+
+      // The tokens that can be generated when the given reference tokens are
+      // the ones that are available.
+      const std::set<Token>&
+      generatable_tokens(const std::set<Token>& available_refs)
+      {
+        auto found = generatable_cache_.find(available_refs);
+        if (found != generatable_cache_.end())
+          return found->second;
+
+        return generatable_cache_
+          .emplace(available_refs, compute_generatable(available_refs))
+          .first->second;
+      }
+
       Location fresh_location(Node child)
       {
         return gloc(rand, child);
@@ -424,13 +711,23 @@ namespace trieste
       Location gen_location(Node parent, Node child)
       {
         auto type = child->type();
-        Nodes symbols = get_symbols_from_type(type, child->scope());
-        // Adding +1 to allow for fresh location with a small probability
-        auto rand_symbol = static_cast<size_t>(next() % (symbols.size() + 1));
-        // Prefer location from a symbol table if gen_bound_vars is enabled.
-        if (rand_symbol < symbols.size() && should_gen_bound(parent, type))
+
+        // A position that may reuse a bound name, but is not itself a binding
+        // key, is assigned once the whole tree has been generated.
+        if (
+          gen_bound_vars && should_gen_bound(parent, type) &&
+          !is_symtab_key(parent->size() - 1, type, parent->type()))
         {
-          auto sym = symbols[rand_symbol];
+          add_maybe_bound_hole(child);
+          return {};
+        }
+
+        Nodes symbols = get_symbols_from_type(type, child->scope());
+        // Prefer location from a symbol table if gen_bound_vars is enabled.
+        auto rand_symbol = pick_bound_index(symbols.size());
+        if (rand_symbol && should_gen_bound(parent, type))
+        {
+          auto sym = symbols[*rand_symbol];
           auto key_index = binding_keys.at(sym->type()).second;
           return (sym->at(key_index))->location();
         }
@@ -515,12 +812,32 @@ namespace trieste
           clone_depth(levels, node, child, continuations);
       }
     };
+    /**
+     * A token marked as a reference in a well-formedness specification, written
+     * `&Token` when `wf::ops` is in scope. A reference is a leaf node whose
+     * location is expected to be bound in a symbol table in scope.
+     */
+    struct RefToken
+    {
+      Token token;
+    };
+
     struct Choice
     {
       std::vector<Token> types;
 
+      // The subset of `types` that were marked as references (`&Token`).
+      std::set<Token> ref_tokens;
+
       TRIESTE_SLOW_PATH Choice() = default;
       TRIESTE_SLOW_PATH Choice(std::vector<Token> types_) : types{types_} {}
+      TRIESTE_SLOW_PATH
+      Choice(std::vector<Token> types_, std::set<Token> ref_tokens_)
+      : types{types_}, ref_tokens{ref_tokens_}
+      {}
+      TRIESTE_SLOW_PATH Choice(const RefToken& ref)
+      : types{ref.token}, ref_tokens{ref.token}
+      {}
       TRIESTE_SLOW_PATH Choice(const Choice&) = default;
       TRIESTE_SLOW_PATH Choice(Choice&&) = default;
       TRIESTE_SLOW_PATH Choice& operator=(const Choice&) = default;
@@ -532,12 +849,61 @@ namespace trieste
         return std::find(types.begin(), types.end(), type) != types.end();
       }
 
+      bool is_reference(const Token& type) const
+      {
+        return ref_tokens.find(type) != ref_tokens.end();
+      }
+
+      // Whether `type` can be generated, given the reference tokens that are
+      // currently available and the tokens that can be generated as a result.
+      bool can_generate(
+        const Token& type,
+        const std::set<Token>& available_refs,
+        const std::set<Token>& generatable) const
+      {
+        if (is_reference(type))
+          return available_refs.find(type) != available_refs.end();
+
+        return generatable.find(type) != generatable.end();
+      }
+
+      // Collects the alternatives that can currently be generated as a child of
+      // `node`. Returns false if that is all of them, in which case `out` is
+      // not filled in. Alternatives that cannot be generated are references
+      // to something that is not available, and tokens that require such a
+      // reference.
+      bool filter_available(Gen& g, Node node, std::vector<Token>& out) const
+      {
+        if (!g.respect_refs())
+          return false;
+
+        auto available_refs = g.available_ref_tokens(node);
+        auto& generatable = g.generatable_tokens(available_refs);
+
+        for (auto& type : types)
+        {
+          if (can_generate(type, available_refs, generatable))
+            out.push_back(type);
+        }
+
+        return out.size() != types.size();
+      }
+
       bool check(Node node) const
       {
         if (node == Error)
           return true;
 
         auto ok = accepts_type(node->type());
+
+        if (ok && is_reference(node->type()) && node->lookup().empty())
+        {
+          logging::Error() << node->location().origin_linecol()
+                           << ": unbound reference to `"
+                           << node->location().view() << "`" << std::endl
+                           << node->location().str() << node << std::endl;
+          return false;
+        }
 
         if (!ok)
         {
@@ -585,13 +951,23 @@ namespace trieste
 
       void gen(Gen& g, size_t depth, Node node) const
       {
-        Token type = g.choose(types, depth, node->type());
+        std::vector<Token> available;
+        auto filtered = filter_available(g, node, available);
+        Token type = filtered ?
+          g.choose(available, depth, node->type(), false) :
+          g.choose(types, depth, node->type());
 
         // We may need a fresh location, so the child needs to be in the AST by
         // the time we call g.location().
         auto child = NodeDef::create(type);
         node->push_back(child);
-        child->set_location(g.gen_location(node, child));
+        g.register_if_binder(child);
+
+        // A reference gets its location once the whole tree is generated.
+        if (g.respect_refs() && is_reference(type))
+          g.add_ref_hole(child);
+        else
+          child->set_location(g.gen_location(node, child));
       }
     };
 
@@ -701,9 +1077,13 @@ namespace trieste
         for (i = 0; i < min_len; ++i)
           choice.gen(g, depth, node);
 
+        std::vector<Token> available;
+        auto filtered = choice.filter_available(g, node, available);
+        const auto& types = filtered ? available : choice.types;
+
         const auto weight_sum = std::accumulate(
-          choice.types.begin(),
-          choice.types.end(),
+          types.begin(),
+          types.end(),
           size_t{0},
           [&](size_t acc, const Token& t) { return acc + g.weight_for(t); });
 
@@ -1074,9 +1454,12 @@ namespace trieste
               using ShapeType = std::decay_t<decltype(shape)>;
               if constexpr (std::is_same_v<ShapeType, Fields>)
               {
-                if (shape.binding != Invalid)
+                if (shape.binding != Invalid && shape.binding != Include)
                 {
                   auto key_index = shape.index(shape.binding);
+                  if (key_index >= shape.fields.size())
+                    return;
+
                   auto& types = shape.fields.at(key_index).choice.types;
                   if (!types.empty())
                   {
@@ -1099,16 +1482,37 @@ namespace trieste
         std::map<trieste::Token, trieste::Nodes>& sampled_nodes,
         size_t sampling_level,
         bool sampling_enabled,
-        size_t sampling_frequency) const
+        size_t sampling_frequency,
+        bool respect_refs = true) const
       {
         // Collect map of tokens to their binding token and the corresponding
         // index in the children vector. This is used to preferentially generate
         // bound variables that are in scope.
+        std::set<Token> ref_tokens;
+        {
+          std::set<Token> keys;
+          collect_ref_and_key_tokens(ref_tokens, keys);
+        }
+
+        // Without respect_refs, references are generated like any other node
+        // (for evaluation purposes).
+        if (!respect_refs)
+          ref_tokens.clear();
+
         auto binding_keys = std::map<trieste::Token, SymtabKeys>{};
-        if (gen_bound || sampling_enabled)
+        if (gen_bound || sampling_enabled || !ref_tokens.empty())
         {
           populate_binding_keys(binding_keys);
         }
+
+        // References can only be generated once something is bound, so some
+        // tokens may not be generatable at all.
+        if (
+          !ref_tokens.empty() && shapes.find(Top) != shapes.end() &&
+          generatable_tokens({}).count(Top) == 0)
+          throw std::runtime_error(
+            "Cannot generate a tree: every tree requires a reference to "
+            "something that is bound before it is used.");
 
         auto g = Gen(
                    compute_minimum_distance_to_terminal(target_depth),
@@ -1121,10 +1525,15 @@ namespace trieste
                    sampling_level,
                    sampling_enabled,
                    sampling_frequency)
-                   .token_weights(std::move(token_weights));
+                   .token_weights(std::move(token_weights))
+                   .ref_tokens(
+                     ref_tokens, [this](const std::set<Token>& available_refs) {
+                       return generatable_tokens(available_refs);
+                     });
         auto top = NodeDef::create(Top);
         ast::detail::top_node() = top;
         gen_node(g, 0, top);
+        g.fill_holes();
         return top;
       }
 
@@ -1219,6 +1628,98 @@ namespace trieste
         return distance;
       }
 
+      // Whether a `child` at `index` of a `parent` is a reference (`&Token`).
+      bool
+      is_ref_position(const Node& parent, size_t index, const Node& child) const
+      {
+        auto find = shapes.find(parent->type());
+        if (find == shapes.end())
+          return false;
+
+        return std::visit(
+          [&](auto& s) {
+            using ShapeType = std::decay_t<decltype(s)>;
+            if constexpr (std::is_same_v<ShapeType, Fields>)
+              return index < s.fields.size() &&
+                s.fields[index].choice.is_reference(child->type());
+            else
+              return s.choice.is_reference(child->type());
+          },
+          find->second);
+      }
+
+      // Registers the binders and references of the subtree just cloned from a
+      // sample into `node`, and checks that every reference in it can be
+      // resolved and that every continuation can be generated. If not, the
+      // sample is removed again and false is returned.
+      bool try_accept_sample(
+        Gen& g, const Node& node, const Nodes& continuations) const
+      {
+        auto binders_before = g.binders.size();
+        Nodes refs;
+
+        node->traverse([&](Node& current) {
+          for (size_t i = 0; i < current->size(); ++i)
+          {
+            auto child = current->at(i);
+            g.register_if_binder(child);
+            if (g.respect_refs() && is_ref_position(current, i, child))
+              refs.push_back(child);
+          }
+          return true;
+        });
+
+        auto ok = true;
+        if (g.respect_refs())
+        {
+          ok = std::all_of(refs.begin(), refs.end(), [&](auto& ref) {
+            return g.will_resolve(ref);
+          });
+
+          ok = ok &&
+            std::all_of(
+                 continuations.begin(), continuations.end(), [&](auto& cont) {
+                   return shapes.find(cont->type()) == shapes.end() ||
+                     g.generatable_tokens(g.available_ref_tokens(cont))
+                       .count(cont->type()) != 0;
+                 });
+        }
+
+        if (ok)
+        {
+          // Replace each sampled reference by a node without a location, so
+          // that it can be assigned later. The sampled location is kept if it
+          // can be resolved.
+          for (auto& ref : refs)
+          {
+            auto hole = NodeDef::create(ref->type());
+            ref->parent()->replace(ref, hole);
+            g.add_sampled_ref_hole(hole, ref->location());
+          }
+          return true;
+        }
+
+        logging::Debug() << "Sample contained bindings which could not be "
+                            "satisfied (aborting):"
+                         << std::endl
+                         << node->str();
+
+        // Undo the sample: forget its binders, unbind its keys and remove it.
+        g.binders.resize(binders_before);
+        node->traverse([&](Node& current) {
+          auto find = g.binding_keys.find(current->type());
+          if (current != node && find != g.binding_keys.end())
+          {
+            auto key_index = find->second.second;
+            if (key_index < current->size())
+              current->unbind(current->at(key_index)->location());
+          }
+          return true;
+        });
+        node->erase(node->begin(), node->end());
+        return false;
+      }
+
       void gen_node(Gen& g, size_t depth, Node node) const
       {
         if (!node)
@@ -1238,12 +1739,20 @@ namespace trieste
           !(depth == 0 && g.subtree_sampling())) // Avoid copying entire sample
         {
           g.gen_sample(node, continuations);
-          // Continue generating next layer
-          for (auto child : continuations)
+
+          if (try_accept_sample(g, node, continuations))
           {
-            gen_node(g, depth + g.sampling_level(), child);
+            // Continue generating next layer
+            for (auto child : continuations)
+            {
+              gen_node(g, depth + g.sampling_level(), child);
+            }
+            return;
           }
-          return;
+
+          // The sample would leave a reference that can never be bound, so
+          // generate this node from the specification instead.
+          continuations.clear();
         }
 
         // Generate based on WF
@@ -1253,6 +1762,177 @@ namespace trieste
         for (auto& child : *node)
         {
           gen_node(g, depth + 1, child);
+        }
+      }
+
+      /**
+       * Validates this specification, throwing std::runtime_error if it is
+       * malformed. This is meant to be called once, when the specification is
+       * put to use, rather than on every check.
+       */
+      void validate() const
+      {
+        validate_references();
+      }
+
+      // Collects the tokens marked as references (`&Token`) in this
+      // specification, and the tokens that can be symbol table keys.
+      void collect_ref_and_key_tokens(
+        std::set<Token>& ref_tokens, std::set<Token>& keys) const
+      {
+        auto add_refs = [&](const Choice& choice) {
+          ref_tokens.insert(choice.ref_tokens.begin(), choice.ref_tokens.end());
+        };
+
+        for (auto& [type, shape] : shapes)
+        {
+          std::visit(
+            [&](auto& s) {
+              using ShapeType = std::decay_t<decltype(s)>;
+              if constexpr (std::is_same_v<ShapeType, Fields>)
+              {
+                for (auto& field : s.fields)
+                  add_refs(field.choice);
+
+                if (s.binding != Invalid && s.binding != Include)
+                {
+                  auto key = s.index(s.binding);
+                  if (key < s.fields.size())
+                  {
+                    auto& types = s.fields[key].choice.types;
+                    keys.insert(types.begin(), types.end());
+                  }
+                }
+              }
+              else
+              {
+                add_refs(s.choice);
+              }
+            },
+            shape);
+        }
+      }
+
+      /**
+       * Computes the tokens that can be generated when only the given
+       * reference tokens are available. A reference alternative (`&Token`) can
+       * be generated only if its token is in `available_refs`. A token with a
+       * shape can be generated if every mandatory field has an alternative that
+       * can be generated. A token with no shape is a leaf and can always be
+       * generated.
+       */
+      std::set<Token>
+      generatable_tokens(const std::set<Token>& available_refs) const
+      {
+        std::set<Token> result;
+
+        // All tokens without a shape are leaves.
+        for (auto& [type, shape] : shapes)
+        {
+          std::visit(
+            [&](auto& s) {
+              using ShapeType = std::decay_t<decltype(s)>;
+              auto add_leaves = [&](const Choice& choice) {
+                for (auto& t : choice.types)
+                  if (shapes.find(t) == shapes.end())
+                    result.insert(t);
+              };
+
+              if constexpr (std::is_same_v<ShapeType, Fields>)
+              {
+                for (auto& field : s.fields)
+                  add_leaves(field.choice);
+              }
+              else
+              {
+                add_leaves(s.choice);
+              }
+            },
+            shape);
+        }
+
+        auto any = [&](const Choice& choice) {
+          return std::any_of(
+            choice.types.begin(), choice.types.end(), [&](auto& t) {
+              return choice.can_generate(t, available_refs, result);
+            });
+        };
+
+        // Find the least fixed point, so that cycles (such as an expression
+        // that contains expressions) need a way to terminate.
+        bool changed = true;
+        while (changed)
+        {
+          changed = false;
+          for (auto& [type, shape] : shapes)
+          {
+            if (result.find(type) != result.end())
+              continue;
+
+            auto ok = std::visit(
+              [&](auto& s) {
+                using ShapeType = std::decay_t<decltype(s)>;
+                if constexpr (std::is_same_v<ShapeType, Fields>)
+                {
+                  return std::all_of(
+                    s.fields.begin(), s.fields.end(), [&](auto& field) {
+                      return any(field.choice);
+                    });
+                }
+                else
+                {
+                  return s.min_len == 0 || any(s.choice);
+                }
+              },
+              shape);
+
+            if (ok)
+            {
+              result.insert(type);
+              changed = true;
+            }
+          }
+        }
+
+        return result;
+      }
+
+      /**
+       * Validates the reference tokens (`&Token`) of this specification.
+       * Throws std::runtime_error if
+       *  - a reference token is not a leaf, or
+       *  - no shape has a binding key that can hold the reference token, so the
+       *    reference could never be bound.
+       */
+      void validate_references() const
+      {
+        std::set<Token> ref_tokens;
+        std::set<Token> keys;
+        collect_ref_and_key_tokens(ref_tokens, keys);
+
+        for (auto& ref : ref_tokens)
+        {
+          auto find = shapes.find(ref);
+          if (find != shapes.end())
+          {
+            auto leaf = std::visit(
+              [](auto& s) {
+                using ShapeType = std::decay_t<decltype(s)>;
+                if constexpr (std::is_same_v<ShapeType, Fields>)
+                  return s.fields.empty();
+                else
+                  return s.max_len == 0;
+              },
+              find->second);
+
+            if (!leaf)
+              throw std::runtime_error(
+                std::string("WF reference token must be a leaf: ") + ref.str());
+          }
+
+          if (keys.find(ref) == keys.end())
+            throw std::runtime_error(
+              std::string("WF reference token is never bound: ") + ref.str());
         }
       }
 
@@ -1296,9 +1976,19 @@ namespace trieste
         return Field{type, Choice{std::vector<Token>{type}}, false};
       }
 
+      inline Field implicit_field(const RefToken& ref)
+      {
+        return Field{ref.token, Choice{ref}, false};
+      }
+
       inline Field implicit_field(const Token& name, const Choice& choice)
       {
         return Field{name, choice, false};
+      }
+
+      inline RefToken operator&(const Token& type)
+      {
+        return RefToken{type};
       }
 
       inline Choice operator|(const Token& type1, const Token& type2)
@@ -1309,7 +1999,7 @@ namespace trieste
       inline TRIESTE_SLOW_PATH Choice
       operator|(const Token& type, const Choice& choice)
       {
-        Choice result{choice.types};
+        Choice result{choice.types, choice.ref_tokens};
         result.types.push_back(type);
         return result;
       }
@@ -1324,9 +2014,11 @@ namespace trieste
       inline TRIESTE_SLOW_PATH Choice
       operator|(const Choice& choice1, const Choice& choice2)
       {
-        Choice result{choice1.types};
+        Choice result{choice1.types, choice1.ref_tokens};
         result.types.insert(
           result.types.end(), choice2.types.begin(), choice2.types.end());
+        result.ref_tokens.insert(
+          choice2.ref_tokens.begin(), choice2.ref_tokens.end());
         return result;
       }
 
@@ -1335,6 +2027,8 @@ namespace trieste
       {
         choice2.types.insert(
           choice2.types.end(), choice1.types.begin(), choice1.types.end());
+        choice2.ref_tokens.insert(
+          choice1.ref_tokens.begin(), choice1.ref_tokens.end());
         return std::move(choice2);
       }
 
@@ -1353,20 +2047,55 @@ namespace trieste
         return choice2 | choice1;
       }
 
+      // Combinations involving reference tokens (`&Token`).
+      inline Choice operator|(const RefToken& ref, const RefToken& other)
+      {
+        const Choice lhs{ref};
+        const Choice rhs{other};
+        return lhs | rhs;
+      }
+
+      inline Choice operator|(const RefToken& ref, const Token& type)
+      {
+        const Choice lhs{ref};
+        const Choice rhs{std::vector<Token>{type}};
+        return lhs | rhs;
+      }
+
+      inline Choice operator|(const Token& type, const RefToken& ref)
+      {
+        const Choice lhs{std::vector<Token>{type}};
+        const Choice rhs{ref};
+        return lhs | rhs;
+      }
+
+      inline Choice operator|(const RefToken& ref, const Choice& choice)
+      {
+        const Choice lhs{ref};
+        return lhs | choice;
+      }
+
+      inline Choice operator|(const Choice& choice, const RefToken& ref)
+      {
+        const Choice rhs{ref};
+        return choice | rhs;
+      }
+
       inline TRIESTE_SLOW_PATH Choice
       operator-(const Choice& choice, const Token& type)
       {
-        Choice result{choice.types};
+        Choice result{choice.types, choice.ref_tokens};
         result.types.erase(
           std::remove(result.types.begin(), result.types.end(), type),
           result.types.end());
+        result.ref_tokens.erase(type);
         return result;
       }
 
       inline TRIESTE_SLOW_PATH Choice
       operator-(const Choice& choice1, const Choice& choice2)
       {
-        Choice result{choice1.types};
+        Choice result{choice1.types, choice1.ref_tokens};
         result.types.erase(
           std::remove_if(
             result.types.begin(),
@@ -1376,6 +2105,8 @@ namespace trieste
                 choice2.types.end();
             }),
           result.types.end());
+        for (auto& t : choice2.types)
+          result.ref_tokens.erase(t);
         return result;
       }
 
@@ -1397,6 +2128,16 @@ namespace trieste
         return Sequence{choice, 0, std::numeric_limits<size_t>::max()};
       }
 
+      inline Sequence operator++(const RefToken& ref, int)
+      {
+        return Sequence{Choice{ref}, 0, std::numeric_limits<size_t>::max()};
+      }
+
+      inline Sequence operator~(const RefToken& ref)
+      {
+        return Sequence{Choice{ref}, 0, 1};
+      }
+
       inline Sequence operator~(const Token& type)
       {
         return Sequence{Choice{std::vector<Token>{type}}, 0, 1};
@@ -1415,6 +2156,11 @@ namespace trieste
       inline Field operator>>=(const Token& name, const Token& type)
       {
         return Field{name, Choice{std::vector<Token>{type}}, true};
+      }
+
+      inline Field operator>>=(const Token& name, const RefToken& ref)
+      {
+        return Field{name, Choice{ref}, true};
       }
 
       inline Field operator>>=(const Token& name, const Choice& choice)
@@ -1491,6 +2237,37 @@ namespace trieste
         return fst * implicit_field(snd);
       }
 
+      // Combinations involving reference tokens (`&Token`).
+      inline Fields operator*(const RefToken& fst, const RefToken& snd)
+      {
+        return implicit_field(fst) * implicit_field(snd);
+      }
+
+      inline Fields operator*(const RefToken& fst, const Token& snd)
+      {
+        return implicit_field(fst) * implicit_field(snd);
+      }
+
+      inline Fields operator*(const Token& fst, const RefToken& snd)
+      {
+        return implicit_field(fst) * implicit_field(snd);
+      }
+
+      inline Fields operator*(const RefToken& fst, const Field& snd)
+      {
+        return implicit_field(fst) * snd;
+      }
+
+      inline Fields operator*(const Field& fst, const RefToken& snd)
+      {
+        return fst * implicit_field(snd);
+      }
+
+      inline Fields operator*(const Fields& fst, const RefToken& snd)
+      {
+        return fst * implicit_field(snd);
+      }
+
       inline Shape operator<<=(const Token& type, const Fields& fields)
       {
         return Shape{type, fields};
@@ -1519,6 +2296,11 @@ namespace trieste
       inline Shape operator<<=(const Token& type, Choice&& choice)
       {
         return type <<= implicit_field(type, choice);
+      }
+
+      inline Shape operator<<=(const Token& type, const RefToken& ref)
+      {
+        return type <<= implicit_field(ref);
       }
 
       inline Shape operator<<=(const Token& type1, const Token& type2)
