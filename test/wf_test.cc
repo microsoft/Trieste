@@ -124,16 +124,16 @@ int main()
     distinct.index(FieldName) == 0 && distinct.index(OtherName) == 1,
     "distinct explicit fields should remain valid");
 
-  auto bound = FieldName * OtherName;
-  bound[FieldName];
-  auto extended = bound * (ThirdName >>= ValueA);
+  auto binder = FieldName * OtherName;
+  binder[FieldName];
+  auto extended = binder * (ThirdName >>= ValueA);
   failures += !check(
-    bound.binding == FieldName && extended.binding == FieldName,
+    binder.binding == FieldName && extended.binding == FieldName,
     "appending a field should preserve binding metadata");
   failures += !expect_duplicate(
-    [&bound]() { (void)(bound * (FieldName >>= ValueA)); }, FieldName.name);
+    [&binder]() { (void)(binder * (FieldName >>= ValueA)); }, FieldName.name);
   failures += !check(
-    bound.fields.size() == 2 && bound.binding == FieldName,
+    binder.fields.size() == 2 && binder.binding == FieldName,
     "a failed append should not modify its source");
 
   failures += !expect_duplicate(

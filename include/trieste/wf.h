@@ -599,9 +599,8 @@ namespace trieste
             bound.find(type) != bound.end())
             continue;
 
-          if (binder_counts(b, type, chain, [&]() {
-                return precedes_new_child(b, node);
-              }))
+          if (binder_counts(
+                b, type, chain, [&]() { return precedes_new_child(b, node); }))
             bound.insert(type);
         }
         return bound;
@@ -1691,10 +1690,10 @@ namespace trieste
           return true;
         }
 
-        logging::Debug()
-          << "Sample contained bindings which could not be satisfied (aborting):"
-          << std::endl
-          << node->str();
+        logging::Debug() << "Sample contained bindings which could not be "
+                            "satisfied (aborting):"
+                         << std::endl
+                         << node->str();
 
         // Undo the sample: forget its binders, unbind its keys and remove it.
         g.binders.resize(binders_before);
