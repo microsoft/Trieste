@@ -191,7 +191,7 @@ int main()
 
     auto removed = mixed - ValueA;
     failures += !check(
-      removed.types.size() == 1 && removed.refs.empty(),
+      removed.types.size() == 1 && removed.ref_tokens.empty(),
       "removing a token should remove its reference mark");
 
     auto seq = (&ValueA)++;
